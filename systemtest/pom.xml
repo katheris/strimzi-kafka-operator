@@ -5,7 +5,7 @@
     <parent>
         <artifactId>strimzi</artifactId>
         <groupId>io.strimzi</groupId>
-        <version>0.20.0-SNAPSHOT</version>
+        <version>0.20.0</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
     <artifactId>systemtest</artifactId>
@@ -37,14 +37,6 @@
         <dependency>
             <groupId>org.apache.logging.log4j</groupId>
             <artifactId>log4j-api</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.logging.log4j</groupId>
-            <artifactId>log4j-core</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.logging.log4j</groupId>
-            <artifactId>log4j-slf4j-impl</artifactId>
         </dependency>
         <dependency>
             <groupId>io.strimzi</groupId>
@@ -116,12 +108,6 @@
             <scope>compile</scope>
         </dependency>
         <dependency>
-            <groupId>org.junit.jupiter</groupId>
-            <artifactId>junit-jupiter-engine</artifactId>
-            <version>${jupiter.version}</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
             <groupId>org.junit.platform</groupId>
             <artifactId>junit-platform-launcher</artifactId>
             <version>${junit.platform.version}</version>
@@ -138,6 +124,12 @@
             <artifactId>junit-jupiter-params</artifactId>
             <version>${jupiter.version}</version>
             <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.opentest4j</groupId>
+            <artifactId>opentest4j</artifactId>
+            <version>${opentest4j.version}</version>
+            <scope>compile</scope>
         </dependency>
         <dependency>
             <groupId>javax.json</groupId>
@@ -227,12 +219,6 @@
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
             <version>${fasterxml.jackson-databind.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>io.strimzi</groupId>
-            <artifactId>test-container</artifactId>
-            <version>${project.version}</version>
-            <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>io.strimzi</groupId>

@@ -15,7 +15,6 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 import io.fabric8.kubernetes.api.model.Doneable;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.client.CustomResource;
-import io.strimzi.api.kafka.model.status.HasStatus;
 import io.strimzi.api.kafka.model.status.KafkaConnectS2IStatus;
 import io.strimzi.crdgenerator.annotations.Crd;
 import io.strimzi.crdgenerator.annotations.Description;
@@ -35,7 +34,6 @@ import static java.util.Collections.unmodifiableList;
         using = JsonDeserializer.None.class
 )
 @Crd(
-        apiVersion = KafkaConnectS2I.CRD_API_VERSION,
         spec = @Crd.Spec(
                 names = @Crd.Spec.Names(
                         kind = KafkaConnectS2I.RESOURCE_KIND,
@@ -45,7 +43,6 @@ import static java.util.Collections.unmodifiableList;
                 ),
                 group = KafkaConnectS2I.RESOURCE_GROUP,
                 scope = KafkaConnectS2I.SCOPE,
-                version = KafkaConnectS2I.V1BETA1,
                 versions = {
                         @Crd.Spec.Version(
                                 name = KafkaConnectS2I.V1BETA1,
@@ -84,8 +81,7 @@ import static java.util.Collections.unmodifiableList;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonPropertyOrder({"apiVersion", "kind", "metadata", "spec", "status"})
 @EqualsAndHashCode
-public class KafkaConnectS2I extends CustomResource implements UnknownPropertyPreserving, HasStatus<KafkaConnectS2IStatus> {
-
+public class KafkaConnectS2I extends CustomResource implements HasSpecAndStatus<KafkaConnectS2ISpec, KafkaConnectS2IStatus>, UnknownPropertyPreserving {
     private static final long serialVersionUID = 1L;
 
     public static final String SCOPE = "Namespaced";

@@ -8,7 +8,7 @@ watchAnyNamespace: false
 image:
   repository: strimzi
   name: operator
-  tag: latest
+  tag: 0.20.0
 logVolume: co-config-volume
 logConfigMap: strimzi-cluster-operator
 logLevel: ${env:STRIMZI_LOG_LEVEL:-INFO}
@@ -27,77 +27,77 @@ zookeeper:
   image:
     repository: strimzi
     name: kafka
-    tagPrefix: latest
+    tagPrefix: 0.20.0
 kafka:
   image:
     repository: strimzi
     name: kafka
-    tagPrefix: latest
+    tagPrefix: 0.20.0
 kafkaConnect:
   image:
     repository: strimzi
     name: kafka
-    tagPrefix: latest
+    tagPrefix: 0.20.0
 kafkaConnects2i:
   image:
     repository: strimzi
     name: kafka
-    tagPrefix: latest
+    tagPrefix: 0.20.0
 topicOperator:
   image:
     repository: strimzi
     name: operator
-    tag: latest
+    tag: 0.20.0
 userOperator:
   image:
     repository: strimzi
     name: operator
-    tag: latest
+    tag: 0.20.0
 kafkaInit:
   image:
     repository: strimzi
     name: operator
-    tag: latest
+    tag: 0.20.0
 tlsSidecarEntityOperator:
   image:
     repository: strimzi
     name: kafka
-    tagPrefix: latest
+    tagPrefix: 0.20.0
 kafkaMirrorMaker:
   image:
     repository: strimzi
     name: kafka
-    tagPrefix: latest
+    tagPrefix: 0.20.0
 kafkaBridge:
   image:
     repository: strimzi
     name: kafka-bridge
-    tag: 0.18.0
+    tag: 0.19.0
 kafkaExporter:
   image:
     repository: strimzi
     name: kafka
-    tagPrefix: latest
+    tagPrefix: 0.20.0
 jmxTrans:
   image:
     repository: strimzi
     name: jmxtrans
-    tag: latest
+    tag: 0.20.0
 kafkaMirrorMaker2:
   image:
     repository: strimzi
     name: kafka
-    tagPrefix: latest
+    tagPrefix: 0.20.0
 cruiseControl:
   image:
     repository: strimzi
     name: kafka
-    tagPrefix: latest
+    tagPrefix: 0.20.0
 tlsSidecarCruiseControl:
   image:
     repository: strimzi
     name: kafka
-    tagPrefix: latest
+    tagPrefix: 0.20.0
 resources:
   limits:
     memory: 384Mi

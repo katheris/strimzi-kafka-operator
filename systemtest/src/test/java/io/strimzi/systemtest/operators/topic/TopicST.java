@@ -7,18 +7,16 @@ package io.strimzi.systemtest.operators.topic;
 import io.fabric8.kubernetes.api.model.DeletionPropagation;
 import io.strimzi.api.kafka.model.KafkaTopic;
 import io.strimzi.api.kafka.model.listener.arraylistener.KafkaListenerType;
-import io.strimzi.operator.common.model.Labels;
+import io.strimzi.api.kafka.model.status.KafkaTopicStatus;
 import io.strimzi.systemtest.AbstractST;
 import io.strimzi.systemtest.Constants;
 import io.strimzi.systemtest.cli.KafkaCmdClient;
-import io.strimzi.systemtest.kafkaclients.AbstractKafkaClient;
 import io.strimzi.systemtest.kafkaclients.internalClients.InternalKafkaClient;
 import io.strimzi.systemtest.resources.ResourceManager;
 import io.strimzi.systemtest.resources.crd.KafkaClientsResource;
 import io.strimzi.systemtest.resources.crd.KafkaResource;
 import io.strimzi.systemtest.resources.crd.KafkaTopicResource;
 import io.strimzi.systemtest.utils.kafkaUtils.KafkaTopicUtils;
-import io.strimzi.systemtest.utils.kubeUtils.objects.PodUtils;
 import io.strimzi.test.TestUtils;
 import io.strimzi.test.k8s.exceptions.KubeClusterException;
 import org.apache.kafka.clients.admin.AdminClient;
@@ -70,15 +68,13 @@ public class TopicST extends AbstractST {
         assertThat("Topic exists in Kafka CR (Kubernetes)", hasTopicInCRK8s(kafkaTopic, topicName));
         assertThat("Topic doesn't exists in Kafka itself", !hasTopicInKafka(topicName));
 
-        // Checking TO logs
-        String tOPodName = cmdKubeClient().listResourcesByLabel("pod", Labels.STRIMZI_NAME_LABEL + "=my-cluster-entity-operator").get(0);
         String errorMessage = "Replication factor: 5 larger than available brokers: 3";
 
-        PodUtils.waitUntilMessageIsInLogs(tOPodName, "topic-operator", errorMessage);
+        KafkaTopicUtils.waitForKafkaTopicNotReady(topicName);
+        KafkaTopicStatus kafkaTopicStatus = KafkaTopicResource.kafkaTopicClient().inNamespace(NAMESPACE).withName(topicName).get().getStatus();
 
-        String tOlogs = kubeClient().logs(tOPodName, "topic-operator");
-
-        assertThat(tOlogs, containsString(errorMessage));
+        assertThat(kafkaTopicStatus.getConditions().get(0).getMessage(), containsString(errorMessage));
+        assertThat(kafkaTopicStatus.getConditions().get(0).getReason(), containsString("InvalidReplicationFactorException"));
 
         LOGGER.info("Delete topic {}", topicName);
         cmdKubeClient().deleteByName("kafkatopic", topicName);
@@ -101,9 +97,8 @@ public class TopicST extends AbstractST {
         LOGGER.debug("Creating topic {} with {} replicas and {} partitions", TOPIC_NAME, 3, topicPartitions);
         KafkaCmdClient.createTopicUsingPodCli(CLUSTER_NAME, 0, TOPIC_NAME, 3, topicPartitions);
 
-        KafkaTopicUtils.waitForKafkaTopicCreation(TOPIC_NAME);
-
         KafkaTopic kafkaTopic = KafkaTopicResource.kafkaTopicClient().inNamespace(NAMESPACE).withName(TOPIC_NAME).get();
+
         verifyTopicViaKafkaTopicCRK8s(kafkaTopic, TOPIC_NAME, topicPartitions);
 
         topicPartitions = 5;
@@ -126,13 +121,7 @@ public class TopicST extends AbstractST {
                 .editKafka()
                     .withNewListeners()
                         .addNewGenericKafkaListener()
-                            .withName("tls")
-                            .withPort(9093)
-                            .withType(KafkaListenerType.INTERNAL)
-                            .withTls(true)
-                        .endGenericKafkaListener()
-                        .addNewGenericKafkaListener()
-                            .withName("external")
+                            .withName(Constants.EXTERNAL_LISTENER_DEFAULT_NAME)
                             .withPort(9094)
                             .withType(KafkaListenerType.NODEPORT)
                             .withTls(false)
@@ -143,7 +132,13 @@ public class TopicST extends AbstractST {
             .done();
 
         Properties properties = new Properties();
-        properties.setProperty(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, AbstractKafkaClient.getExternalBootstrapConnect(NAMESPACE, clusterName));
+
+        properties.setProperty(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, KafkaResource.kafkaClient().inNamespace(NAMESPACE)
+            .withName(clusterName).get().getStatus().getListeners().stream()
+            .filter(listener -> listener.getType().equals(Constants.EXTERNAL_LISTENER_DEFAULT_NAME))
+            .findFirst()
+            .orElseThrow(RuntimeException::new)
+            .getBootstrapServers());
 
         try (AdminClient adminClient = AdminClient.create(properties)) {
 
@@ -156,11 +151,18 @@ public class TopicST extends AbstractST {
             LOGGER.info("Verify that in Kafka cluster contains {} topics", 1);
             assertThat(topics.size(), is(1));
             assertThat(topics.contains(TOPIC_NAME), is(true));
+
+            KafkaTopicUtils.waitForKafkaTopicCreation(TOPIC_NAME);
+            KafkaTopicUtils.waitForKafkaTopicReady(TOPIC_NAME);
         }
 
+        KafkaTopic kafkaTopic = KafkaTopicResource.kafkaTopicClient().inNamespace(NAMESPACE).withName(TOPIC_NAME).get();
+        ResourceManager.getPointerResources().push(() -> ResourceManager.deleteLater(KafkaTopicResource.kafkaTopicClient(), kafkaTopic));
+
         LOGGER.info("Verify that corresponding {} KafkaTopic custom resources were created and topic is in Ready state", 1);
-        KafkaTopicUtils.waitForKafkaTopicCreation(TOPIC_NAME);
-        KafkaTopicUtils.waitForKafkaTopicReady(TOPIC_NAME);
+        assertThat(kafkaTopic.getStatus().getConditions().get(0).getType(), is(Ready.toString()));
+        assertThat(kafkaTopic.getSpec().getPartitions(), is(1));
+        assertThat(kafkaTopic.getSpec().getReplicas(), is(1));
     }
 
     @Test
@@ -183,7 +185,7 @@ public class TopicST extends AbstractST {
 
         assertThat(topicCRDMessage, containsString(exceptedMessage));
 
-        cmdKubeClient().deleteByName("kafkatopic", topicName);
+        cmdKubeClient().deleteByName(KafkaTopic.RESOURCE_SINGULAR, topicName);
         KafkaTopicUtils.waitForKafkaTopicDeletion(topicName);
     }
 
@@ -203,6 +205,7 @@ public class TopicST extends AbstractST {
             .withNamespaceName(NAMESPACE)
             .withClusterName(CLUSTER_NAME)
             .withMessageCount(MESSAGE_COUNT)
+            .withListenerName(Constants.PLAIN_LISTENER_DEFAULT_NAME)
             .build();
 
         LOGGER.info("Checking if {} is on topic list", TOPIC_NAME);
@@ -227,6 +230,9 @@ public class TopicST extends AbstractST {
         LOGGER.info("Checking if {} is on topic list", TOPIC_NAME);
         created = hasTopicInKafka(TOPIC_NAME);
         assertThat(created, is(true));
+
+        KafkaTopic kafkaTopic = KafkaTopicResource.kafkaTopicClient().inNamespace(NAMESPACE).withName(TOPIC_NAME).get();
+        ResourceManager.getPointerResources().push(() -> ResourceManager.deleteLater(KafkaTopicResource.kafkaTopicClient(), kafkaTopic));
 
         assertThat(KafkaTopicResource.kafkaTopicClient().inNamespace(NAMESPACE).withName(TOPIC_NAME).get().getStatus().getConditions().get(0).getType(), is(Ready.toString()));
         LOGGER.info("Topic successfully created");
@@ -258,6 +264,7 @@ public class TopicST extends AbstractST {
             .withNamespaceName(NAMESPACE)
             .withClusterName(isolatedKafkaCluster)
             .withMessageCount(MESSAGE_COUNT)
+            .withListenerName(Constants.PLAIN_LISTENER_DEFAULT_NAME)
             .build();
 
         int sent = internalKafkaClient.sendMessagesPlain();

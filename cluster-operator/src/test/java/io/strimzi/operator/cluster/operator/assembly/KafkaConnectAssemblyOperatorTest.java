@@ -32,6 +32,7 @@ import io.strimzi.operator.common.Annotations;
 import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.Util;
 import io.strimzi.operator.common.model.Labels;
+import io.strimzi.operator.common.model.OrderedProperties;
 import io.strimzi.operator.common.operator.resource.ConfigMapOperator;
 import io.strimzi.operator.common.operator.resource.CrdOperator;
 import io.strimzi.operator.common.operator.resource.DeploymentOperator;
@@ -148,7 +149,7 @@ public class KafkaConnectAssemblyOperatorTest {
                 .withVersion("1.0.0")
                 .build();
         when(mockConnectClient.listConnectorPlugins(anyString(), anyInt())).thenReturn(Future.succeededFuture(singletonList(plugin1)));
-        when(mockConnectClient.updateConnectLoggers(anyString(), anyInt(), anyString())).thenReturn(Future.succeededFuture());
+        when(mockConnectClient.updateConnectLoggers(anyString(), anyInt(), anyString(), any(OrderedProperties.class))).thenReturn(Future.succeededFuture());
 
         KafkaConnectAssemblyOperator ops = new KafkaConnectAssemblyOperator(vertx, new PlatformFeaturesAvailability(true, kubernetesVersion),
                 supplier, ResourceUtils.dummyClusterOperatorConfig(VERSIONS), x -> mockConnectClient);
@@ -156,7 +157,7 @@ public class KafkaConnectAssemblyOperatorTest {
         KafkaConnectCluster connect = KafkaConnectCluster.fromCrd(kc, VERSIONS);
 
         Checkpoint async = context.checkpoint();
-        ops.createOrUpdate(new Reconciliation("test-trigger", KafkaConnect.RESOURCE_KIND, kc.getMetadata().getNamespace(), kc.getMetadata().getName()), kc)
+        ops.reconcile(new Reconciliation("test-trigger", KafkaConnect.RESOURCE_KIND, kc.getMetadata().getNamespace(), kc.getMetadata().getName()))
             .onComplete(context.succeeding(v -> context.verify(() -> {
                 // No metrics config  => no CMs created
                 Set<String> metricsNames = new HashSet<>();
@@ -292,7 +293,7 @@ public class KafkaConnectAssemblyOperatorTest {
                 .withVersion("1.0.0")
                 .build();
         when(mockConnectClient.listConnectorPlugins(anyString(), anyInt())).thenReturn(Future.succeededFuture(singletonList(plugin1)));
-        when(mockConnectClient.updateConnectLoggers(anyString(), anyInt(), anyString())).thenReturn(Future.succeededFuture());
+        when(mockConnectClient.updateConnectLoggers(anyString(), anyInt(), anyString(), any(OrderedProperties.class))).thenReturn(Future.succeededFuture());
 
         KafkaConnectAssemblyOperator ops = new KafkaConnectAssemblyOperator(vertx, new PlatformFeaturesAvailability(true, kubernetesVersion),
                 supplier, ResourceUtils.dummyClusterOperatorConfig(VERSIONS), x -> mockConnectClient);
@@ -410,7 +411,7 @@ public class KafkaConnectAssemblyOperatorTest {
                 .withVersion("1.0.0")
                 .build();
         when(mockConnectClient.listConnectorPlugins(anyString(), anyInt())).thenReturn(Future.succeededFuture(singletonList(plugin1)));
-        when(mockConnectClient.updateConnectLoggers(anyString(), anyInt(), anyString())).thenReturn(Future.succeededFuture());
+        when(mockConnectClient.updateConnectLoggers(anyString(), anyInt(), anyString(), any(OrderedProperties.class))).thenReturn(Future.succeededFuture());
 
         KafkaConnectAssemblyOperator ops = new KafkaConnectAssemblyOperator(vertx, new PlatformFeaturesAvailability(true, kubernetesVersion),
                 supplier, ResourceUtils.dummyClusterOperatorConfig(VERSIONS), x -> mockConnectClient);
@@ -568,7 +569,7 @@ public class KafkaConnectAssemblyOperatorTest {
                 .withVersion("1.0.0")
                 .build();
         when(mockConnectClient.listConnectorPlugins(anyString(), anyInt())).thenReturn(Future.succeededFuture(singletonList(plugin1)));
-        when(mockConnectClient.updateConnectLoggers(anyString(), anyInt(), anyString())).thenReturn(Future.succeededFuture());
+        when(mockConnectClient.updateConnectLoggers(anyString(), anyInt(), anyString(), any(OrderedProperties.class))).thenReturn(Future.succeededFuture());
 
         KafkaConnectAssemblyOperator ops = new KafkaConnectAssemblyOperator(vertx, new PlatformFeaturesAvailability(true, kubernetesVersion),
                 supplier, ResourceUtils.dummyClusterOperatorConfig(VERSIONS), x -> mockConnectClient);
@@ -636,7 +637,7 @@ public class KafkaConnectAssemblyOperatorTest {
                 .withVersion("1.0.0")
                 .build();
         when(mockConnectClient.listConnectorPlugins(anyString(), anyInt())).thenReturn(Future.succeededFuture(singletonList(plugin1)));
-        when(mockConnectClient.updateConnectLoggers(anyString(), anyInt(), anyString())).thenReturn(Future.succeededFuture());
+        when(mockConnectClient.updateConnectLoggers(anyString(), anyInt(), anyString(), any(OrderedProperties.class))).thenReturn(Future.succeededFuture());
 
         KafkaConnectAssemblyOperator ops = new KafkaConnectAssemblyOperator(vertx, new PlatformFeaturesAvailability(true, kubernetesVersion),
                 supplier, ResourceUtils.dummyClusterOperatorConfig(VERSIONS), x -> mockConnectClient);
@@ -695,7 +696,7 @@ public class KafkaConnectAssemblyOperatorTest {
                 supplier, ResourceUtils.dummyClusterOperatorConfig(VERSIONS)) {
 
             @Override
-            public Future<Void> createOrUpdate(Reconciliation reconciliation, KafkaConnect kafkaConnectAssembly) {
+            public Future<KafkaConnectStatus> createOrUpdate(Reconciliation reconciliation, KafkaConnect kafkaConnectAssembly) {
                 createdOrUpdated.add(kafkaConnectAssembly.getMetadata().getName());
                 asyncCreated.flag();
                 return Future.succeededFuture();
@@ -751,7 +752,7 @@ public class KafkaConnectAssemblyOperatorTest {
                 supplier, ResourceUtils.dummyClusterOperatorConfig(VERSIONS));
 
         Checkpoint async = context.checkpoint();
-        ops.createOrUpdate(new Reconciliation("test-trigger", KafkaConnect.RESOURCE_KIND, kcNamespace, kcName), kc)
+        ops.reconcile(new Reconciliation("test-trigger", KafkaConnect.RESOURCE_KIND, kcNamespace, kcName))
             .onComplete(context.failing(v -> context.verify(() -> {
                 // Verify status
                 List<KafkaConnect> capturedConnects = connectCaptor.getAllValues();
@@ -765,7 +766,7 @@ public class KafkaConnectAssemblyOperatorTest {
             })));
     }
 
-    public void assertCreateClusterWitDuplicateOlderConnect(VertxTestContext context, KafkaConnect kc, boolean connectorOperator) {
+    public void assertCreateClusterWithDuplicateOlderConnect(VertxTestContext context, KafkaConnect kc, boolean connectorOperator) {
         ResourceOperatorSupplier supplier = ResourceUtils.supplierWithMocks(true);
         CrdOperator mockConnectOps = supplier.connectOperator;
         CrdOperator mockConnectS2IOps = supplier.connectS2IOperator;
@@ -784,6 +785,7 @@ public class KafkaConnectAssemblyOperatorTest {
         when(mockConnectorOps.listAsync(anyString(), any(Optional.class))).thenReturn(Future.succeededFuture(emptyList()));
         when(mockConnectOps.get(kc.getMetadata().getNamespace(), kc.getMetadata().getName())).thenReturn(kc);
         when(mockConnectOps.getAsync(anyString(), anyString())).thenReturn(Future.succeededFuture(kc));
+        when(mockConnectOps.get(anyString(), anyString())).thenReturn(kc);
 
         when(mockConnectS2IOps.getAsync(kc.getMetadata().getNamespace(), kc.getMetadata().getName())).thenReturn(Future.succeededFuture(conflictingConnectS2I));
 
@@ -815,7 +817,7 @@ public class KafkaConnectAssemblyOperatorTest {
                 .withVersion("1.0.0")
                 .build();
         when(mockConnectClient.listConnectorPlugins(anyString(), anyInt())).thenReturn(Future.succeededFuture(singletonList(plugin1)));
-        when(mockConnectClient.updateConnectLoggers(anyString(), anyInt(), anyString())).thenReturn(Future.succeededFuture());
+        when(mockConnectClient.updateConnectLoggers(anyString(), anyInt(), anyString(), any(OrderedProperties.class))).thenReturn(Future.succeededFuture());
 
         KafkaConnectAssemblyOperator ops = new KafkaConnectAssemblyOperator(vertx, new PlatformFeaturesAvailability(true, kubernetesVersion),
                 supplier, ResourceUtils.dummyClusterOperatorConfig(VERSIONS), x -> mockConnectClient);
@@ -823,7 +825,7 @@ public class KafkaConnectAssemblyOperatorTest {
         KafkaConnectCluster connect = KafkaConnectCluster.fromCrd(kc, VERSIONS);
 
         Checkpoint async = context.checkpoint();
-        ops.createOrUpdate(new Reconciliation("test-trigger", KafkaConnect.RESOURCE_KIND, kc.getMetadata().getNamespace(), kc.getMetadata().getName()), kc)
+        ops.reconcile(new Reconciliation("test-trigger", KafkaConnect.RESOURCE_KIND, kc.getMetadata().getNamespace(), kc.getMetadata().getName()))
             .onComplete(context.succeeding(v -> context.verify(() -> {
 
                 // No metrics config  => no CMs created
@@ -881,7 +883,7 @@ public class KafkaConnectAssemblyOperatorTest {
         String kcNamespace = "test";
         KafkaConnect kc = ResourceUtils.createEmptyKafkaConnect(kcNamespace, kcName);
 
-        assertCreateClusterWitDuplicateOlderConnect(context, kc, false);
+        assertCreateClusterWithDuplicateOlderConnect(context, kc, false);
     }
 
     @Test
@@ -891,7 +893,7 @@ public class KafkaConnectAssemblyOperatorTest {
         KafkaConnect kc = ResourceUtils.createEmptyKafkaConnect(kcNamespace, kcName);
         kc.getMetadata().getAnnotations().put("strimzi.io/use-connector-resources", "true");
 
-        assertCreateClusterWitDuplicateOlderConnect(context, kc, true);
+        assertCreateClusterWithDuplicateOlderConnect(context, kc, true);
     }
 
     @Test
@@ -910,6 +912,7 @@ public class KafkaConnectAssemblyOperatorTest {
         conflictingConnectS2I.getMetadata().setCreationTimestamp("2020-01-27T19:31:11Z");
 
         when(mockConnectOps.getAsync(anyString(), anyString())).thenReturn(Future.succeededFuture(kc));
+        when(mockConnectOps.get(anyString(), anyString())).thenReturn(kc);
 
         when(mockConnectS2IOps.getAsync(kcNamespace, kcName)).thenReturn(Future.succeededFuture(conflictingConnectS2I));
 
@@ -922,7 +925,7 @@ public class KafkaConnectAssemblyOperatorTest {
                 supplier, ResourceUtils.dummyClusterOperatorConfig(VERSIONS), x -> mockConnectClient);
 
         Checkpoint async = context.checkpoint();
-        ops.createOrUpdate(new Reconciliation("test-trigger", KafkaConnect.RESOURCE_KIND, kcNamespace, kcName), kc)
+        ops.reconcile(new Reconciliation("test-trigger", KafkaConnect.RESOURCE_KIND, kcNamespace, kcName))
             .onComplete(context.failing(error -> context.verify(() -> {
                 // Verify status
                 List<KafkaConnect> capturedConnects = connectCaptor.getAllValues();

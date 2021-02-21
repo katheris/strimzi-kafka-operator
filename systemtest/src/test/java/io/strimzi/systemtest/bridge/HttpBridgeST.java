@@ -4,12 +4,15 @@
  */
 package io.strimzi.systemtest.bridge;
 
+import io.fabric8.kubernetes.api.model.HostAlias;
+import io.fabric8.kubernetes.api.model.HostAliasBuilder;
 import io.fabric8.kubernetes.api.model.Service;
 import io.strimzi.api.kafka.model.KafkaBridge;
 import io.strimzi.api.kafka.model.KafkaBridgeResources;
 import io.strimzi.api.kafka.model.KafkaResources;
 import io.strimzi.api.kafka.model.status.KafkaBridgeStatus;
 import io.strimzi.operator.common.model.Labels;
+import io.strimzi.systemtest.Constants;
 import io.strimzi.systemtest.kafkaclients.internalClients.InternalKafkaClient;
 import io.strimzi.systemtest.resources.crd.KafkaClientsResource;
 import io.strimzi.systemtest.utils.ClientUtils;
@@ -42,6 +45,7 @@ import static io.strimzi.test.k8s.KubeClusterResource.kubeClient;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsString;
 
 @Tag(REGRESSION)
 @Tag(BRIDGE)
@@ -64,6 +68,7 @@ class HttpBridgeST extends HttpBridgeAbstractST {
             .withMessageCount(MESSAGE_COUNT)
             .withKafkaUsername(USER_NAME)
             .withUsingPodName(kafkaClientsPodName)
+            .withListenerName(Constants.PLAIN_LISTENER_DEFAULT_NAME)
             .build();
 
         assertThat(internalKafkaClient.receiveMessagesPlain(), is(MESSAGE_COUNT));
@@ -87,6 +92,7 @@ class HttpBridgeST extends HttpBridgeAbstractST {
             .withMessageCount(MESSAGE_COUNT)
             .withKafkaUsername(USER_NAME)
             .withUsingPodName(kafkaClientsPodName)
+            .withListenerName(Constants.PLAIN_LISTENER_DEFAULT_NAME)
             .build();
 
         assertThat(internalKafkaClient.sendMessagesPlain(), is(MESSAGE_COUNT));
@@ -250,6 +256,32 @@ class HttpBridgeST extends HttpBridgeAbstractST {
         for (String pod : bridgePods) {
             assertThat(pod.contains(bridgeGenName), is(true));
         }
+    }
+
+    @Test
+    void testHostAliases() {
+        String bridgeName = "bridge-with-hosts";
+
+        HostAlias hostAlias = new HostAliasBuilder()
+            .withIp(aliasIp)
+            .withHostnames(aliasHostname)
+            .build();
+
+        KafkaBridgeResource.kafkaBridge(bridgeName, KafkaResources.plainBootstrapAddress(CLUSTER_NAME), 1)
+            .editSpec()
+                .withNewTemplate()
+                    .withNewPod()
+                        .withHostAliases(hostAlias)
+                    .endPod()
+                .endTemplate()
+            .endSpec()
+            .done();
+
+        String bridgePodName = kubeClient().listPods(Labels.STRIMZI_CLUSTER_LABEL, bridgeName).get(0).getMetadata().getName();
+
+        LOGGER.info("Checking the /etc/hosts file");
+        String output = cmdKubeClient().execInPod(bridgePodName, "cat", "/etc/hosts").out();
+        assertThat(output, containsString(etcHostsData));
     }
 
     @BeforeAll

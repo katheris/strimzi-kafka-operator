@@ -25,6 +25,7 @@ import io.strimzi.systemtest.resources.ResourceOperation;
 import io.strimzi.systemtest.utils.TestKafkaVersion;
 import io.strimzi.test.TestUtils;
 
+import java.io.File;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -33,6 +34,7 @@ import java.util.function.Consumer;
 
 import static io.strimzi.systemtest.enums.CustomResourceStatus.Ready;
 import static io.strimzi.systemtest.resources.ResourceManager.CR_CREATION_TIMEOUT;
+import static io.strimzi.systemtest.resources.ResourceManager.kubeClient;
 
 public class KafkaResource {
     private static final String PATH_TO_KAFKA_METRICS_CONFIG = TestUtils.USER_PATH + "/../examples/metrics/kafka-metrics.yaml";
@@ -46,7 +48,7 @@ public class KafkaResource {
     }
 
     public static DoneableKafka kafkaEphemeral(String name, int kafkaReplicas) {
-        return kafkaEphemeral(name, kafkaReplicas, 3);
+        return kafkaEphemeral(name, kafkaReplicas, Math.min(kafkaReplicas, 3));
     }
 
     public static DoneableKafka kafkaEphemeral(String name, int kafkaReplicas, int zookeeperReplicas) {
@@ -55,7 +57,7 @@ public class KafkaResource {
     }
 
     public static DoneableKafka kafkaPersistent(String name, int kafkaReplicas) {
-        return kafkaPersistent(name, kafkaReplicas, 3);
+        return kafkaPersistent(name, kafkaReplicas, Math.min(kafkaReplicas, 3));
     }
 
     public static DoneableKafka kafkaPersistent(String name, int kafkaReplicas, int zookeeperReplicas) {
@@ -156,20 +158,20 @@ public class KafkaResource {
                     .addToConfig("transaction.state.log.replication.factor", Math.min(kafkaReplicas, 3))
                     .withNewListeners()
                         .addNewGenericKafkaListener()
-                            .withName("plain")
+                            .withName(Constants.PLAIN_LISTENER_DEFAULT_NAME)
                             .withPort(9092)
                             .withType(KafkaListenerType.INTERNAL)
                             .withTls(false)
                         .endGenericKafkaListener()
                         .addNewGenericKafkaListener()
-                            .withName("tls")
+                            .withName(Constants.TLS_LISTENER_DEFAULT_NAME)
                             .withPort(9093)
                             .withType(KafkaListenerType.INTERNAL)
                             .withTls(true)
                         .endGenericKafkaListener()
                     .endListeners()
                     .withNewInlineLogging()
-                        .addToLoggers("log4j.rootLogger", "DEBUG")
+                        .addToLoggers("kafka.root.logger.level", "DEBUG")
                     .endInlineLogging()
                 .endKafka()
                 .editZookeeper()
@@ -191,6 +193,24 @@ public class KafkaResource {
                     .endTopicOperator()
                 .endEntityOperator()
             .endSpec();
+    }
+
+    public static DoneableKafka kafkaFromYaml(File yamlFile, String clusterName, int kafkaReplicas, int zookeeperReplicas) {
+        Kafka kafka = getKafkaFromYaml(yamlFile);
+        return deployKafka(new KafkaBuilder(kafka)
+            .withNewMetadata()
+                .withName(clusterName)
+                .withNamespace(kubeClient().getNamespace())
+            .endMetadata()
+            .editOrNewSpec()
+                .editKafka()
+                    .withReplicas(kafkaReplicas)
+                .endKafka()
+                .editZookeeper()
+                    .withReplicas(zookeeperReplicas)
+                .endZookeeper()
+            .endSpec()
+            .build());
     }
 
     static DoneableKafka deployKafka(Kafka kafka) {
@@ -243,6 +263,10 @@ public class KafkaResource {
         return TestUtils.configFromYaml(yamlPath, Kafka.class);
     }
 
+    private static Kafka getKafkaFromYaml(File yamlFile) {
+        return TestUtils.configFromYaml(yamlFile, Kafka.class);
+    }
+
     /**
      * Wait until the ZK, Kafka and EO are all ready
      */
@@ -268,18 +292,24 @@ public class KafkaResource {
         ResourceManager.replaceCrdResource(Kafka.class, KafkaList.class, DoneableKafka.class, resourceName, editor);
     }
 
-    public static String getKafkaTlsListenerCaCertName(String namespace, String clusterName) {
+    public static String getKafkaTlsListenerCaCertName(String namespace, String clusterName, String listenerName) {
         List<GenericKafkaListener> listeners = kafkaClient().inNamespace(namespace).withName(clusterName).get().getSpec().getKafka().getListeners().newOrConverted();
-        GenericKafkaListener tlsListener = listeners.stream().filter(listener -> "tls".equals(listener.getName())).findFirst().orElseThrow(() -> new RuntimeException());
+
+        GenericKafkaListener tlsListener = listenerName == null || listenerName.isEmpty() ?
+            listeners.stream().filter(listener -> Constants.TLS_LISTENER_DEFAULT_NAME.equals(listener.getName())).findFirst().orElseThrow(RuntimeException::new) :
+            listeners.stream().filter(listener -> listenerName.equals(listener.getName())).findFirst().orElseThrow(RuntimeException::new);
         return tlsListener.getConfiguration() == null ?
                 KafkaResources.clusterCaCertificateSecretName(clusterName) : tlsListener.getConfiguration().getBrokerCertChainAndKey().getSecretName();
     }
 
-    public static String getKafkaExternalListenerCaCertName(String namespace, String clusterName) {
+    public static String getKafkaExternalListenerCaCertName(String namespace, String clusterName, String listenerName) {
         List<GenericKafkaListener> listeners = kafkaClient().inNamespace(namespace).withName(clusterName).get().getSpec().getKafka().getListeners().newOrConverted();
-        GenericKafkaListener external = listeners.stream().filter(listener -> "external".equals(listener.getName())).findFirst().orElseThrow(() -> new RuntimeException());
+
+        GenericKafkaListener external = listenerName == null || listenerName.isEmpty() ?
+            listeners.stream().filter(listener -> Constants.EXTERNAL_LISTENER_DEFAULT_NAME.equals(listener.getName())).findFirst().orElseThrow(RuntimeException::new) :
+            listeners.stream().filter(listener -> listenerName.equals(listener.getName())).findFirst().orElseThrow(RuntimeException::new);
         return external.getConfiguration() == null ?
-                KafkaResources.clusterCaCertificateSecretName(clusterName) : external.getConfiguration().getBrokerCertChainAndKey().getSecretName();
+            KafkaResources.clusterCaCertificateSecretName(clusterName) : external.getConfiguration().getBrokerCertChainAndKey().getSecretName();
     }
 
     public static KafkaStatus getKafkaStatus(String clusterName, String namespace) {

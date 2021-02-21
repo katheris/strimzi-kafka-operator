@@ -11,13 +11,11 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 import io.strimzi.api.annotations.DeprecatedProperty;
 import io.strimzi.crdgenerator.annotations.Description;
+import io.strimzi.crdgenerator.annotations.PresentInVersions;
 import io.sundr.builder.annotations.Buildable;
 import lombok.EqualsAndHashCode;
 
-import java.io.Serializable;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
  * The {@code spec} of a {@link Kafka}.
@@ -31,8 +29,7 @@ import java.util.Map;
                     "entityOperator", "clusterCa", "clientsCa",
                     "maintenance"})
 @EqualsAndHashCode
-public class KafkaSpec implements UnknownPropertyPreserving, Serializable {
-
+public class KafkaSpec extends Spec {
     private static final long serialVersionUID = 1L;
 
     private KafkaClusterSpec kafka;
@@ -46,7 +43,6 @@ public class KafkaSpec implements UnknownPropertyPreserving, Serializable {
 
     private CertificateAuthority clientsCa;
     private List<String> maintenanceTimeWindows;
-    private Map<String, Object> additionalProperties = new HashMap<>(0);
 
     @Description("Configuration of the Kafka cluster")
     @JsonProperty(required = true)
@@ -68,6 +64,7 @@ public class KafkaSpec implements UnknownPropertyPreserving, Serializable {
         this.zookeeper = zookeeper;
     }
 
+    @PresentInVersions("v1alpha1-v1beta1")
     @Deprecated
     @DeprecatedProperty(
             movedToPath = "spec.entityOperator.topicOperator"
@@ -144,16 +141,6 @@ public class KafkaSpec implements UnknownPropertyPreserving, Serializable {
 
     public void setCruiseControl(CruiseControlSpec cruiseControl) {
         this.cruiseControl = cruiseControl;
-    }
-
-    @Override
-    public Map<String, Object> getAdditionalProperties() {
-        return this.additionalProperties;
-    }
-
-    @Override
-    public void setAdditionalProperty(String name, Object value) {
-        this.additionalProperties.put(name, value);
     }
 
     @Override

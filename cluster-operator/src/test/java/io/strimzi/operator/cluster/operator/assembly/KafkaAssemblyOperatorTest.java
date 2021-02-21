@@ -36,6 +36,7 @@ import io.strimzi.api.kafka.model.KafkaResources;
 import io.strimzi.api.kafka.model.listener.arraylistener.GenericKafkaListener;
 import io.strimzi.api.kafka.model.listener.arraylistener.GenericKafkaListenerBuilder;
 import io.strimzi.api.kafka.model.listener.arraylistener.KafkaListenerType;
+import io.strimzi.api.kafka.model.status.KafkaStatus;
 import io.strimzi.api.kafka.model.storage.EphemeralStorage;
 import io.strimzi.api.kafka.model.storage.PersistentClaimStorage;
 import io.strimzi.api.kafka.model.storage.PersistentClaimStorageBuilder;
@@ -145,7 +146,7 @@ public class KafkaAssemblyOperatorTest {
     static {
         LOG_KAFKA_CONFIG.setLoggers(singletonMap("kafka.root.logger.level", "INFO"));
         LOG_ZOOKEEPER_CONFIG.setLoggers(singletonMap("zookeeper.root.logger", "INFO"));
-        LOG_CONNECT_CONFIG.setLoggers(singletonMap("log4j.rootLogger", "INFO"));
+        LOG_CONNECT_CONFIG.setLoggers(singletonMap("connect.root.logger.level", "INFO"));
     }
 
     private final KubernetesVersion kubernetesVersion = KubernetesVersion.V1_9;
@@ -1356,7 +1357,7 @@ public class KafkaAssemblyOperatorTest {
                 supplier,
                 config) {
             @Override
-            public Future<Void> createOrUpdate(Reconciliation reconciliation, Kafka kafkaAssembly) {
+            public Future<KafkaStatus> createOrUpdate(Reconciliation reconciliation, Kafka kafkaAssembly) {
                 String name = kafkaAssembly.getMetadata().getName();
                 if ("foo".equals(name)) {
                     fooAsync.flag();
@@ -1441,7 +1442,7 @@ public class KafkaAssemblyOperatorTest {
                 supplier,
                 config) {
             @Override
-            public Future<Void> createOrUpdate(Reconciliation reconciliation, Kafka kafkaAssembly) {
+            public Future<KafkaStatus> createOrUpdate(Reconciliation reconciliation, Kafka kafkaAssembly) {
                 String name = kafkaAssembly.getMetadata().getName();
                 if ("foo".equals(name)) {
                     fooAsync.flag();

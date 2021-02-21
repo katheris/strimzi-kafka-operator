@@ -6,6 +6,8 @@ package io.strimzi.systemtest.kafka;
 
 import io.fabric8.kubernetes.api.model.ConfigMap;
 import io.fabric8.kubernetes.api.model.HasMetadata;
+import io.fabric8.kubernetes.api.model.HostAlias;
+import io.fabric8.kubernetes.api.model.HostAliasBuilder;
 import io.fabric8.kubernetes.api.model.PersistentVolumeClaim;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.Quantity;
@@ -960,6 +962,7 @@ class KafkaST extends AbstractST {
             .withNamespaceName(NAMESPACE)
             .withClusterName(CLUSTER_NAME)
             .withMessageCount(MESSAGE_COUNT)
+            .withListenerName(Constants.PLAIN_LISTENER_DEFAULT_NAME)
             .build();
 
         LOGGER.info("Checking produced and consumed messages to pod:{}", kafkaClientsPodName);
@@ -984,18 +987,18 @@ class KafkaST extends AbstractST {
         KafkaResource.replaceKafkaResource(CLUSTER_NAME, kafka -> {
             ArrayOrObjectKafkaListeners lst = new ArrayOrObjectKafkaListeners(asList(
                     new GenericKafkaListenerBuilder()
-                            .withName("plain")
+                            .withName(Constants.PLAIN_LISTENER_DEFAULT_NAME)
                             .withPort(9092)
                             .withType(KafkaListenerType.INTERNAL)
                             .withTls(false)
                             .build(),
                     new GenericKafkaListenerBuilder()
-                            .withName("external")
+                            .withName(Constants.EXTERNAL_LISTENER_DEFAULT_NAME)
                             .withPort(9094)
                             .withType(KafkaListenerType.LOADBALANCER)
                             .withTls(true)
                             .build()
-            ), null);
+            ));
             kafka.getSpec().getKafka().setListeners(lst);
         });
 
@@ -1042,6 +1045,7 @@ class KafkaST extends AbstractST {
             .withNamespaceName(NAMESPACE)
             .withClusterName(CLUSTER_NAME)
             .withMessageCount(MESSAGE_COUNT)
+            .withListenerName(Constants.PLAIN_LISTENER_DEFAULT_NAME)
             .build();
 
         Map<String, String> kafkaPods = StatefulSetUtils.ssSnapshot(kafkaStatefulSetName(CLUSTER_NAME));
@@ -1180,6 +1184,7 @@ class KafkaST extends AbstractST {
             .withNamespaceName(NAMESPACE)
             .withClusterName(CLUSTER_NAME)
             .withMessageCount(MESSAGE_COUNT)
+            .withListenerName(Constants.PLAIN_LISTENER_DEFAULT_NAME)
             .build();
 
         Map<String, String> labels;
@@ -1294,6 +1299,7 @@ class KafkaST extends AbstractST {
             .withNamespaceName(NAMESPACE)
             .withClusterName(CLUSTER_NAME)
             .withMessageCount(MESSAGE_COUNT)
+            .withListenerName(Constants.PLAIN_LISTENER_DEFAULT_NAME)
             .build();
 
         TestUtils.waitFor("KafkaTopic creation inside kafka pod", Constants.GLOBAL_POLL_INTERVAL, Constants.GLOBAL_TIMEOUT,
@@ -1368,6 +1374,7 @@ class KafkaST extends AbstractST {
             .withNamespaceName(NAMESPACE)
             .withClusterName(CLUSTER_NAME)
             .withMessageCount(MESSAGE_COUNT)
+            .withListenerName(Constants.PLAIN_LISTENER_DEFAULT_NAME)
             .build();
 
         String commandToGetFiles =  "cd /var/lib/kafka/data/kafka-log0/;" +
@@ -1380,8 +1387,8 @@ class KafkaST extends AbstractST {
         assertThat("Folder kafka-log0 has data in files", result.equals(""));
 
         internalKafkaClient.checkProducedAndConsumedMessages(
-                internalKafkaClient.sendMessagesPlain(),
-                internalKafkaClient.receiveMessagesPlain()
+            internalKafkaClient.sendMessagesPlain(),
+            internalKafkaClient.receiveMessagesPlain()
         );
 
         LOGGER.info("Executing command {} in {}", commandToGetFiles, KafkaResources.kafkaPodName(CLUSTER_NAME, 0));
@@ -1517,6 +1524,44 @@ class KafkaST extends AbstractST {
         KafkaUtils.waitUntilKafkaStatusConditionContainsMessage(CLUSTER_NAME, NAMESPACE,
             "Kafka configuration option .* should be set to " + replicas + " or less because 'spec.kafka.replicas' is " + replicas);
         KafkaResource.kafkaClient().inNamespace(NAMESPACE).delete(kafka);
+    }
+
+    @Test
+    void testHostAliases() {
+        HostAlias hostAlias = new HostAliasBuilder()
+            .withIp(aliasIp)
+            .withHostnames(aliasHostname)
+            .build();
+
+        KafkaResource.kafkaEphemeral(CLUSTER_NAME, 3)
+            .editSpec()
+                .editKafka()
+                    .withNewTemplate()
+                        .withNewPod()
+                            .withHostAliases(hostAlias)
+                        .endPod()
+                    .endTemplate()
+                .endKafka()
+                .editZookeeper()
+                    .withNewTemplate()
+                        .withNewPod()
+                            .withHostAliases(hostAlias)
+                        .endPod()
+                    .endTemplate()
+                .endZookeeper()
+            .endSpec()
+            .done();
+
+        List<String> pods = kubeClient().listPodNames(Labels.STRIMZI_CLUSTER_LABEL, CLUSTER_NAME);
+
+        for (String podName : pods) {
+            if (!podName.contains("entity-operator")) {
+                String containerName = podName.contains("kafka") ? "kafka" : "zookeeper";
+                LOGGER.info("Checking the /etc/hosts file");
+                String output = cmdKubeClient().execInPodContainer(false, podName, containerName, "cat", "/etc/hosts").out();
+                assertThat(output, containsString(etcHostsData));
+            }
+        }
     }
 
     protected void checkKafkaConfiguration(String podNamePrefix, Map<String, Object> config, String clusterName) {

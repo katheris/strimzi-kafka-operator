@@ -13,7 +13,6 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 import io.fabric8.kubernetes.api.model.Doneable;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.client.CustomResource;
-import io.strimzi.api.kafka.model.status.HasStatus;
 import io.strimzi.api.kafka.model.status.KafkaMirrorMaker2Status;
 import io.strimzi.crdgenerator.annotations.Crd;
 import io.strimzi.crdgenerator.annotations.Description;
@@ -31,7 +30,6 @@ import static java.util.Collections.unmodifiableList;
 
 @JsonDeserialize
 @Crd(
-        apiVersion = KafkaMirrorMaker2.CRD_API_VERSION,
         spec = @Crd.Spec(
                 names = @Crd.Spec.Names(
                         kind = KafkaMirrorMaker2.RESOURCE_KIND,
@@ -41,7 +39,6 @@ import static java.util.Collections.unmodifiableList;
                 ),
                 group = KafkaMirrorMaker2.RESOURCE_GROUP,
                 scope = KafkaMirrorMaker2.SCOPE,
-                version = KafkaMirrorMaker2.V1ALPHA1,
                 versions = {
                         @Crd.Spec.Version(
                                 name = KafkaMirrorMaker2.V1ALPHA1,
@@ -76,8 +73,7 @@ import static java.util.Collections.unmodifiableList;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonPropertyOrder({ "apiVersion", "kind", "metadata", "spec", "status" })
 @EqualsAndHashCode
-public class KafkaMirrorMaker2 extends CustomResource implements UnknownPropertyPreserving, HasStatus<KafkaMirrorMaker2Status> {
-
+public class KafkaMirrorMaker2 extends CustomResource implements HasSpecAndStatus<KafkaMirrorMaker2Spec, KafkaMirrorMaker2Status>, UnknownPropertyPreserving {
     private static final long serialVersionUID = 1L;
 
     public static final String SCOPE = "Namespaced";

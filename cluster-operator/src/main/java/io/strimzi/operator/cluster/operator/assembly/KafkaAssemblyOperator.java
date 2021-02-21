@@ -33,6 +33,7 @@ import io.strimzi.api.kafka.model.ExternalLogging;
 import io.strimzi.api.kafka.model.Kafka;
 import io.strimzi.api.kafka.model.KafkaBuilder;
 import io.strimzi.api.kafka.model.KafkaResources;
+import io.strimzi.api.kafka.model.KafkaSpec;
 import io.strimzi.api.kafka.model.listener.NodeAddressType;
 import io.strimzi.api.kafka.model.listener.arraylistener.GenericKafkaListener;
 import io.strimzi.api.kafka.model.listener.arraylistener.GenericKafkaListenerConfigurationBroker;
@@ -87,6 +88,7 @@ import io.strimzi.operator.common.BackOff;
 import io.strimzi.operator.common.InvalidConfigurationException;
 import io.strimzi.operator.common.PasswordGenerator;
 import io.strimzi.operator.common.Reconciliation;
+import io.strimzi.operator.common.ReconciliationException;
 import io.strimzi.operator.common.Util;
 import io.strimzi.operator.common.model.Labels;
 import io.strimzi.operator.common.operator.resource.AbstractScalableResourceOperator;
@@ -153,7 +155,7 @@ import static java.util.Collections.singletonMap;
  * </ul>
  */
 @SuppressWarnings({"checkstyle:ClassDataAbstractionCoupling", "checkstyle:ClassFanOutComplexity", "checkstyle:JavaNCSS"})
-public class KafkaAssemblyOperator extends AbstractAssemblyOperator<KubernetesClient, Kafka, KafkaList, DoneableKafka, Resource<Kafka, DoneableKafka>> {
+public class KafkaAssemblyOperator extends AbstractAssemblyOperator<KubernetesClient, Kafka, KafkaList, DoneableKafka, Resource<Kafka, DoneableKafka>, KafkaSpec, KafkaStatus> {
     private static final Logger log = LogManager.getLogger(KafkaAssemblyOperator.class.getName());
 
     private final long operationTimeoutMs;
@@ -203,57 +205,39 @@ public class KafkaAssemblyOperator extends AbstractAssemblyOperator<KubernetesCl
     }
 
     @Override
-    public Future<Void> createOrUpdate(Reconciliation reconciliation, Kafka kafkaAssembly) {
-        Promise<Void> createOrUpdatePromise = Promise.promise();
-
-        if (kafkaAssembly.getSpec() == null) {
-            log.error("{} spec cannot be null", kafkaAssembly.getMetadata().getName());
-            return Future.failedFuture("Spec cannot be null");
-        }
-
+    public Future<KafkaStatus> createOrUpdate(Reconciliation reconciliation, Kafka kafkaAssembly) {
+        Promise<KafkaStatus> createOrUpdatePromise = Promise.promise();
         ReconciliationState reconcileState = createReconciliationState(reconciliation, kafkaAssembly);
+
         reconcile(reconcileState).onComplete(reconcileResult -> {
             KafkaStatus status = reconcileState.kafkaStatus;
-            Condition readyCondition;
+            Condition condition;
 
             if (kafkaAssembly.getMetadata().getGeneration() != null)    {
                 status.setObservedGeneration(kafkaAssembly.getMetadata().getGeneration());
             }
 
             if (reconcileResult.succeeded())    {
-                readyCondition = new ConditionBuilder()
+                condition = new ConditionBuilder()
                         .withLastTransitionTime(ModelUtils.formatTimestamp(dateSupplier()))
                         .withType("Ready")
                         .withStatus("True")
                         .build();
+
+                status.addCondition(condition);
+                createOrUpdatePromise.complete(status);
             } else {
-                readyCondition = new ConditionBuilder()
+                condition = new ConditionBuilder()
                         .withLastTransitionTime(ModelUtils.formatTimestamp(dateSupplier()))
                         .withType("NotReady")
                         .withStatus("True")
                         .withReason(reconcileResult.cause().getClass().getSimpleName())
                         .withMessage(reconcileResult.cause().getMessage())
                         .build();
+
+                status.addCondition(condition);
+                createOrUpdatePromise.fail(new ReconciliationException(status, reconcileResult.cause()));
             }
-
-            status.addCondition(readyCondition);
-            reconcileState.updateStatus(status).onComplete(statusResult -> {
-                if (statusResult.succeeded())    {
-                    log.debug("Status for {} is up to date", kafkaAssembly.getMetadata().getName());
-                } else {
-                    log.error("Failed to set status for {}", kafkaAssembly.getMetadata().getName());
-                }
-
-                // If both features succeeded, createOrUpdate succeeded as well
-                // If one or both of them failed, we prefer the reconciliation failure as the main error
-                if (reconcileResult.succeeded() && statusResult.succeeded())    {
-                    createOrUpdatePromise.complete();
-                } else if (reconcileResult.failed())    {
-                    createOrUpdatePromise.fail(reconcileResult.cause());
-                } else {
-                    createOrUpdatePromise.fail(statusResult.cause());
-                }
-            });
         });
 
         return createOrUpdatePromise.future();
@@ -296,7 +280,8 @@ public class KafkaAssemblyOperator extends AbstractAssemblyOperator<KubernetesCl
                 .compose(state -> state.kafkaManualPodCleaning())
                 .compose(state -> state.kafkaNetPolicy())
                 .compose(state -> state.kafkaManualRollingUpdate())
-                .compose(state -> state.kafkaVersionChange())
+                .compose(state -> state.kafkaVersionChangeCheck())
+                .compose(state -> state.kafkaVersionChange(false))
                 .compose(state -> state.kafkaPvcs())
                 .compose(state -> state.kafkaInitServiceAccount())
                 .compose(state -> state.kafkaInitClusterRoleBinding())
@@ -316,6 +301,7 @@ public class KafkaAssemblyOperator extends AbstractAssemblyOperator<KubernetesCl
                 .compose(state -> state.kafkaJmxSecret())
                 .compose(state -> state.kafkaPodDisruptionBudget())
                 .compose(state -> state.kafkaStatefulSet())
+                .compose(state -> state.kafkaVersionChange(true))
                 .compose(state -> state.kafkaRollingUpdate())
                 .compose(state -> state.kafkaScaleUp())
                 .compose(state -> state.kafkaPodsReady())
@@ -373,11 +359,12 @@ public class KafkaAssemblyOperator extends AbstractAssemblyOperator<KubernetesCl
      * Hold the mutable state during a reconciliation
      */
     class ReconciliationState {
-
         private final String namespace;
         private final String name;
         private final Kafka kafkaAssembly;
         private final Reconciliation reconciliation;
+
+        private KafkaVersionChange versionChange;
 
         /* test */ ClusterCa clusterCa;
         /* test */ ClientsCa clientsCa;
@@ -397,7 +384,6 @@ public class KafkaAssemblyOperator extends AbstractAssemblyOperator<KubernetesCl
         private final Set<String> kafkaAdvertisedPorts = new TreeSet<>();
         private final Map<Integer, Set<String>> kafkaBrokerDnsNames = new HashMap<>();
         /* test */ final Map<String, Integer> kafkaBootstrapNodePorts = new HashMap<>();
-
 
         private String zkLoggingHash = "";
         private String kafkaLogging = "";
@@ -895,7 +881,7 @@ public class KafkaAssemblyOperator extends AbstractAssemblyOperator<KubernetesCl
             return versionChange;
         }
 
-        Future<ReconciliationState> kafkaVersionChange() {
+        Future<ReconciliationState> kafkaVersionChangeCheck() {
             String kafkaStsName = KafkaCluster.kafkaClusterName(name);
             String configCmName = KafkaCluster.metricAndLogConfigsName(name);
 
@@ -912,35 +898,65 @@ public class KafkaAssemblyOperator extends AbstractAssemblyOperator<KubernetesCl
                             return Future.succeededFuture(this);
                         }
 
-                        KafkaVersionChange versionChange = getKafkaVersionChange(oldSts);
+                        this.versionChange = getKafkaVersionChange(oldSts);
+                        return Future.succeededFuture(this);
+                    });
+        }
 
-                        // Get the current version of the cluster
-                        KafkaVersion currentVersion = versions.version(Annotations.annotations(oldSts).get(ANNO_STRIMZI_IO_KAFKA_VERSION));
+        /**
+         * Does the Kafka upgrade from one version to another. Regular upgrades with Kafka version specified in the
+         * Kafka CR are done as early as possible in the cycle since the broker has already rolled with the new Strimzi
+         * version before. This is indicated by the postponedUpgrade flag being set to false. Upgrades without Kafka
+         * version specified in the Kafka CR upgrade the operator and Kafka in one go. These have to run only before the
+         * regular Kafka rolling update when all resources are already updated. This is indicated by the
+         * postponedUpgrade flag being set to true.
+         *
+         * @param postponedUpgrade     Indicates the phase from which is this method called.
+         * @return
+         */
+        Future<ReconciliationState> kafkaVersionChange(boolean postponedUpgrade) {
+            boolean shouldBePostponed = kafkaAssembly.getSpec().getKafka().getVersion() == null;
 
-                        StatefulSet sts;
-                        ConfigMap cm;
+            if (versionChange == null)   {
+                log.debug("{}: Kafka versions are not known yet, upgrade will be skipped", reconciliation);
+                return Future.succeededFuture(this);
+            } else if (shouldBePostponed != postponedUpgrade) {
+                log.debug("{}: Upgrade should not be done in this phase", reconciliation);
+                return Future.succeededFuture(this);
+            } else if (versionChange.isNoop()) {
+                log.debug("Kafka.spec.kafka.version unchanged");
+                return Future.succeededFuture(this);
+            } else {
+                String kafkaStsName = KafkaCluster.kafkaClusterName(name);
+                String configCmName = KafkaCluster.metricAndLogConfigsName(name);
 
-                        // When Kafka upgrade is done together with broker upgrade (when `version: X.Y.Z` is missing in
-                        // the CRD), the broker configuration file introduced in 0.16.0 might not be there yet (if
-                        // upgrading from any version before 0.16.0). We have to detect this and trigger different
-                        // upgrade procedure.
-                        boolean certificatesHaveToBeUpgraded;
-                        if (oldCm.getData().get("server.config") == null)  {
-                            certificatesHaveToBeUpgraded = true;
-                            cm = getKafkaAncillaryCm();
-                            sts = getKafkaStatefulSet();
-                        } else {
-                            sts = oldSts;
-                            cm = oldCm;
-                            certificatesHaveToBeUpgraded = false;
-                        }
+                return CompositeFuture.join(kafkaSetOperations.getAsync(namespace, kafkaStsName), configMapOperations.getAsync(namespace, configCmName))
+                        .compose(res -> {
+                            if (res.failed())   {
+                                return Future.failedFuture(res.cause());
+                            }
 
-                        if (versionChange.isNoop()) {
-                            log.debug("Kafka.spec.kafka.version unchanged");
-                            return Future.succeededFuture(this);
-                        } else {
+                            StatefulSet sts = res.resultAt(0);
+                            ConfigMap cm = res.resultAt(1);
+
+                            if (sts == null || cm == null) {
+                                return Future.succeededFuture(this);
+                            }
+
+                            // Get the current version of the cluster
+                            KafkaVersion currentVersion = versionChange.from();
+
+                            // The quiescence check should be done only in the regular upgrade => in the postponed
+                            // upgrade it would cause premature upgrade
+                            Future<Void> quiescence;
+                            if (postponedUpgrade)   {
+                                quiescence = Future.succeededFuture();
+                            } else {
+                                quiescence = waitForQuiescence(sts);
+                            }
+
                             // Wait until the STS is not being updated (it shouldn't be, but there's no harm in checking)
-                            return waitForQuiescence(oldSts).compose(v -> {
+                            return quiescence.compose(v -> {
                                 // Get the image currently set in the Kafka CR or, if that is not set, the image from the version we are changing to.
                                 String image = versions.kafkaImage(kafkaAssembly.getSpec().getKafka().getImage(), versionChange.to().version());
 
@@ -949,7 +965,7 @@ public class KafkaAssemblyOperator extends AbstractAssemblyOperator<KubernetesCl
 
                                 if (versionChange.isUpgrade()) {
                                     if (currentVersion.equals(versionChange.from())) {
-                                        f = f.compose(ignored -> kafkaUpgradePhase1(sts, cm, versionChange, image, certificatesHaveToBeUpgraded));
+                                        f = f.compose(ignored -> kafkaUpgradePhase1(sts, cm, versionChange, image));
                                     }
                                     result = f.compose(ss2 -> kafkaUpgradePhase2(ss2, cm, versionChange));
                                 } else {
@@ -961,8 +977,8 @@ public class KafkaAssemblyOperator extends AbstractAssemblyOperator<KubernetesCl
                                 }
                                 return result.map(this);
                             });
-                        }
-                    });
+                        });
+            }
         }
 
         /**
@@ -971,7 +987,7 @@ public class KafkaAssemblyOperator extends AbstractAssemblyOperator<KubernetesCl
          * Set inter.broker.protocol.version if it's not set
          * Perform a rolling update.
          */
-        private Future<StatefulSet> kafkaUpgradePhase1(StatefulSet sts, ConfigMap cm, KafkaVersionChange versionChange, String upgradedImage, boolean certificatesHaveToBeUpgraded) {
+        private Future<StatefulSet> kafkaUpgradePhase1(StatefulSet sts, ConfigMap cm, KafkaVersionChange versionChange, String upgradedImage) {
             log.info("{}: {}, phase 1", reconciliation, versionChange);
 
             Map<String, String> annotations = Annotations.annotations(sts);
@@ -1047,21 +1063,11 @@ public class KafkaAssemblyOperator extends AbstractAssemblyOperator<KubernetesCl
             ConfigMap newCm = new ConfigMapBuilder(cm).build();
             newCm.getData().put("server.config", config);
 
-            Future<Void> secretUpdateFuture;
-            if (certificatesHaveToBeUpgraded) {
-                // Advertised hostnames for replication changed, we need to update the certs as well
-                secretUpdateFuture = kafkaGenerateCertificates(() -> new Date())
-                        .compose(ignore -> secretOperations.reconcile(namespace, KafkaCluster.brokersSecretName(name), kafkaCluster.generateBrokersSecret()))
-                        .map(ignore -> (Void) null);
-            } else {
-                secretUpdateFuture = Future.succeededFuture();
-            }
-
             // patch and rolling upgrade
             String stsName = KafkaCluster.kafkaClusterName(this.name);
             String configCmName = KafkaCluster.metricAndLogConfigsName(this.name);
             log.info("{}: Upgrade: Patch + rolling update of {}", reconciliation, this.name);
-            return CompositeFuture.join(kafkaSetOperations.reconcile(namespace, stsName, newSts), configMapOperations.reconcile(namespace, configCmName, newCm), secretUpdateFuture)
+            return CompositeFuture.join(kafkaSetOperations.reconcile(namespace, stsName, newSts), configMapOperations.reconcile(namespace, configCmName, newCm))
                     .compose(result -> {
                         StatefulSet resultSts = null;
 
@@ -3523,4 +3529,8 @@ public class KafkaAssemblyOperator extends AbstractAssemblyOperator<KubernetesCl
         return new Date();
     }
 
+    @Override
+    protected KafkaStatus createStatus() {
+        return new KafkaStatus();
+    }
 }

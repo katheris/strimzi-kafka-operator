@@ -59,17 +59,22 @@ public class HttpBridgeCorsST extends HttpBridgeAbstractST {
         String headers = BridgeUtils.addHeadersToString(additionalHeaders, Constants.KAFKA_BRIDGE_JSON_JSON);
         String response = cmdKubeClient().execInPod(kafkaClientsPodName, "/bin/bash", "-c", BridgeUtils.buildCurlCommand(HttpMethod.OPTIONS, url, headers, "")).out().trim();
         LOGGER.info("Response from Bridge: {}", response);
-        String allowedHeaders = "access-control-allow-origin,origin,x-requested-with,content-type,access-control-allow-methods,accept";
 
+        String responseAllowHeaders = BridgeUtils.getHeaderValue("access-control-allow-headers", response);
         LOGGER.info("Checking if response from Bridge is correct");
         assertThat(response, containsString("200 OK"));
         assertThat(BridgeUtils.getHeaderValue("access-control-allow-origin", response), is(ALLOWED_ORIGIN));
-        assertThat(BridgeUtils.getHeaderValue("access-control-allow-headers", response), is(allowedHeaders));
+        assertThat(responseAllowHeaders, containsString("access-control-allow-origin"));
+        assertThat(responseAllowHeaders, containsString("origin"));
+        assertThat(responseAllowHeaders, containsString("x-requested-with"));
+        assertThat(responseAllowHeaders, containsString("content-type"));
+        assertThat(responseAllowHeaders, containsString("access-control-allow-methods"));
+        assertThat(responseAllowHeaders, containsString("accept"));
         assertThat(BridgeUtils.getHeaderValue("access-control-allow-methods", response), containsString(HttpMethod.POST.toString()));
 
         url = bridgeUrl + "/consumers/" + groupId + "/instances/" + kafkaBridgeUser + "/subscription";
         headers = BridgeUtils.addHeadersToString(Collections.singletonMap("Origin", ALLOWED_ORIGIN));
-        response = cmdKubeClient().execInPod(kafkaClientsPodName, "/bin/bash", "-c", BridgeUtils.buildCurlCommand(HttpMethod.POST, url, headers, "")).out().trim();
+        response = cmdKubeClient().execInPod(kafkaClientsPodName, "/bin/bash", "-c", BridgeUtils.buildCurlCommand(HttpMethod.GET, url, headers, "")).out().trim();
         LOGGER.info("Response from Bridge: {}", response);
 
         assertThat(response, containsString("404"));

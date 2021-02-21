@@ -14,7 +14,6 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 import io.fabric8.kubernetes.api.model.Doneable;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.client.CustomResource;
-import io.strimzi.api.kafka.model.status.HasStatus;
 import io.strimzi.api.kafka.model.status.KafkaStatus;
 import io.strimzi.crdgenerator.annotations.Crd;
 import io.strimzi.crdgenerator.annotations.Description;
@@ -32,7 +31,6 @@ import static java.util.Collections.unmodifiableList;
 
 @JsonDeserialize
 @Crd(
-        apiVersion = Kafka.CRD_API_VERSION,
         spec = @Crd.Spec(
                 names = @Crd.Spec.Names(
                         kind = Kafka.RESOURCE_KIND,
@@ -42,8 +40,8 @@ import static java.util.Collections.unmodifiableList;
                 ),
                 group = Kafka.RESOURCE_GROUP,
                 scope = Kafka.SCOPE,
-                version = Kafka.V1BETA1,
                 versions = {
+                        @Crd.Spec.Version(name = Kafka.V1BETA2, served = true, storage = false),
                         @Crd.Spec.Version(name = Kafka.V1BETA1, served = true, storage = true),
                         @Crd.Spec.Version(name = Kafka.V1ALPHA1, served = true, storage = false)
                 },
@@ -76,11 +74,13 @@ import static java.util.Collections.unmodifiableList;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonPropertyOrder({"apiVersion", "kind", "metadata", "spec", "status"})
 @EqualsAndHashCode
-public class Kafka extends CustomResource implements UnknownPropertyPreserving, HasStatus<KafkaStatus> {
+public class Kafka extends CustomResource implements HasSpecAndStatus<KafkaSpec, KafkaStatus>, UnknownPropertyPreserving {
 
+    public static final String V1BETA2 = Constants.V1BETA2;
     public static final String V1BETA1 = Constants.V1BETA1;
     public static final String V1ALPHA1 = Constants.V1ALPHA1;
-    public static final List<String> VERSIONS = unmodifiableList(asList(V1BETA1, V1ALPHA1));
+    public static final List<String> VERSIONS = unmodifiableList(asList(V1BETA2, V1BETA1, V1ALPHA1));
+    public static final String CONSUMED_VERSION = V1BETA1;
     private static final long serialVersionUID = 1L;
 
     public static final String SCOPE = "Namespaced";

@@ -12,7 +12,6 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 import io.fabric8.kubernetes.api.model.Doneable;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.client.CustomResource;
-import io.strimzi.api.kafka.model.status.HasStatus;
 import io.strimzi.api.kafka.model.status.KafkaBridgeStatus;
 import io.strimzi.crdgenerator.annotations.Crd;
 import io.strimzi.crdgenerator.annotations.Description;
@@ -32,7 +31,6 @@ import static java.util.Collections.unmodifiableList;
 
 @JsonDeserialize
 @Crd(
-        apiVersion = KafkaBridge.CRD_API_VERSION,
         spec = @Crd.Spec(
                 names = @Crd.Spec.Names(
                         kind = KafkaBridge.RESOURCE_KIND,
@@ -42,7 +40,6 @@ import static java.util.Collections.unmodifiableList;
                 ),
                 group = KafkaBridge.RESOURCE_GROUP,
                 scope = KafkaBridge.SCOPE,
-                version = KafkaBridge.V1ALPHA1,
                 versions = {
                         @Crd.Spec.Version(
                                 name = KafkaBridge.V1ALPHA1,
@@ -84,8 +81,7 @@ import static java.util.Collections.unmodifiableList;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonPropertyOrder({"apiVersion", "kind", "metadata", "spec", "status"})
 @EqualsAndHashCode
-public class KafkaBridge extends CustomResource implements UnknownPropertyPreserving, HasStatus<KafkaBridgeStatus> {
-
+public class KafkaBridge extends CustomResource implements HasSpecAndStatus<KafkaBridgeSpec, KafkaBridgeStatus>, UnknownPropertyPreserving {
     private static final long serialVersionUID = 1L;
 
     public static final String SCOPE = "Namespaced";
