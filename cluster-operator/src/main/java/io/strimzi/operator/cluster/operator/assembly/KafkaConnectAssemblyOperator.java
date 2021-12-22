@@ -14,10 +14,7 @@ import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.dsl.Resource;
 import io.fabric8.openshift.api.model.Build;
 import io.strimzi.api.kafka.KafkaConnectList;
-import io.strimzi.api.kafka.model.CertSecretSource;
-import io.strimzi.api.kafka.model.KafkaConnect;
-import io.strimzi.api.kafka.model.KafkaConnectResources;
-import io.strimzi.api.kafka.model.KafkaConnectSpec;
+import io.strimzi.api.kafka.model.*;
 import io.strimzi.api.kafka.model.authentication.KafkaClientAuthentication;
 import io.strimzi.api.kafka.model.status.KafkaConnectStatus;
 import io.strimzi.operator.PlatformFeaturesAvailability;
@@ -109,9 +106,11 @@ public class KafkaConnectAssemblyOperator extends AbstractConnectOperator<Kubern
         KafkaConnectCluster connect;
         KafkaConnectBuild build;
         KafkaConnectStatus kafkaConnectStatus = new KafkaConnectStatus();
+        ReconciliationState reconciliationState;
         try {
             connect = KafkaConnectCluster.fromCrd(reconciliation, kafkaConnect, versions);
             build = KafkaConnectBuild.fromCrd(reconciliation, kafkaConnect, versions);
+            reconciliationState = createReconciliationState(reconciliation, kafkaConnect);
         } catch (Exception e) {
             LOGGER.warnCr(reconciliation, e);
             StatusUtils.setStatusConditionAndObservedGeneration(kafkaConnect, kafkaConnectStatus, Future.failedFuture(e));
@@ -131,7 +130,7 @@ public class KafkaConnectAssemblyOperator extends AbstractConnectOperator<Kubern
         List<CertSecretSource> trustedCertificates = kafkaConnect.getSpec().getTls() == null ? Collections.emptyList() : kafkaConnect.getSpec().getTls().getTrustedCertificates();
 
         final AtomicReference<String> desiredLogging = new AtomicReference<>();
-        connectServiceAccount(reconciliation, namespace, connect)
+        reconciliationState.connectServiceAccount()
                 .compose(i -> connectInitClusterRoleBinding(reconciliation, namespace, kafkaConnect.getMetadata().getName(), connect))
                 .compose(i -> {
                     if (isNetworkPolicyGeneration) {
@@ -203,15 +202,40 @@ public class KafkaConnectAssemblyOperator extends AbstractConnectOperator<Kubern
         return createOrUpdatePromise.future();
     }
 
+    KafkaConnectAssemblyOperator.ReconciliationState createReconciliationState(Reconciliation reconciliation, KafkaConnect kafkaConnect) throws Exception {
+        return new KafkaConnectAssemblyOperator.ReconciliationState(reconciliation, kafkaConnect);
+    }
+
+    /**
+     * Hold the mutable state during a reconciliation
+     */
+    class ReconciliationState {
+
+        private final KafkaConnect kafkaConnect;
+        private final KafkaConnectCluster connect;
+        private final KafkaConnectBuild build;
+        private final Reconciliation reconciliation;
+        private final String namespace;
+
+        ReconciliationState(Reconciliation reconciliation, KafkaConnect kafkaConnect) throws Exception {
+            this.reconciliation = reconciliation;
+            this.namespace = reconciliation.namespace();
+            this.kafkaConnect = kafkaConnect;
+            this.connect = KafkaConnectCluster.fromCrd(reconciliation, kafkaConnect, versions);
+            this.build = KafkaConnectBuild.fromCrd(reconciliation, kafkaConnect, versions);
+        }
+
+        Future<ReconcileResult<ServiceAccount>> connectServiceAccount() {
+            return serviceAccountOperations.reconcile(reconciliation, namespace,
+                    KafkaConnectResources.serviceAccountName(connect.getCluster()),
+                    connect.generateServiceAccount());
+        }
+
+    }
+
     @Override
     protected KafkaConnectStatus createStatus() {
         return new KafkaConnectStatus();
-    }
-
-    private Future<ReconcileResult<ServiceAccount>> connectServiceAccount(Reconciliation reconciliation, String namespace, KafkaConnectCluster connect) {
-        return serviceAccountOperations.reconcile(reconciliation, namespace,
-                KafkaConnectResources.serviceAccountName(connect.getCluster()),
-                connect.generateServiceAccount());
     }
 
     /**
