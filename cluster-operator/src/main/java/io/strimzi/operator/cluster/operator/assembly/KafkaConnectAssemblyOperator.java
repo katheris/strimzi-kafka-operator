@@ -137,12 +137,11 @@ public class KafkaConnectAssemblyOperator extends AbstractConnectOperator<Kubern
                 .compose(state -> state.metricsAndLogging(annotations, desiredLogging))
                 .compose(ReconciliationState::jmxSecret)
                 .compose(ReconciliationState::podDisruptionBudget)
-                .compose(i -> Util.authTlsHash(secretOperations, namespace, auth, trustedCertificates))
-                .compose(hash -> {
+                .compose(state -> state.authTlsHash(annotations))
+                .compose(state -> {
                     if (reconciliationState.buildState.desiredBuildRevision != null) {
                         annotations.put(Annotations.STRIMZI_IO_CONNECT_BUILD_REVISION, reconciliationState.buildState.desiredBuildRevision);
                     }
-                    annotations.put(Annotations.ANNO_STRIMZI_AUTH_HASH, Integer.toString(hash));
 
                     Deployment dep = connect.generateDeployment(annotations, pfa.isOpenshift(), imagePullPolicy, imagePullSecrets);
 
@@ -420,6 +419,21 @@ public class KafkaConnectAssemblyOperator extends AbstractConnectOperator<Kubern
          */
         private Future<ReconciliationState> podDisruptionBudget() {
             return withVoid(podDisruptionBudgetOperator.reconcile(reconciliation, namespace, connect.getName(), connect.generatePodDisruptionBudget()));
+        }
+
+        /**
+         * Calculates the hash of the TLS certificates and adds it to the Connect annotations.
+         *
+         */
+        private Future<ReconciliationState> authTlsHash(Map<String, String> annotations) {
+            KafkaClientAuthentication auth = kafkaConnect.getSpec().getAuthentication();
+            List<CertSecretSource> trustedCertificates = kafkaConnect.getSpec().getTls() == null ? Collections.emptyList() : kafkaConnect.getSpec().getTls().getTrustedCertificates();
+            return Util.authTlsHash(secretOperations, namespace, auth, trustedCertificates)
+                    .compose(hash -> {
+                        annotations.put(Annotations.ANNO_STRIMZI_AUTH_HASH, Integer.toString(hash));
+                        return Future.succeededFuture(this);
+                    });
+
         }
 
 
