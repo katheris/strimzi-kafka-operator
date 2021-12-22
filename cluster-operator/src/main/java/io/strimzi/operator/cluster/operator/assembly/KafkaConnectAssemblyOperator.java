@@ -131,14 +131,8 @@ public class KafkaConnectAssemblyOperator extends AbstractConnectOperator<Kubern
 
         final AtomicReference<String> desiredLogging = new AtomicReference<>();
         reconciliationState.connectServiceAccount()
-                .compose(i -> connectInitClusterRoleBinding(reconciliation, namespace, kafkaConnect.getMetadata().getName(), connect))
-                .compose(i -> {
-                    if (isNetworkPolicyGeneration) {
-                        return networkPolicyOperator.reconcile(reconciliation, namespace, connect.getName(), connect.generateNetworkPolicy(isUseResources(kafkaConnect), operatorNamespace, operatorNamespaceLabels));
-                    } else {
-                        return Future.succeededFuture();
-                    }
-                })
+                .compose(ReconciliationState::connectInitClusterRoleBinding)
+                .compose(ReconciliationState::networkPolicy)
                 .compose(i -> deploymentOperations.getAsync(namespace, connect.getName()))
                 .compose(deployment -> {
                     if (deployment != null) {
@@ -225,10 +219,40 @@ public class KafkaConnectAssemblyOperator extends AbstractConnectOperator<Kubern
             this.build = KafkaConnectBuild.fromCrd(reconciliation, kafkaConnect, versions);
         }
 
-        Future<ReconcileResult<ServiceAccount>> connectServiceAccount() {
-            return serviceAccountOperations.reconcile(reconciliation, namespace,
+        Future<KafkaConnectAssemblyOperator.ReconciliationState> withVoid(Future<?> r) {
+            return r.map(this);
+        }
+
+        Future<ReconciliationState> connectServiceAccount() {
+            return withVoid(serviceAccountOperations.reconcile(reconciliation, namespace,
                     KafkaConnectResources.serviceAccountName(connect.getCluster()),
-                    connect.generateServiceAccount());
+                    connect.generateServiceAccount()));
+        }
+
+        /**
+         * Creates (or deletes) the ClusterRoleBinding required for the init container used for client rack-awareness.
+         * The init-container needs to be able to read the labels from the node it is running on to be able to determine
+         * the `client.rack` option.
+         */
+        Future<ReconciliationState> connectInitClusterRoleBinding() {
+            ClusterRoleBinding desired = connect.generateClusterRoleBinding();
+
+            return withVoid(withIgnoreRbacError(reconciliation,
+                    clusterRoleBindingOperations.reconcile(reconciliation,
+                            KafkaConnectResources.initContainerClusterRoleBindingName(kafkaConnect.getMetadata().getName(), namespace),
+                            desired),
+                    desired
+            ));
+        }
+
+        Future<ReconciliationState> networkPolicy() {
+            if (isNetworkPolicyGeneration) {
+                return withVoid(networkPolicyOperator.reconcile(reconciliation, namespace, connect.getName(),
+                        connect.generateNetworkPolicy(isUseResources(kafkaConnect), operatorNamespace, operatorNamespaceLabels)
+                ));
+            } else {
+                return Future.succeededFuture(this);
+            }
         }
 
     }
