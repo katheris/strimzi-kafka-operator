@@ -117,14 +117,9 @@ public class KafkaConnectAssemblyOperator extends AbstractConnectOperator<Kubern
         Promise<KafkaConnectStatus> createOrUpdatePromise = Promise.promise();
         String namespace = reconciliation.namespace();
 
-        Map<String, String> annotations = new HashMap<>(2);
-
         LOGGER.debugCr(reconciliation, "Updating Kafka Connect cluster");
 
         boolean connectHasZeroReplicas = connect.getReplicas() == 0;
-
-        KafkaClientAuthentication auth = kafkaConnect.getSpec().getAuthentication();
-        List<CertSecretSource> trustedCertificates = kafkaConnect.getSpec().getTls() == null ? Collections.emptyList() : kafkaConnect.getSpec().getTls().getTrustedCertificates();
 
         final AtomicReference<String> desiredLogging = new AtomicReference<>();
         reconciliationState.connectServiceAccount()
@@ -134,27 +129,15 @@ public class KafkaConnectAssemblyOperator extends AbstractConnectOperator<Kubern
                 .compose(ReconciliationState::connectBuild)
                 .compose(ReconciliationState::scaleDownConnectCluster)
                 .compose(ReconciliationState::service)
-                .compose(state -> state.metricsAndLogging(annotations, desiredLogging))
+                .compose(state -> state.metricsAndLogging(desiredLogging))
                 .compose(ReconciliationState::jmxSecret)
                 .compose(ReconciliationState::podDisruptionBudget)
-                .compose(state -> state.authTlsHash(annotations))
-                .compose(state -> {
-                    if (reconciliationState.buildState.desiredBuildRevision != null) {
-                        annotations.put(Annotations.STRIMZI_IO_CONNECT_BUILD_REVISION, reconciliationState.buildState.desiredBuildRevision);
-                    }
-
-                    Deployment dep = connect.generateDeployment(annotations, pfa.isOpenshift(), imagePullPolicy, imagePullSecrets);
-
-                    if (reconciliationState.buildState.desiredImage != null) {
-                        dep.getSpec().getTemplate().getSpec().getContainers().get(0).setImage(reconciliationState.buildState.desiredImage);
-                    }
-
-                    return deploymentOperations.reconcile(reconciliation, namespace, connect.getName(), dep);
-                })
-                .compose(i -> deploymentOperations.scaleUp(reconciliation, namespace, connect.getName(), connect.getReplicas()))
-                .compose(i -> deploymentOperations.waitForObserved(reconciliation, namespace, connect.getName(), 1_000, operationTimeoutMs))
-                .compose(i -> connectHasZeroReplicas ? Future.succeededFuture() : deploymentOperations.readiness(reconciliation, namespace, connect.getName(), 1_000, operationTimeoutMs))
-                .compose(i -> reconcileConnectors(reconciliation, kafkaConnect, kafkaConnectStatus, connectHasZeroReplicas, desiredLogging.get(), connect.getDefaultLogConfig()))
+                .compose(ReconciliationState::authTlsHash)
+                .compose(ReconciliationState::deployment)
+                .compose(ReconciliationState::scaleUpConnectCluster)
+                .compose(ReconciliationState::waitForDeployment)
+                .compose(ReconciliationState::deploymentReady)
+                .compose(state -> state.connectors(desiredLogging, kafkaConnectStatus))
                 .onComplete(reconciliationResult -> {
                     StatusUtils.setStatusConditionAndObservedGeneration(kafkaConnect, kafkaConnectStatus, reconciliationResult);
 
@@ -190,6 +173,7 @@ public class KafkaConnectAssemblyOperator extends AbstractConnectOperator<Kubern
         private final KafkaConnectBuild build;
         public final BuildState buildState;
         private final String namespace;
+        private final Map<String, String> annotations = new HashMap<>(2);
 
         ReconciliationState(Reconciliation reconciliation, KafkaConnect kafkaConnect) throws Exception {
             this.reconciliation = reconciliation;
@@ -394,7 +378,7 @@ public class KafkaConnectAssemblyOperator extends AbstractConnectOperator<Kubern
          * hash for logging.
          *
          */
-        private Future<ReconciliationState> metricsAndLogging(Map<String, String> annotations, AtomicReference<String> desiredLogging) {
+        private Future<ReconciliationState> metricsAndLogging(AtomicReference<String> desiredLogging) {
             return withVoid(Util.metricsAndLogging(reconciliation, configMapOperations, namespace, connect.getLogging(), connect.getMetricsConfigInCm())
                 .compose(metricsAndLoggingCm -> {
                 ConfigMap logAndMetricsConfigMap = connect.generateMetricsAndLogConfigMap(metricsAndLoggingCm);
@@ -425,7 +409,7 @@ public class KafkaConnectAssemblyOperator extends AbstractConnectOperator<Kubern
          * Calculates the hash of the TLS certificates and adds it to the Connect annotations.
          *
          */
-        private Future<ReconciliationState> authTlsHash(Map<String, String> annotations) {
+        private Future<ReconciliationState> authTlsHash() {
             KafkaClientAuthentication auth = kafkaConnect.getSpec().getAuthentication();
             List<CertSecretSource> trustedCertificates = kafkaConnect.getSpec().getTls() == null ? Collections.emptyList() : kafkaConnect.getSpec().getTls().getTrustedCertificates();
             return Util.authTlsHash(secretOperations, namespace, auth, trustedCertificates)
@@ -436,6 +420,57 @@ public class KafkaConnectAssemblyOperator extends AbstractConnectOperator<Kubern
 
         }
 
+        /**
+         * Reconciles the Kafka Connect deployment.
+         *
+         */
+        private Future<ReconciliationState> deployment() {
+            if (buildState.desiredBuildRevision != null) {
+                annotations.put(Annotations.STRIMZI_IO_CONNECT_BUILD_REVISION, buildState.desiredBuildRevision);
+            }
+
+            Deployment dep = connect.generateDeployment(annotations, pfa.isOpenshift(), imagePullPolicy, imagePullSecrets);
+
+            if (buildState.desiredImage != null) {
+                dep.getSpec().getTemplate().getSpec().getContainers().get(0).setImage(buildState.desiredImage);
+            }
+
+            return withVoid(deploymentOperations.reconcile(reconciliation, namespace, connect.getName(), dep));
+        }
+
+        /**
+         * Scales up the Connect deployment to the number of replicas specified in the KafkaConnectCluster. If there
+         * are more replicas than the number requested it does nothing. This should be run after scaleDownConnectClusters
+         * to make sure the resulting Connect deployment size is correct.
+         *
+         */
+        private Future<ReconciliationState> scaleUpConnectCluster() {
+            return withVoid(deploymentOperations.scaleUp(reconciliation, namespace, connect.getName(), connect.getReplicas()));
+        }
+
+        /**
+         * Waits for the deployment generation to be updated.
+         *
+         */
+        private Future<ReconciliationState> waitForDeployment() {
+            return withVoid(deploymentOperations.waitForObserved(reconciliation, namespace, connect.getName(), 1_000, operationTimeoutMs));
+        }
+
+        /**
+         * Waits for the deployment to be ready.
+         *
+         */
+        private Future<ReconciliationState> deploymentReady() {
+            return connect.getReplicas() == 0 ? Future.succeededFuture(this) : withVoid(deploymentOperations.readiness(reconciliation, namespace, connect.getName(), 1_000, operationTimeoutMs));
+        }
+
+        /**
+         * Reconciles the connectors.
+         *
+         */
+        private Future<Void> connectors(AtomicReference<String> desiredLogging, KafkaConnectStatus kafkaConnectStatus) {
+            return reconcileConnectors(reconciliation, kafkaConnect, kafkaConnectStatus, connect.getReplicas() == 0, desiredLogging.get(), connect.getDefaultLogConfig());
+        }
 
     }
 
