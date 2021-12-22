@@ -132,8 +132,8 @@ public class KafkaConnectAssemblyOperator extends AbstractConnectOperator<Kubern
                 .compose(ReconciliationState::networkPolicy)
                 .compose(ReconciliationState::initialiseBuildState)
                 .compose(ReconciliationState::connectBuild)
-                .compose(i -> deploymentOperations.scaleDown(reconciliation, namespace, connect.getName(), connect.getReplicas()))
-                .compose(scale -> serviceOperations.reconcile(reconciliation, namespace, connect.getServiceName(), connect.generateService()))
+                .compose(ReconciliationState::scaleDownConnectCluster)
+                .compose(ReconciliationState::service)
                 .compose(i -> Util.metricsAndLogging(reconciliation, configMapOperations, namespace, connect.getLogging(), connect.getMetricsConfigInCm()))
                 .compose(metricsAndLoggingCm -> {
                     ConfigMap logAndMetricsConfigMap = connect.generateMetricsAndLogConfigMap(metricsAndLoggingCm);
@@ -378,6 +378,23 @@ public class KafkaConnectAssemblyOperator extends AbstractConnectOperator<Kubern
                                     .compose(ignore -> openShiftBuildWaitForFinish(reconciliation, namespace, build, buildState, newBuildRevision));
                         }
                     }));
+        }
+
+        /**
+         * Scales down the Connect deployment to the number of replicas specified in the KafkaConnectCluster. If there
+         * are fewer replicas than the number requested it does nothing.
+         *
+         */
+        private Future<ReconciliationState> scaleDownConnectCluster() {
+            return withVoid(deploymentOperations.scaleDown(reconciliation, namespace, connect.getName(), connect.getReplicas()));
+        }
+
+        /**
+         * Reconciles the Kafka Connect service.
+         *
+         */
+        private Future<ReconciliationState> service() {
+            return withVoid(serviceOperations.reconcile(reconciliation, namespace, connect.getServiceName(), connect.generateService()));
         }
 
     }
