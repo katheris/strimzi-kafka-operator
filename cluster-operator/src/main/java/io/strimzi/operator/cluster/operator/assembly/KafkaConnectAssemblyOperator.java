@@ -102,7 +102,6 @@ public class KafkaConnectAssemblyOperator extends AbstractConnectOperator<Kubern
 
     @Override
     protected Future<KafkaConnectStatus> createOrUpdate(Reconciliation reconciliation, KafkaConnect kafkaConnect) {
-        BuildState buildState = new BuildState();
         KafkaConnectCluster connect;
         KafkaConnectBuild build;
         KafkaConnectStatus kafkaConnectStatus = new KafkaConnectStatus();
@@ -133,18 +132,8 @@ public class KafkaConnectAssemblyOperator extends AbstractConnectOperator<Kubern
         reconciliationState.connectServiceAccount()
                 .compose(ReconciliationState::connectInitClusterRoleBinding)
                 .compose(ReconciliationState::networkPolicy)
-                .compose(i -> deploymentOperations.getAsync(namespace, connect.getName()))
-                .compose(deployment -> {
-                    if (deployment != null) {
-                        // Extract information from the current deployment. This is used to figure out if new build needs to be run or not.
-                        buildState.currentBuildRevision = Annotations.stringAnnotation(deployment.getSpec().getTemplate(), Annotations.STRIMZI_IO_CONNECT_BUILD_REVISION, null);
-                        buildState.currentImage = deployment.getSpec().getTemplate().getSpec().getContainers().get(0).getImage();
-                        buildState.forceRebuild = Annotations.hasAnnotation(deployment, Annotations.STRIMZI_IO_CONNECT_FORCE_REBUILD);
-                    }
-
-                    return Future.succeededFuture();
-                })
-                .compose(i -> connectBuild(reconciliation, namespace, build, buildState))
+                .compose(ReconciliationState::initialiseBuildState)
+                .compose(i -> connectBuild(reconciliation, namespace, build, reconciliationState.buildState))
                 .compose(i -> deploymentOperations.scaleDown(reconciliation, namespace, connect.getName(), connect.getReplicas()))
                 .compose(scale -> serviceOperations.reconcile(reconciliation, namespace, connect.getServiceName(), connect.generateService()))
                 .compose(i -> Util.metricsAndLogging(reconciliation, configMapOperations, namespace, connect.getLogging(), connect.getMetricsConfigInCm()))
@@ -159,15 +148,15 @@ public class KafkaConnectAssemblyOperator extends AbstractConnectOperator<Kubern
                 .compose(i -> podDisruptionBudgetOperator.reconcile(reconciliation, namespace, connect.getName(), connect.generatePodDisruptionBudget()))
                 .compose(i -> Util.authTlsHash(secretOperations, namespace, auth, trustedCertificates))
                 .compose(hash -> {
-                    if (buildState.desiredBuildRevision != null) {
-                        annotations.put(Annotations.STRIMZI_IO_CONNECT_BUILD_REVISION, buildState.desiredBuildRevision);
+                    if (reconciliationState.buildState.desiredBuildRevision != null) {
+                        annotations.put(Annotations.STRIMZI_IO_CONNECT_BUILD_REVISION, reconciliationState.buildState.desiredBuildRevision);
                     }
                     annotations.put(Annotations.ANNO_STRIMZI_AUTH_HASH, Integer.toString(hash));
 
                     Deployment dep = connect.generateDeployment(annotations, pfa.isOpenshift(), imagePullPolicy, imagePullSecrets);
 
-                    if (buildState.desiredImage != null) {
-                        dep.getSpec().getTemplate().getSpec().getContainers().get(0).setImage(buildState.desiredImage);
+                    if (reconciliationState.buildState.desiredImage != null) {
+                        dep.getSpec().getTemplate().getSpec().getContainers().get(0).setImage(reconciliationState.buildState.desiredImage);
                     }
 
                     return deploymentOperations.reconcile(reconciliation, namespace, connect.getName(), dep);
@@ -205,10 +194,11 @@ public class KafkaConnectAssemblyOperator extends AbstractConnectOperator<Kubern
      */
     class ReconciliationState {
 
+        private final Reconciliation reconciliation;
         private final KafkaConnect kafkaConnect;
         private final KafkaConnectCluster connect;
         private final KafkaConnectBuild build;
-        private final Reconciliation reconciliation;
+        public final BuildState buildState;
         private final String namespace;
 
         ReconciliationState(Reconciliation reconciliation, KafkaConnect kafkaConnect) throws Exception {
@@ -217,6 +207,7 @@ public class KafkaConnectAssemblyOperator extends AbstractConnectOperator<Kubern
             this.kafkaConnect = kafkaConnect;
             this.connect = KafkaConnectCluster.fromCrd(reconciliation, kafkaConnect, versions);
             this.build = KafkaConnectBuild.fromCrd(reconciliation, kafkaConnect, versions);
+            this.buildState = new BuildState();
         }
 
         Future<KafkaConnectAssemblyOperator.ReconciliationState> withVoid(Future<?> r) {
@@ -245,6 +236,10 @@ public class KafkaConnectAssemblyOperator extends AbstractConnectOperator<Kubern
             ));
         }
 
+        /**
+         * Reconciles NetworkPolicy for Connect if cluster operator config states network
+         * policies should be generated.
+         */
         Future<ReconciliationState> networkPolicy() {
             if (isNetworkPolicyGeneration) {
                 return withVoid(networkPolicyOperator.reconcile(reconciliation, namespace, connect.getName(),
@@ -255,33 +250,29 @@ public class KafkaConnectAssemblyOperator extends AbstractConnectOperator<Kubern
             }
         }
 
+        /**
+         * Extracts information from the current deployment and adds it to the build state. This is used to figure
+         * out if new build needs to be run or not.
+         */
+        Future<ReconciliationState> initialiseBuildState() {
+            return deploymentOperations.getAsync(namespace, connect.getName())
+                .compose(deployment -> {
+                    if (deployment != null) {
+                        // Extract information from the current deployment. This is used to figure out if new build needs to be run or not.
+                        buildState.currentBuildRevision = Annotations.stringAnnotation(deployment.getSpec().getTemplate(), Annotations.STRIMZI_IO_CONNECT_BUILD_REVISION, null);
+                        buildState.currentImage = deployment.getSpec().getTemplate().getSpec().getContainers().get(0).getImage();
+                        buildState.forceRebuild = Annotations.hasAnnotation(deployment, Annotations.STRIMZI_IO_CONNECT_FORCE_REBUILD);
+                    }
+
+                    return Future.succeededFuture();
+                });
+        }
+
     }
 
     @Override
     protected KafkaConnectStatus createStatus() {
         return new KafkaConnectStatus();
-    }
-
-    /**
-     * Creates (or deletes) the ClusterRoleBinding required for the init container used for client rack-awareness.
-     * The init-container needs to be able to read the labels from the node it is running on to be able to determine
-     * the `client.rack` option.
-     *
-     * @param reconciliation    The reconciliation
-     * @param namespace         Namespace of the service account to which the ClusterRole should be bound
-     * @param name              Name of the ClusterRoleBinding
-     * @param connectCluster    Name of the Connect cluster
-     * @return                  Future for tracking the asynchronous result of the ClusterRoleBinding reconciliation
-     */
-    Future<ReconcileResult<ClusterRoleBinding>> connectInitClusterRoleBinding(Reconciliation reconciliation, String namespace, String name, KafkaConnectCluster connectCluster) {
-        ClusterRoleBinding desired = connectCluster.generateClusterRoleBinding();
-
-        return withIgnoreRbacError(reconciliation,
-                clusterRoleBindingOperations.reconcile(reconciliation,
-                        KafkaConnectResources.initContainerClusterRoleBindingName(name, namespace),
-                        desired),
-                desired
-        );
     }
 
     /**
