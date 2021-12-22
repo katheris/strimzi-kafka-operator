@@ -134,14 +134,7 @@ public class KafkaConnectAssemblyOperator extends AbstractConnectOperator<Kubern
                 .compose(ReconciliationState::connectBuild)
                 .compose(ReconciliationState::scaleDownConnectCluster)
                 .compose(ReconciliationState::service)
-                .compose(i -> Util.metricsAndLogging(reconciliation, configMapOperations, namespace, connect.getLogging(), connect.getMetricsConfigInCm()))
-                .compose(metricsAndLoggingCm -> {
-                    ConfigMap logAndMetricsConfigMap = connect.generateMetricsAndLogConfigMap(metricsAndLoggingCm);
-                    annotations.put(Annotations.ANNO_STRIMZI_LOGGING_DYNAMICALLY_UNCHANGEABLE_HASH,
-                            Util.stringHash(Util.getLoggingDynamicallyUnmodifiableEntries(logAndMetricsConfigMap.getData().get(AbstractModel.ANCILLARY_CM_KEY_LOG_CONFIG))));
-                    desiredLogging.set(logAndMetricsConfigMap.getData().get(AbstractModel.ANCILLARY_CM_KEY_LOG_CONFIG));
-                    return configMapOperations.reconcile(reconciliation, namespace, connect.getAncillaryConfigMapName(), logAndMetricsConfigMap);
-                })
+                .compose(state -> state.metricsAndLogging(annotations, desiredLogging))
                 .compose(i -> kafkaConnectJmxSecret(reconciliation, namespace, kafkaConnect.getMetadata().getName(), connect))
                 .compose(i -> podDisruptionBudgetOperator.reconcile(reconciliation, namespace, connect.getName(), connect.generatePodDisruptionBudget()))
                 .compose(i -> Util.authTlsHash(secretOperations, namespace, auth, trustedCertificates))
@@ -395,6 +388,17 @@ public class KafkaConnectAssemblyOperator extends AbstractConnectOperator<Kubern
          */
         private Future<ReconciliationState> service() {
             return withVoid(serviceOperations.reconcile(reconciliation, namespace, connect.getServiceName(), connect.generateService()));
+        }
+
+        private Future<ReconciliationState> metricsAndLogging(Map<String, String> annotations, AtomicReference<String> desiredLogging) {
+            return withVoid(Util.metricsAndLogging(reconciliation, configMapOperations, namespace, connect.getLogging(), connect.getMetricsConfigInCm())
+                .compose(metricsAndLoggingCm -> {
+                ConfigMap logAndMetricsConfigMap = connect.generateMetricsAndLogConfigMap(metricsAndLoggingCm);
+                annotations.put(Annotations.ANNO_STRIMZI_LOGGING_DYNAMICALLY_UNCHANGEABLE_HASH,
+                        Util.stringHash(Util.getLoggingDynamicallyUnmodifiableEntries(logAndMetricsConfigMap.getData().get(AbstractModel.ANCILLARY_CM_KEY_LOG_CONFIG))));
+                desiredLogging.set(logAndMetricsConfigMap.getData().get(AbstractModel.ANCILLARY_CM_KEY_LOG_CONFIG));
+                return configMapOperations.reconcile(reconciliation, namespace, connect.getAncillaryConfigMapName(), logAndMetricsConfigMap);
+            }));
         }
 
     }
