@@ -135,8 +135,8 @@ public class KafkaConnectAssemblyOperator extends AbstractConnectOperator<Kubern
                 .compose(ReconciliationState::scaleDownConnectCluster)
                 .compose(ReconciliationState::service)
                 .compose(state -> state.metricsAndLogging(annotations, desiredLogging))
-                .compose(i -> kafkaConnectJmxSecret(reconciliation, namespace, kafkaConnect.getMetadata().getName(), connect))
-                .compose(i -> podDisruptionBudgetOperator.reconcile(reconciliation, namespace, connect.getName(), connect.generatePodDisruptionBudget()))
+                .compose(ReconciliationState::jmxSecret)
+                .compose(ReconciliationState::podDisruptionBudget)
                 .compose(i -> Util.authTlsHash(secretOperations, namespace, auth, trustedCertificates))
                 .compose(hash -> {
                     if (reconciliationState.buildState.desiredBuildRevision != null) {
@@ -390,6 +390,11 @@ public class KafkaConnectAssemblyOperator extends AbstractConnectOperator<Kubern
             return withVoid(serviceOperations.reconcile(reconciliation, namespace, connect.getServiceName(), connect.generateService()));
         }
 
+        /**
+         * Generates and reconciles ConfigMap for metrics and logging. Updates annotations with dynamically unchangeable
+         * hash for logging.
+         *
+         */
         private Future<ReconciliationState> metricsAndLogging(Map<String, String> annotations, AtomicReference<String> desiredLogging) {
             return withVoid(Util.metricsAndLogging(reconciliation, configMapOperations, namespace, connect.getLogging(), connect.getMetricsConfigInCm())
                 .compose(metricsAndLoggingCm -> {
@@ -400,6 +405,23 @@ public class KafkaConnectAssemblyOperator extends AbstractConnectOperator<Kubern
                 return configMapOperations.reconcile(reconciliation, namespace, connect.getAncillaryConfigMapName(), logAndMetricsConfigMap);
             }));
         }
+
+        /**
+         * Reconciles the Kafka Connect JMX Secret.
+         *
+         */
+        private Future<ReconciliationState> jmxSecret() {
+            return withVoid(kafkaConnectJmxSecret(reconciliation, namespace, kafkaConnect.getMetadata().getName(), connect));
+        }
+
+        /**
+         * Reconciles the Kafka Connect pod disruption budget.
+         *
+         */
+        private Future<ReconciliationState> podDisruptionBudget() {
+            return withVoid(podDisruptionBudgetOperator.reconcile(reconciliation, namespace, connect.getName(), connect.generatePodDisruptionBudget()));
+        }
+
 
     }
 
