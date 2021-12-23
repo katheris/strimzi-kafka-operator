@@ -7,7 +7,6 @@ package io.strimzi.operator.cluster.operator.assembly;
 import io.fabric8.kubernetes.api.model.ConfigMap;
 import io.fabric8.kubernetes.api.model.ContainerStateTerminated;
 import io.fabric8.kubernetes.api.model.Pod;
-import io.fabric8.kubernetes.api.model.ServiceAccount;
 import io.fabric8.kubernetes.api.model.apps.Deployment;
 import io.fabric8.kubernetes.api.model.rbac.ClusterRoleBinding;
 import io.fabric8.kubernetes.client.KubernetesClient;
@@ -36,8 +35,8 @@ import io.strimzi.operator.common.operator.resource.BuildOperator;
 import io.strimzi.operator.common.operator.resource.DeploymentOperator;
 import io.strimzi.operator.common.operator.resource.NetworkPolicyOperator;
 import io.strimzi.operator.common.operator.resource.PodOperator;
-import io.strimzi.operator.common.operator.resource.ReconcileResult;
 import io.strimzi.operator.common.operator.resource.StatusUtils;
+import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
@@ -46,7 +45,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 
 /**
@@ -102,26 +100,20 @@ public class KafkaConnectAssemblyOperator extends AbstractConnectOperator<Kubern
 
     @Override
     protected Future<KafkaConnectStatus> createOrUpdate(Reconciliation reconciliation, KafkaConnect kafkaConnect) {
-        KafkaConnectCluster connect;
-        KafkaConnectStatus kafkaConnectStatus = new KafkaConnectStatus();
         ReconciliationState reconciliationState;
         try {
-            connect = KafkaConnectCluster.fromCrd(reconciliation, kafkaConnect, versions);
             reconciliationState = createReconciliationState(reconciliation, kafkaConnect);
         } catch (Exception e) {
             LOGGER.warnCr(reconciliation, e);
-            StatusUtils.setStatusConditionAndObservedGeneration(kafkaConnect, kafkaConnectStatus, Future.failedFuture(e));
-            return Future.failedFuture(new ReconciliationException(kafkaConnectStatus, e));
+            KafkaConnectStatus status = new KafkaConnectStatus();
+            StatusUtils.setStatusConditionAndObservedGeneration(kafkaConnect, status, Future.failedFuture(e));
+            return Future.failedFuture(new ReconciliationException(status, e));
         }
 
         Promise<KafkaConnectStatus> createOrUpdatePromise = Promise.promise();
-        String namespace = reconciliation.namespace();
 
         LOGGER.debugCr(reconciliation, "Updating Kafka Connect cluster");
 
-        boolean connectHasZeroReplicas = connect.getReplicas() == 0;
-
-        final AtomicReference<String> desiredLogging = new AtomicReference<>();
         reconciliationState.connectServiceAccount()
                 .compose(ReconciliationState::connectInitClusterRoleBinding)
                 .compose(ReconciliationState::networkPolicy)
@@ -129,7 +121,7 @@ public class KafkaConnectAssemblyOperator extends AbstractConnectOperator<Kubern
                 .compose(ReconciliationState::connectBuild)
                 .compose(ReconciliationState::scaleDownConnectCluster)
                 .compose(ReconciliationState::service)
-                .compose(state -> state.metricsAndLogging(desiredLogging))
+                .compose(ReconciliationState::metricsAndLogging)
                 .compose(ReconciliationState::jmxSecret)
                 .compose(ReconciliationState::podDisruptionBudget)
                 .compose(ReconciliationState::authTlsHash)
@@ -137,21 +129,24 @@ public class KafkaConnectAssemblyOperator extends AbstractConnectOperator<Kubern
                 .compose(ReconciliationState::scaleUpConnectCluster)
                 .compose(ReconciliationState::waitForDeployment)
                 .compose(ReconciliationState::deploymentReady)
-                .compose(state -> state.connectors(desiredLogging, kafkaConnectStatus))
-                .onComplete(reconciliationResult -> {
-                    StatusUtils.setStatusConditionAndObservedGeneration(kafkaConnect, kafkaConnectStatus, reconciliationResult);
+                .compose(ReconciliationState::connectors)
+                .onComplete(state -> {
+                    KafkaConnectCluster connectCluster = reconciliationState.connect;
+                    KafkaConnectStatus connectStatus = reconciliationState.status;
+                    AsyncResult<Void> reconciliationResult = state.mapEmpty();
+                    StatusUtils.setStatusConditionAndObservedGeneration(kafkaConnect, connectStatus, reconciliationResult);
 
-                    if (!connectHasZeroReplicas) {
-                        kafkaConnectStatus.setUrl(KafkaConnectResources.url(connect.getCluster(), namespace, KafkaConnectCluster.REST_API_PORT));
+                    if (!reconciliationState.zeroReplicas) {
+                        connectStatus.setUrl(KafkaConnectResources.url(connectCluster.getCluster(), reconciliationState.namespace, KafkaConnectCluster.REST_API_PORT));
                     }
 
-                    kafkaConnectStatus.setReplicas(connect.getReplicas());
-                    kafkaConnectStatus.setLabelSelector(connect.getSelectorLabels().toSelectorString());
+                    connectStatus.setReplicas(connectCluster.getReplicas());
+                    connectStatus.setLabelSelector(connectCluster.getSelectorLabels().toSelectorString());
 
                     if (reconciliationResult.succeeded())   {
-                        createOrUpdatePromise.complete(kafkaConnectStatus);
+                        createOrUpdatePromise.complete(connectStatus);
                     } else {
-                        createOrUpdatePromise.fail(new ReconciliationException(kafkaConnectStatus, reconciliationResult.cause()));
+                        createOrUpdatePromise.fail(new ReconciliationException(connectStatus, reconciliationResult.cause()));
                     }
                 });
 
@@ -173,7 +168,10 @@ public class KafkaConnectAssemblyOperator extends AbstractConnectOperator<Kubern
         private final KafkaConnectBuild build;
         public final BuildState buildState;
         private final String namespace;
+        private final KafkaConnectStatus status = new KafkaConnectStatus();
         private final Map<String, String> annotations = new HashMap<>(2);
+        private final boolean zeroReplicas;
+        private String desiredLogging = "";
 
         ReconciliationState(Reconciliation reconciliation, KafkaConnect kafkaConnect) throws Exception {
             this.reconciliation = reconciliation;
@@ -182,6 +180,7 @@ public class KafkaConnectAssemblyOperator extends AbstractConnectOperator<Kubern
             this.connect = KafkaConnectCluster.fromCrd(reconciliation, kafkaConnect, versions);
             this.build = KafkaConnectBuild.fromCrd(reconciliation, kafkaConnect, versions);
             this.buildState = new BuildState();
+            this.zeroReplicas = connect.getReplicas() == 0;
         }
 
         Future<KafkaConnectAssemblyOperator.ReconciliationState> withVoid(Future<?> r) {
@@ -378,13 +377,13 @@ public class KafkaConnectAssemblyOperator extends AbstractConnectOperator<Kubern
          * hash for logging.
          *
          */
-        private Future<ReconciliationState> metricsAndLogging(AtomicReference<String> desiredLogging) {
+        private Future<ReconciliationState> metricsAndLogging() {
             return withVoid(Util.metricsAndLogging(reconciliation, configMapOperations, namespace, connect.getLogging(), connect.getMetricsConfigInCm())
                 .compose(metricsAndLoggingCm -> {
                 ConfigMap logAndMetricsConfigMap = connect.generateMetricsAndLogConfigMap(metricsAndLoggingCm);
                 annotations.put(Annotations.ANNO_STRIMZI_LOGGING_DYNAMICALLY_UNCHANGEABLE_HASH,
                         Util.stringHash(Util.getLoggingDynamicallyUnmodifiableEntries(logAndMetricsConfigMap.getData().get(AbstractModel.ANCILLARY_CM_KEY_LOG_CONFIG))));
-                desiredLogging.set(logAndMetricsConfigMap.getData().get(AbstractModel.ANCILLARY_CM_KEY_LOG_CONFIG));
+                desiredLogging = logAndMetricsConfigMap.getData().get(AbstractModel.ANCILLARY_CM_KEY_LOG_CONFIG);
                 return configMapOperations.reconcile(reconciliation, namespace, connect.getAncillaryConfigMapName(), logAndMetricsConfigMap);
             }));
         }
@@ -468,8 +467,8 @@ public class KafkaConnectAssemblyOperator extends AbstractConnectOperator<Kubern
          * Reconciles the connectors.
          *
          */
-        private Future<Void> connectors(AtomicReference<String> desiredLogging, KafkaConnectStatus kafkaConnectStatus) {
-            return reconcileConnectors(reconciliation, kafkaConnect, kafkaConnectStatus, connect.getReplicas() == 0, desiredLogging.get(), connect.getDefaultLogConfig());
+        private Future<ReconciliationState> connectors() {
+            return withVoid(reconcileConnectors(reconciliation, kafkaConnect, status, zeroReplicas, desiredLogging, connect.getDefaultLogConfig()));
         }
 
     }
