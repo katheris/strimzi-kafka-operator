@@ -1587,7 +1587,7 @@ public class KafkaCluster extends AbstractModel {
                         .endExec().build())
                 .withReadinessProbe(ProbeGenerator.defaultBuilder(readinessProbeOptions)
                         .withNewExec()
-                            .withCommand("/opt/kafka/kafka_readiness.sh")
+                            .withCommand("/bin/bash", "-c", "if [ -f /opt/kafka/kafka_readiness.sh ] ; then ./opt/kafka/kafka_readiness.sh; else test -f /var/opt/kafka/kafka-ready; fi")
                         .endExec().build())
                 .withResources(getResources())
                 .withImagePullPolicy(determineImagePullPolicy(imagePullPolicy, getImage()))
