@@ -794,7 +794,7 @@ public class KafkaListenersReconciler {
      * @return  Future which completes when all statuses are updated
      */
     protected Future<Void> addCertificatesToListenerStatuses(Map<String, String> customListenerCertificates) {
-        String caCertificate = new String(clusterCa.currentCaCertBytes(), StandardCharsets.US_ASCII);
+        String caCertificate = new String(clusterCa.currentCaCertBytes(), StandardCharsets.US_ASCII); //TODO: Can we keep this here or will we need to fetch the clusterCa another way?
 
         for (GenericKafkaListener listener : kafka.getListeners())   {
             if (listener.isTls())   {

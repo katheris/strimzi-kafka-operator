@@ -425,6 +425,10 @@ public class KafkaAssemblyOperator extends AbstractAssemblyOperator<KubernetesCl
             return new CaReconciler(reconciliation, kafkaAssembly, config, supplier, vertx, certManager, passwordGenerator);
         }
 
+        //TODO: this assumes we reconcile the two CAs and then have them readily available.
+        // This might be ok, because perhaps if we are updating some certificates we could exit before we get here,
+        // But in reality I think each reconciler needs to handle the CA being or not being there itself? Otherwise the interdependencies between the parts
+        // of the reconcile loop could get really hard to follow.
         /**
          * Creates the CaReconciler instance and reconciles the Clients and Cluster CAs. The resulting CAs are stored
          * in the ReconciliationState and used later to reconcile the operands.

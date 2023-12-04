@@ -204,6 +204,8 @@ public class CaReconciler {
                 .map(i -> new CaReconciliationResult(clusterCa, clientsCa));
     }
 
+    //TODO: This I guess should be updated to instead call whatever abstraction is needed
+    // In the cert manager case it would reconcile some sort of CR?
     /**
      * Asynchronously reconciles the cluster and clients CA secrets.
      * The cluster CA secret has to have the name determined by {@link AbstractModel#clusterCaCertSecretName(String)}.
@@ -377,6 +379,8 @@ public class CaReconciler {
         }
     }
 
+    //TODO: Need to check why this process doesn't work in future, since it copes with CO being stopped can we
+    // reuse this approach when dealing with an async CA creation?
     /**
      * Gather the Kafka related components pods for checking CA key trust and CA certificate usage to sign servers certificate.
      *
