@@ -59,10 +59,12 @@ public class CertUtils {
         }
 
         /**
-         * @return The suffix of the key in the Secret
+         *
+         * @param prefix to use for the certificate Secret key
+         * @return a certificate Secret key with the correct suffix
          */
-        public String getSuffix() {
-            return suffix;
+        public String asKey(String prefix) {
+            return prefix + suffix;
         }
 
     }
@@ -123,7 +125,7 @@ public class CertUtils {
         } else {
             if (clusterCa.keyCreated()
                     || clusterCa.certRenewed()
-                    || (isMaintenanceTimeWindowsSatisfied && clusterCa.isExpiring(secret, keyCertName + SecretEntry.CRT.getSuffix()))
+                    || (isMaintenanceTimeWindowsSatisfied && clusterCa.isExpiring(secret, SecretEntry.CRT.asKey(keyCertName)))
                     || clusterCa.hasCaCertGenerationChanged(secret)) {
                 reasons.add("certificate needs to be renewed");
                 shouldBeRegenerated = true;
@@ -172,10 +174,10 @@ public class CertUtils {
     public static Map<String, String> buildSecretData(Map<String, CertAndKey> certificates) {
         Map<String, String> data = new HashMap<>(certificates.size() * 4);
         certificates.forEach((keyCertName, certAndKey) -> {
-            data.put(keyCertName + SecretEntry.KEY.getSuffix(), certAndKey.keyAsBase64String());
-            data.put(keyCertName + SecretEntry.CRT.getSuffix(), certAndKey.certAsBase64String());
-            data.put(keyCertName + SecretEntry.P12_KEYSTORE.getSuffix(), certAndKey.keyStoreAsBase64String());
-            data.put(keyCertName + SecretEntry.P12_KEYSTORE_PASSWORD.getSuffix(), certAndKey.storePasswordAsBase64String());
+            data.put(SecretEntry.KEY.asKey(keyCertName), certAndKey.keyAsBase64String());
+            data.put(SecretEntry.CRT.asKey(keyCertName), certAndKey.certAsBase64String());
+            data.put(SecretEntry.P12_KEYSTORE.asKey(keyCertName), certAndKey.keyStoreAsBase64String());
+            data.put(SecretEntry.P12_KEYSTORE_PASSWORD.asKey(keyCertName), certAndKey.storePasswordAsBase64String());
         });
         return data;
     }
@@ -196,13 +198,13 @@ public class CertUtils {
      * may have empty key, cert or keystore and null store password.
      */
     public static CertAndKey keyStoreCertAndKey(Secret secret, String keyCertName) {
-        byte[] passwordBytes = decodeFromSecret(secret, keyCertName + SecretEntry.P12_KEYSTORE_PASSWORD.getSuffix());
+        byte[] passwordBytes = decodeFromSecret(secret, SecretEntry.P12_KEYSTORE_PASSWORD.asKey(keyCertName));
         String password = passwordBytes.length == 0 ? null : new String(passwordBytes, StandardCharsets.US_ASCII);
         return new CertAndKey(
-                decodeFromSecret(secret, keyCertName + SecretEntry.KEY.getSuffix()),
-                decodeFromSecret(secret, keyCertName + SecretEntry.CRT.getSuffix()),
+                decodeFromSecret(secret, SecretEntry.KEY.asKey(keyCertName)),
+                decodeFromSecret(secret, SecretEntry.CRT.asKey(keyCertName)),
                 new byte[]{},
-                decodeFromSecret(secret, keyCertName + SecretEntry.P12_KEYSTORE.getSuffix()),
+                decodeFromSecret(secret, SecretEntry.P12_KEYSTORE.asKey(keyCertName)),
                 password
         );
     }
