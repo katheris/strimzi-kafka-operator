@@ -9,6 +9,7 @@
 * Added support for Kafka Exporter `offset.show-all` parameter
 * Prevent removal of the `broker` process role from KRaft mixed-nodes that have assigned partition-replicas
 * Improve broker scale-down prevention to continue in reconciliation when scale-down cannot be executed
+* Create classes to represent the trust set and identity for client authentication when creating clients using TLS in operators.
 
 ### Changes, deprecations and removals
 

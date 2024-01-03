@@ -57,6 +57,8 @@ import io.strimzi.operator.common.model.Ca;
 import io.strimzi.operator.common.model.ClientsCa;
 import io.strimzi.operator.common.model.Labels;
 import io.strimzi.operator.common.model.NodeUtils;
+import io.strimzi.operator.common.model.PemAuthIdentity;
+import io.strimzi.operator.common.model.PemTrustSet;
 import io.strimzi.operator.common.model.StatusDiff;
 import io.strimzi.operator.common.operator.resource.ClusterRoleBindingOperator;
 import io.strimzi.operator.common.operator.resource.ConfigMapOperator;
@@ -151,6 +153,8 @@ public class KafkaReconciler {
     private String loggingHash = "";
     private final Map<Integer, String> brokerConfigurationHash = new HashMap<>();
     private final Map<Integer, String> kafkaServerCertificateHash = new HashMap<>();
+    private PemTrustSet pemTrustSet;
+    private PemAuthIdentity pemAuthIdentity;
     /* test */ KafkaListenersReconciler.ReconciliationResult listenerReconciliationResults; // Result of the listener reconciliation with the listener details
 
     /**
@@ -229,6 +233,7 @@ public class KafkaReconciler {
      */
     public Future<Void> reconcile(KafkaStatus kafkaStatus, Clock clock)    {
         return modelWarnings(kafkaStatus)
+                .compose(i -> initClientAuthenticationCertificates())
                 .compose(i -> manualPodCleaning())
                 .compose(i -> networkPolicy())
                 .compose(i -> manualRollingUpdate())
@@ -271,6 +276,20 @@ public class KafkaReconciler {
         kafkaStatus.addConditions(conditions);
 
         return Future.succeededFuture();
+    }
+
+    /**
+     * Initialize the TrustSet and PemAuthIdentity to be used by TLS clients during reconciliation
+     *
+     * @return Completes when the TrustStore and PemAuthIdentity have been created
+     */
+    protected Future<Void> initClientAuthenticationCertificates() {
+        return ReconcilerUtils.pemClientCertificates(reconciliation, secretOperator)
+                .compose(res -> {
+                    this.pemTrustSet = res.resultAt(0);
+                    this.pemAuthIdentity = res.resultAt(1);
+                    return Future.succeededFuture();
+                });
     }
 
     /**
@@ -413,25 +432,23 @@ public class KafkaReconciler {
             Map<Integer, Map<String, String>> kafkaAdvertisedPorts,
             boolean allowReconfiguration
     ) {
-        return ReconcilerUtils.clientSecrets(reconciliation, secretOperator)
-                .compose(compositeFuture ->
-                        new KafkaRoller(
-                                reconciliation,
-                                vertx,
-                                podOperator,
-                                1_000,
-                                operationTimeoutMs,
-                                () -> new BackOff(250, 2, 10),
-                                nodes,
-                                compositeFuture.resultAt(0),
-                                compositeFuture.resultAt(1),
-                                adminClientProvider,
-                                brokerId -> kafka.generatePerBrokerConfiguration(brokerId, kafkaAdvertisedHostnames, kafkaAdvertisedPorts),
-                                logging,
-                                kafka.getKafkaVersion(),
-                                allowReconfiguration,
-                                eventsPublisher
-                        ).rollingRestart(podNeedsRestart));
+        return new KafkaRoller(
+                    reconciliation,
+                    vertx,
+                    podOperator,
+                    1_000,
+                    operationTimeoutMs,
+                    () -> new BackOff(250, 2, 10),
+                    nodes,
+                    this.pemTrustSet,
+                    this.pemAuthIdentity,
+                    adminClientProvider,
+                    brokerId -> kafka.generatePerBrokerConfiguration(brokerId, kafkaAdvertisedHostnames, kafkaAdvertisedPorts),
+                    logging,
+                    kafka.getKafkaVersion(),
+                    allowReconfiguration,
+                    eventsPublisher
+            ).rollingRestart(podNeedsRestart);
     }
 
     /**
@@ -852,32 +869,29 @@ public class KafkaReconciler {
      * @return  Future which completes when the Cluster ID is retrieved and set in the status
      */
     protected Future<Void> clusterId(KafkaStatus kafkaStatus) {
-        return ReconcilerUtils.clientSecrets(reconciliation, secretOperator)
-                .compose(compositeFuture -> {
-                    LOGGER.debugCr(reconciliation, "Attempt to get clusterId");
-                    return vertx.createSharedWorkerExecutor("kubernetes-ops-pool")
-                            .executeBlocking(() -> {
-                                Admin kafkaAdmin = null;
+        LOGGER.debugCr(reconciliation, "Attempt to get clusterId");
+        return vertx.createSharedWorkerExecutor("kubernetes-ops-pool")
+                .executeBlocking(() -> {
+                    Admin kafkaAdmin = null;
 
-                                try {
-                                    String bootstrapHostname = KafkaResources.bootstrapServiceName(reconciliation.name()) + "." + reconciliation.namespace() + ".svc:" + KafkaCluster.REPLICATION_PORT;
-                                    LOGGER.debugCr(reconciliation, "Creating AdminClient for clusterId using {}", bootstrapHostname);
-                                    kafkaAdmin = adminClientProvider.createAdminClient(bootstrapHostname, compositeFuture.resultAt(0), compositeFuture.resultAt(1), "cluster-operator");
-                                    kafkaStatus.setClusterId(kafkaAdmin.describeCluster().clusterId().get());
-                                } catch (KafkaException e) {
-                                    LOGGER.warnCr(reconciliation, "Kafka exception getting clusterId {}", e.getMessage());
-                                } catch (InterruptedException e) {
-                                    LOGGER.warnCr(reconciliation, "Interrupted exception getting clusterId {}", e.getMessage());
-                                } catch (ExecutionException e) {
-                                    LOGGER.warnCr(reconciliation, "Execution exception getting clusterId {}", e.getMessage());
-                                } finally {
-                                    if (kafkaAdmin != null) {
-                                        kafkaAdmin.close();
-                                    }
-                                }
+                    try {
+                        String bootstrapHostname = KafkaResources.bootstrapServiceName(reconciliation.name()) + "." + reconciliation.namespace() + ".svc:" + KafkaCluster.REPLICATION_PORT;
+                        LOGGER.debugCr(reconciliation, "Creating AdminClient for clusterId using {}", bootstrapHostname);
+                        kafkaAdmin = adminClientProvider.createAdminClient(bootstrapHostname, this.pemTrustSet, this.pemAuthIdentity);
+                        kafkaStatus.setClusterId(kafkaAdmin.describeCluster().clusterId().get());
+                    } catch (KafkaException e) {
+                        LOGGER.warnCr(reconciliation, "Kafka exception getting clusterId {}", e.getMessage());
+                    } catch (InterruptedException e) {
+                        LOGGER.warnCr(reconciliation, "Interrupted exception getting clusterId {}", e.getMessage());
+                    } catch (ExecutionException e) {
+                        LOGGER.warnCr(reconciliation, "Execution exception getting clusterId {}", e.getMessage());
+                    } finally {
+                        if (kafkaAdmin != null) {
+                            kafkaAdmin.close();
+                        }
+                    }
 
-                                return null;
-                            });
+                    return null;
                 });
     }
 
@@ -888,7 +902,15 @@ public class KafkaReconciler {
      */
     protected Future<Void> metadataVersion(KafkaStatus kafkaStatus) {
         if (kafka.usesKRaft()) {
-            return KRaftMetadataManager.maybeUpdateMetadataVersion(reconciliation, vertx, secretOperator, adminClientProvider, kafka.getMetadataVersion(), kafkaStatus);
+            return KRaftMetadataManager.maybeUpdateMetadataVersion(
+                        reconciliation,
+                        vertx,
+                        this.pemTrustSet,
+                        this.pemAuthIdentity,
+                        adminClientProvider,
+                        kafka.getMetadataVersion(),
+                        kafkaStatus
+                );
         } else {
             return Future.succeededFuture();
         }
