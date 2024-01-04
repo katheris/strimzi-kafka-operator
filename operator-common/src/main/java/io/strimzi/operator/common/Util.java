@@ -484,32 +484,6 @@ public class Util {
     }
 
     /**
-     * Returns concatenated string of all public keys (all .crt records) from a secret
-     *
-     * @param secret    Kubernetes Secret with certificates
-     *
-     * @return          String secrets
-     */
-    public static String certsToPemString(Secret secret)  {
-        if (secret == null || secret.getData() == null) {
-            return "";
-        } else {
-            Base64.Decoder decoder = Base64.getDecoder();
-
-            return secret
-                    .getData()
-                    .entrySet()
-                    .stream()
-                    .filter(record -> record.getKey().endsWith(".crt"))
-                    .map(record -> {
-                        byte[] bytes = decoder.decode(record.getValue());
-                        return new String(bytes, StandardCharsets.US_ASCII);
-                    })
-                    .collect(Collectors.joining("\n"));
-        }
-    }
-
-    /**
      * Checks whether maintenance time window is satisfied by a given point in time or not
      *
      * @param reconciliation        Reconciliation marker

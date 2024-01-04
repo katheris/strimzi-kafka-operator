@@ -34,6 +34,7 @@ import io.strimzi.operator.cluster.ClusterOperatorConfig;
 import io.strimzi.operator.cluster.PlatformFeaturesAvailability;
 import io.strimzi.operator.cluster.model.CertUtils;
 import io.strimzi.operator.cluster.model.ClusterCa;
+import io.strimzi.operator.cluster.model.ClusterOperatorKeyStoreSupplier;
 import io.strimzi.operator.cluster.model.ImagePullPolicy;
 import io.strimzi.operator.cluster.model.KafkaCluster;
 import io.strimzi.operator.cluster.model.KafkaConfiguration;
@@ -59,9 +60,12 @@ import io.strimzi.operator.common.ReconciliationLogger;
 import io.strimzi.operator.common.Util;
 import io.strimzi.operator.common.model.Ca;
 import io.strimzi.operator.common.model.ClientsCa;
+import io.strimzi.operator.common.model.ClusterCaTrustStoreSupplier;
 import io.strimzi.operator.common.model.InvalidResourceException;
 import io.strimzi.operator.common.model.Labels;
 import io.strimzi.operator.common.model.NodeUtils;
+import io.strimzi.operator.common.model.PemKeyStoreSupplier;
+import io.strimzi.operator.common.model.PemTrustStoreSupplier;
 import io.strimzi.operator.common.model.StatusDiff;
 import io.strimzi.operator.common.operator.resource.ClusterRoleBindingOperator;
 import io.strimzi.operator.common.operator.resource.ConfigMapOperator;
@@ -897,7 +901,9 @@ public class KafkaReconciler {
                                 try {
                                     String bootstrapHostname = KafkaResources.bootstrapServiceName(reconciliation.name()) + "." + reconciliation.namespace() + ".svc:" + KafkaCluster.REPLICATION_PORT;
                                     LOGGER.debugCr(reconciliation, "Creating AdminClient for clusterId using {}", bootstrapHostname);
-                                    kafkaAdmin = adminClientProvider.createAdminClient(bootstrapHostname, compositeFuture.resultAt(0), compositeFuture.resultAt(1), "cluster-operator");
+                                    PemTrustStoreSupplier pemTrustStoreSupplier = new ClusterCaTrustStoreSupplier(compositeFuture.resultAt(0));
+                                    PemKeyStoreSupplier pemKeyStoreSupplier = new ClusterOperatorKeyStoreSupplier(compositeFuture.resultAt(1));
+                                    kafkaAdmin = adminClientProvider.createAdminClient(bootstrapHostname, pemTrustStoreSupplier, pemKeyStoreSupplier);
                                     kafkaStatus.setClusterId(kafkaAdmin.describeCluster().clusterId().get());
                                 } catch (KafkaException e) {
                                     LOGGER.warnCr(reconciliation, "Kafka exception getting clusterId {}", e.getMessage());

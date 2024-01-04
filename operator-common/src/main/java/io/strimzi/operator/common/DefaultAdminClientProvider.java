@@ -4,21 +4,21 @@
  */
 package io.strimzi.operator.common;
 
-import io.fabric8.kubernetes.api.model.Secret;
+import io.strimzi.operator.common.model.PemKeyStoreSupplier;
+import io.strimzi.operator.common.model.PemTrustStoreSupplier;
 import org.apache.kafka.clients.admin.Admin;
 import org.apache.kafka.clients.admin.AdminClientConfig;
 import org.apache.kafka.common.config.SslConfigs;
 
-import java.nio.charset.StandardCharsets;
 import java.util.Properties;
 
 /**
- * Provides the default KAfka Admin client
+ * Provides the default Kafka Admin client
  */
 public class DefaultAdminClientProvider implements AdminClientProvider {
     @Override
-    public Admin createAdminClient(String bootstrapHostnames, Secret clusterCaCertSecret, Secret keyCertSecret, String keyCertName) {
-        return createAdminClient(bootstrapHostnames, clusterCaCertSecret, keyCertSecret, keyCertName, new Properties());
+    public Admin createAdminClient(String bootstrapHostnames, PemTrustStoreSupplier pemTrustStoreSupplier, PemKeyStoreSupplier pemKeyStoreSupplier) {
+        return createAdminClient(bootstrapHostnames, pemTrustStoreSupplier, pemKeyStoreSupplier, new Properties());
     }
 
     /**
@@ -43,21 +43,10 @@ public class DefaultAdminClientProvider implements AdminClientProvider {
      * TLS encrypted connection and with TLS client authentication.
      */
     @Override
-    public Admin createAdminClient(String bootstrapHostnames, Secret clusterCaCertSecret, Secret keyCertSecret, String keyCertName, Properties config) {
-        String trustedCertificates = null;
-        String privateKey = null;
-        String certificateChain = null;
-
-        // provided Secret with cluster CA certificate for TLS encryption
-        if (clusterCaCertSecret != null) {
-            trustedCertificates = Util.certsToPemString(clusterCaCertSecret);
-        }
-
-        // provided Secret and related key for getting the private key for TLS client authentication
-        if (keyCertSecret != null && keyCertName != null && !keyCertName.isEmpty()) {
-            privateKey = new String(Util.decodeFromSecret(keyCertSecret, keyCertName + ".key"), StandardCharsets.US_ASCII);
-            certificateChain = new String(Util.decodeFromSecret(keyCertSecret, keyCertName + ".crt"), StandardCharsets.US_ASCII);
-        }
+    public Admin createAdminClient(String bootstrapHostnames, PemTrustStoreSupplier pemTrustStoreSupplier, PemKeyStoreSupplier pemKeyStoreSupplier, Properties config) {
+        String trustedCertificates = pemTrustStoreSupplier.pemTrustedCertificates();
+        String privateKey = pemKeyStoreSupplier.pemPrivateKey();
+        String certificateChain = pemKeyStoreSupplier.pemCertificateChain();
 
         config.setProperty(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapHostnames);
 

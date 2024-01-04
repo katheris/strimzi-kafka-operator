@@ -155,7 +155,7 @@ public class KafkaRollerTest {
         Admin admin = mock(Admin.class);
         when(admin.describeCluster()).thenReturn(mockResult);
         AdminClientProvider mock = mock(AdminClientProvider.class);
-        when(mock.createAdminClient(anyString(), any(), any(), anyString())).thenReturn(admin);
+        when(mock.createAdminClient(anyString(), any(), any())).thenReturn(admin);
         return mock;
     }
 

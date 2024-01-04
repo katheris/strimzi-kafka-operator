@@ -11,6 +11,7 @@ import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.strimzi.api.kafka.model.kafka.KafkaResources;
+import io.strimzi.operator.cluster.model.ClusterOperatorKeyStoreSupplier;
 import io.strimzi.operator.cluster.model.DnsNameGenerator;
 import io.strimzi.operator.cluster.model.KafkaCluster;
 import io.strimzi.operator.cluster.model.KafkaVersion;
@@ -24,7 +25,10 @@ import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.ReconciliationLogger;
 import io.strimzi.operator.common.Util;
 import io.strimzi.operator.common.VertxUtil;
+import io.strimzi.operator.common.model.ClusterCaTrustStoreSupplier;
 import io.strimzi.operator.common.model.OrderedProperties;
+import io.strimzi.operator.common.model.PemKeyStoreSupplier;
+import io.strimzi.operator.common.model.PemTrustStoreSupplier;
 import io.strimzi.operator.common.operator.resource.PodOperator;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
@@ -922,7 +926,10 @@ public class KafkaRoller {
 
         try {
             LOGGER.debugCr(reconciliation, "Creating AdminClient for {}", bootstrapHostnames);
-            return adminClientProvider.createAdminClient(bootstrapHostnames, this.clusterCaCertSecret, this.coKeySecret, "cluster-operator");
+            PemTrustStoreSupplier pemTrustStoreSupplier = new ClusterCaTrustStoreSupplier(this.clusterCaCertSecret);
+            PemKeyStoreSupplier pemKeyStoreSupplier = new ClusterOperatorKeyStoreSupplier(this.coKeySecret);
+
+            return adminClientProvider.createAdminClient(bootstrapHostnames, pemTrustStoreSupplier, pemKeyStoreSupplier);
         } catch (KafkaException e) {
             if (ceShouldBeFatal && (e instanceof ConfigException
                     || e.getCause() instanceof ConfigException)) {
