@@ -65,7 +65,7 @@ public class KRaftMetadataManagerTest {
 
     private AdminClientProvider mockAdminClientProvider(Admin adminClient)  {
         AdminClientProvider mockAdminClientProvider = mock(AdminClientProvider.class);
-        when(mockAdminClientProvider.createAdminClient(anyString(), any(), any(), anyString())).thenReturn(adminClient);
+        when(mockAdminClientProvider.createAdminClient(anyString(), any(), any())).thenReturn(adminClient);
 
         return mockAdminClientProvider;
     }

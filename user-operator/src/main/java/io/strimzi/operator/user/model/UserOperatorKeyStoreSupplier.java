@@ -32,12 +32,12 @@ public class UserOperatorKeyStoreSupplier implements PemKeyStoreSupplier {
 
     @Override
     public String pemPrivateKey() {
-        return null;
+        return pemPrivateKey;
     }
 
     @Override
     public String pemCertificateChain() {
-        return null;
+        return pemCertificateChain;
     }
 
     private static byte[] decodeFromSecret(Secret secret, String key) {

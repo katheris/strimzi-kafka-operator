@@ -6,11 +6,15 @@ package io.strimzi.operator.cluster.operator.assembly;
 
 import io.strimzi.api.kafka.model.kafka.KafkaResources;
 import io.strimzi.api.kafka.model.kafka.KafkaStatus;
+import io.strimzi.operator.cluster.model.ClusterOperatorKeyStoreSupplier;
 import io.strimzi.operator.cluster.model.KafkaCluster;
 import io.strimzi.operator.common.AdminClientProvider;
 import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.ReconciliationLogger;
 import io.strimzi.operator.common.VertxUtil;
+import io.strimzi.operator.common.model.ClusterCaTrustStoreSupplier;
+import io.strimzi.operator.common.model.PemKeyStoreSupplier;
+import io.strimzi.operator.common.model.PemTrustStoreSupplier;
 import io.strimzi.operator.common.model.StatusUtils;
 import io.strimzi.operator.common.operator.resource.SecretOperator;
 import io.vertx.core.Future;
@@ -72,7 +76,9 @@ public class KRaftMetadataManager {
                 .compose(secrets -> {
                     String bootstrapHostname = KafkaResources.bootstrapServiceName(reconciliation.name()) + "." + reconciliation.namespace() + ".svc:" + KafkaCluster.REPLICATION_PORT;
                     LOGGER.debugCr(reconciliation, "Creating AdminClient for Kafka cluster in namespace {}", reconciliation.namespace());
-                    Admin kafkaAdmin = adminClientProvider.createAdminClient(bootstrapHostname, secrets.resultAt(0), secrets.resultAt(1), "cluster-operator");
+                    PemTrustStoreSupplier pemTrustStoreSupplier = new ClusterCaTrustStoreSupplier(secrets.resultAt(0));
+                    PemKeyStoreSupplier pemKeyStoreSupplier = new ClusterOperatorKeyStoreSupplier(secrets.resultAt(1));
+                    Admin kafkaAdmin = adminClientProvider.createAdminClient(bootstrapHostname, pemTrustStoreSupplier, pemKeyStoreSupplier);
 
                     Promise<Void> updatePromise = Promise.promise();
                     maybeUpdateMetadataVersion(reconciliation, vertx, kafkaAdmin, desiredMetadataVersion, status)

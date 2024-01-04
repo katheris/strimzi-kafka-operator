@@ -88,7 +88,7 @@ public class PreventBrokerScaleDownCheckTest {
     public void testPartitionReplicasNotPresentOnRemovedBrokers(VertxTestContext context) {
         Admin admin = mock(Admin.class);
         AdminClientProvider mock = mock(AdminClientProvider.class);
-        when(mock.createAdminClient(anyString(), any(), any(), anyString())).thenReturn(admin);
+        when(mock.createAdminClient(anyString(), any(), any())).thenReturn(admin);
 
         ListTopicsResult ltr = mockListTopics();
         when(admin.listTopics(any())).thenReturn(ltr);
@@ -118,7 +118,7 @@ public class PreventBrokerScaleDownCheckTest {
     public void testPartitionReplicasPresentOnBrokers(VertxTestContext context) {
         Admin admin = mock(Admin.class);
         AdminClientProvider mock = mock(AdminClientProvider.class);
-        when(mock.createAdminClient(anyString(), any(), any(), anyString())).thenReturn(admin);
+        when(mock.createAdminClient(anyString(), any(), any())).thenReturn(admin);
 
         ListTopicsResult ltr = mockListTopics();
         when(admin.listTopics(any())).thenReturn(ltr);
@@ -148,7 +148,7 @@ public class PreventBrokerScaleDownCheckTest {
     public void testTopicNamesBeingRetrievedCorrectly(VertxTestContext context) {
         Admin admin = mock(Admin.class);
         AdminClientProvider mock = mock(AdminClientProvider.class);
-        when(mock.createAdminClient(anyString(), any(), any(), anyString())).thenReturn(admin);
+        when(mock.createAdminClient(anyString(), any(), any())).thenReturn(admin);
 
         mockDescribeTopics(admin);
 
@@ -171,7 +171,7 @@ public class PreventBrokerScaleDownCheckTest {
     public void testTopicDescriptionBeingRetrievedCorrectly(VertxTestContext context) {
         Admin admin = mock(Admin.class);
         AdminClientProvider mock = mock(AdminClientProvider.class);
-        when(mock.createAdminClient(anyString(), any(), any(), anyString())).thenReturn(admin);
+        when(mock.createAdminClient(anyString(), any(), any())).thenReturn(admin);
 
         mockDescribeTopics(admin);
 
