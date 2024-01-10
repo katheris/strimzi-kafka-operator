@@ -19,6 +19,7 @@ import io.strimzi.operator.cluster.ClusterOperatorConfig;
 import io.strimzi.operator.cluster.model.AbstractModel;
 import io.strimzi.operator.cluster.model.CertUtils;
 import io.strimzi.operator.cluster.model.ClusterCa;
+import io.strimzi.operator.cluster.model.ClusterOperatorKeyStoreSupplier;
 import io.strimzi.operator.cluster.model.ModelUtils;
 import io.strimzi.operator.cluster.model.NodeRef;
 import io.strimzi.operator.cluster.model.RestartReason;
@@ -36,6 +37,7 @@ import io.strimzi.operator.common.ReconciliationLogger;
 import io.strimzi.operator.common.Util;
 import io.strimzi.operator.common.model.Ca;
 import io.strimzi.operator.common.model.ClientsCa;
+import io.strimzi.operator.common.model.ClusterCaTrustStoreSupplier;
 import io.strimzi.operator.common.model.InvalidResourceException;
 import io.strimzi.operator.common.model.Labels;
 import io.strimzi.operator.common.model.PasswordGenerator;
@@ -528,8 +530,8 @@ public class CaReconciler {
                 operationTimeoutMs,
                 () -> new BackOff(250, 2, 10),
                 nodes,
-                clusterCa.caCertSecret(),
-                oldCoSecret,
+                new ClusterCaTrustStoreSupplier(clusterCa.caCertSecret()),
+                new ClusterOperatorKeyStoreSupplier(oldCoSecret),
                 adminClientProvider,
                 brokerId -> null,
                 null,
