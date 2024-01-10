@@ -6,12 +6,13 @@ package io.strimzi.operator.cluster.operator.resource;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.fabric8.kubernetes.api.model.Secret;
 import io.strimzi.api.kafka.model.kafka.KafkaResources;
 import io.strimzi.operator.cluster.model.DnsNameGenerator;
 import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.ReconciliationLogger;
 import io.strimzi.operator.common.Util;
+import io.strimzi.operator.common.model.PemKeyStoreSupplier;
+import io.strimzi.operator.common.model.PemTrustStoreSupplier;
 
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
@@ -23,6 +24,7 @@ import java.net.URISyntaxException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.security.KeyFactory;
 import java.security.KeyStore;
@@ -51,16 +53,16 @@ class KafkaAgentClient {
     private final String namespace;
     private final Reconciliation reconciliation;
     private final String cluster;
-    private Secret clusterCaCertSecret;
-    private Secret coKeySecret;
+    private PemTrustStoreSupplier pemTrustStoreSupplier;
+    private PemKeyStoreSupplier pemKeyStoreSupplier;
     private HttpClient httpClient;
 
-    KafkaAgentClient(Reconciliation reconciliation, String cluster, String namespace, Secret clusterCaCertSecret, Secret coKeySecret) {
+    KafkaAgentClient(Reconciliation reconciliation, String cluster, String namespace, PemTrustStoreSupplier pemTrustStoreSupplier, PemKeyStoreSupplier pemKeyStoreSupplier) {
         this.reconciliation = reconciliation;
         this.cluster = cluster;
         this.namespace = namespace;
-        this.clusterCaCertSecret = clusterCaCertSecret;
-        this.coKeySecret = coKeySecret;
+        this.pemTrustStoreSupplier = pemTrustStoreSupplier;
+        this.pemKeyStoreSupplier = pemKeyStoreSupplier;
         this.httpClient = createHttpClient();
     }
 
@@ -71,8 +73,8 @@ class KafkaAgentClient {
     }
 
     private HttpClient createHttpClient() {
-        if (clusterCaCertSecret == null || coKeySecret == null) {
-            throw new RuntimeException("Missing secrets for cluster CA and operator certificates required to create connection to Kafka Agent");
+        if (pemTrustStoreSupplier == null || pemKeyStoreSupplier == null) {
+            throw new RuntimeException("Missing cluster CA and operator certificates required to create connection to Kafka Agent");
         }
 
         try {
@@ -98,7 +100,7 @@ class KafkaAgentClient {
     private KeyStore getTrustStore() throws CertificateException, KeyStoreException, IOException, NoSuchAlgorithmException {
         final CertificateFactory caCertFactory = CertificateFactory.getInstance(CERT_TYPE_X509);
         final Certificate caCert = caCertFactory.generateCertificate(new ByteArrayInputStream(
-                Util.decodeFromSecret(clusterCaCertSecret, "ca.crt")));
+                pemTrustStoreSupplier.pemTrustedCertificates().getBytes(StandardCharsets.US_ASCII)));
         KeyStore trustStore = KeyStore.getInstance(KEYSTORE_TYPE_JKS);
         trustStore.load(null);
         trustStore.setCertificateEntry("ca", caCert);
@@ -108,9 +110,9 @@ class KafkaAgentClient {
     private KeyStore getKeyStore() throws KeyStoreException, CertificateException, NoSuchAlgorithmException, InvalidKeySpecException, IOException {
         final CertificateFactory coCertFactory = CertificateFactory.getInstance(CERT_TYPE_X509);
         final Certificate coCert = coCertFactory.generateCertificate(new ByteArrayInputStream(
-                Util.decodeFromSecret(coKeySecret, "cluster-operator.crt")));
+                pemKeyStoreSupplier.pemCertificateChain().getBytes(StandardCharsets.US_ASCII)));
 
-        byte[] decodedKey = Util.decodePemPrivateKeyFromSecret(coKeySecret, "cluster-operator.key");
+        byte[] decodedKey = Util.decodePemPrivateKey(pemKeyStoreSupplier.pemPrivateKey());
         PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(decodedKey);
         final KeyFactory keyFactory = KeyFactory.getInstance("RSA");
         final PrivateKey key = keyFactory.generatePrivate(keySpec);

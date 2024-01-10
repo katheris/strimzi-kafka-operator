@@ -166,18 +166,17 @@ public class Util {
     }
 
     /**
-     * Decode the binary item in a Kubernetes Secret, which holds a private key in PEM format, from base64 to a byte array.
+     * Decode the private key in PEM format, from base64 to a byte array.
      * Before decoding it into byte array, it removes the PEM header and footer.
-     * @param secret    Kubernetes Secret
-     * @param key       Key which should be retrieved and decoded
-     * @return          Decoded bytes
+     * @param privateKey        Key which should be decoded
+     * @return                  Decoded bytes
      */
-    public static byte[] decodePemPrivateKeyFromSecret(Secret secret, String key) {
-        String privateKey = new String(decodeFromSecret(secret, key), StandardCharsets.UTF_8)
+    public static byte[] decodePemPrivateKey(String privateKey) {
+        String decodedPrivateKey = privateKey
                 .replace("-----BEGIN PRIVATE KEY-----", "")
                 .replaceAll(System.lineSeparator(), "")
                 .replace("-----END PRIVATE KEY-----", "");
-        return Base64.getDecoder().decode(privateKey);
+        return Base64.getDecoder().decode(decodedPrivateKey);
     }
 
     /**
