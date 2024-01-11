@@ -158,6 +158,8 @@ public class KafkaReconciler {
     private final boolean skipBrokerScaleDownCheck;
     private final Map<Integer, String> brokerConfigurationHash = new HashMap<>();
     private final Map<Integer, String> kafkaServerCertificateHash = new HashMap<>();
+    private PemTrustStoreSupplier pemTrustStoreSupplier = new ClusterCaTrustStoreSupplier(null);
+    private PemKeyStoreSupplier pemKeyStoreSupplier = new ClusterOperatorKeyStoreSupplier(null);
 
     // Result of the listener reconciliation with the listener details
     /* test */ KafkaListenersReconciler.ReconciliationResult listenerReconciliationResults;
@@ -251,6 +253,7 @@ public class KafkaReconciler {
      */
     public Future<Void> reconcile(KafkaStatus kafkaStatus, Clock clock)    {
         return modelWarnings(kafkaStatus)
+                .compose(i -> initAdminClientKeyStoreTrustStore())
                 .compose(i -> brokerScaleDownCheck())
                 .compose(i -> manualPodCleaning())
                 .compose(i -> networkPolicy())
@@ -285,8 +288,7 @@ public class KafkaReconciler {
         if (skipBrokerScaleDownCheck || kafka.removedNodes().isEmpty()) {
             return Future.succeededFuture();
         } else {
-            return ReconcilerUtils.clientSecrets(reconciliation, secretOperator)
-                    .compose(secrets -> brokerScaleDownOperations.canScaleDownBrokers(reconciliation, vertx, kafka.removedNodes(), new ClusterCaTrustStoreSupplier(secrets.resultAt(0)), new ClusterOperatorKeyStoreSupplier(secrets.resultAt(1)), adminClientProvider))
+            return brokerScaleDownOperations.canScaleDownBrokers(reconciliation, vertx, kafka.removedNodes(), this.pemTrustStoreSupplier, this.pemKeyStoreSupplier, adminClientProvider)
                     .compose(brokersContainingPartitions -> {
                         if (!brokersContainingPartitions.isEmpty()) {
                             throw new InvalidResourceException("Cannot scale down brokers " + kafka.removedNodes() + " because brokers " + brokersContainingPartitions + " are not empty");
@@ -311,6 +313,20 @@ public class KafkaReconciler {
         kafkaStatus.addConditions(conditions);
 
         return Future.succeededFuture();
+    }
+
+    /**
+     * Initialize the TrustStore and KeyStore suppliers to be used by admin clients during reconciliation
+     *
+     * @return Completes when the TrustStore and KeyStore suppliers have been created
+     */
+    protected Future<Void> initAdminClientKeyStoreTrustStore() {
+        return ReconcilerUtils.clientSecrets(reconciliation, secretOperator)
+                .compose(res -> {
+                    this.pemTrustStoreSupplier = new ClusterCaTrustStoreSupplier(res.resultAt(0));
+                    this.pemKeyStoreSupplier = new ClusterOperatorKeyStoreSupplier(res.resultAt(1));
+                    return Future.succeededFuture();
+                });
     }
 
     /**
@@ -453,25 +469,23 @@ public class KafkaReconciler {
             Map<Integer, Map<String, String>> kafkaAdvertisedPorts,
             boolean allowReconfiguration
     ) {
-        return ReconcilerUtils.clientSecrets(reconciliation, secretOperator)
-                .compose(compositeFuture ->
-                        new KafkaRoller(
-                                reconciliation,
-                                vertx,
-                                podOperator,
-                                1_000,
-                                operationTimeoutMs,
-                                () -> new BackOff(250, 2, 10),
-                                nodes,
-                                new ClusterCaTrustStoreSupplier(compositeFuture.resultAt(0)),
-                                new ClusterOperatorKeyStoreSupplier(compositeFuture.resultAt(1)),
-                                adminClientProvider,
-                                brokerId -> kafka.generatePerBrokerConfiguration(brokerId, kafkaAdvertisedHostnames, kafkaAdvertisedPorts),
-                                logging,
-                                kafka.getKafkaVersion(),
-                                allowReconfiguration,
-                                eventsPublisher
-                        ).rollingRestart(podNeedsRestart));
+        return new KafkaRoller(
+                    reconciliation,
+                    vertx,
+                    podOperator,
+                    1_000,
+                    operationTimeoutMs,
+                    () -> new BackOff(250, 2, 10),
+                    nodes,
+                    this.pemTrustStoreSupplier,
+                    this.pemKeyStoreSupplier,
+                    adminClientProvider,
+                    brokerId -> kafka.generatePerBrokerConfiguration(brokerId, kafkaAdvertisedHostnames, kafkaAdvertisedPorts),
+                    logging,
+                    kafka.getKafkaVersion(),
+                    allowReconfiguration,
+                    eventsPublisher
+            ).rollingRestart(podNeedsRestart);
     }
 
     /**
@@ -892,34 +906,29 @@ public class KafkaReconciler {
      * @return  Future which completes when the Cluster ID is retrieved and set in the status
      */
     protected Future<Void> clusterId(KafkaStatus kafkaStatus) {
-        return ReconcilerUtils.clientSecrets(reconciliation, secretOperator)
-                .compose(compositeFuture -> {
-                    LOGGER.debugCr(reconciliation, "Attempt to get clusterId");
-                    return vertx.createSharedWorkerExecutor("kubernetes-ops-pool")
-                            .executeBlocking(() -> {
-                                Admin kafkaAdmin = null;
+        LOGGER.debugCr(reconciliation, "Attempt to get clusterId");
+        return vertx.createSharedWorkerExecutor("kubernetes-ops-pool")
+                .executeBlocking(() -> {
+                    Admin kafkaAdmin = null;
 
-                                try {
-                                    String bootstrapHostname = KafkaResources.bootstrapServiceName(reconciliation.name()) + "." + reconciliation.namespace() + ".svc:" + KafkaCluster.REPLICATION_PORT;
-                                    LOGGER.debugCr(reconciliation, "Creating AdminClient for clusterId using {}", bootstrapHostname);
-                                    PemTrustStoreSupplier pemTrustStoreSupplier = new ClusterCaTrustStoreSupplier(compositeFuture.resultAt(0));
-                                    PemKeyStoreSupplier pemKeyStoreSupplier = new ClusterOperatorKeyStoreSupplier(compositeFuture.resultAt(1));
-                                    kafkaAdmin = adminClientProvider.createAdminClient(bootstrapHostname, pemTrustStoreSupplier, pemKeyStoreSupplier);
-                                    kafkaStatus.setClusterId(kafkaAdmin.describeCluster().clusterId().get());
-                                } catch (KafkaException e) {
-                                    LOGGER.warnCr(reconciliation, "Kafka exception getting clusterId {}", e.getMessage());
-                                } catch (InterruptedException e) {
-                                    LOGGER.warnCr(reconciliation, "Interrupted exception getting clusterId {}", e.getMessage());
-                                } catch (ExecutionException e) {
-                                    LOGGER.warnCr(reconciliation, "Execution exception getting clusterId {}", e.getMessage());
-                                } finally {
-                                    if (kafkaAdmin != null) {
-                                        kafkaAdmin.close();
-                                    }
-                                }
+                    try {
+                        String bootstrapHostname = KafkaResources.bootstrapServiceName(reconciliation.name()) + "." + reconciliation.namespace() + ".svc:" + KafkaCluster.REPLICATION_PORT;
+                        LOGGER.debugCr(reconciliation, "Creating AdminClient for clusterId using {}", bootstrapHostname);
+                        kafkaAdmin = adminClientProvider.createAdminClient(bootstrapHostname, this.pemTrustStoreSupplier, this.pemKeyStoreSupplier);
+                        kafkaStatus.setClusterId(kafkaAdmin.describeCluster().clusterId().get());
+                    } catch (KafkaException e) {
+                        LOGGER.warnCr(reconciliation, "Kafka exception getting clusterId {}", e.getMessage());
+                    } catch (InterruptedException e) {
+                        LOGGER.warnCr(reconciliation, "Interrupted exception getting clusterId {}", e.getMessage());
+                    } catch (ExecutionException e) {
+                        LOGGER.warnCr(reconciliation, "Execution exception getting clusterId {}", e.getMessage());
+                    } finally {
+                        if (kafkaAdmin != null) {
+                            kafkaAdmin.close();
+                        }
+                    }
 
-                                return null;
-                            });
+                    return null;
                 });
     }
 
@@ -930,15 +939,14 @@ public class KafkaReconciler {
      */
     protected Future<Void> metadataVersion(KafkaStatus kafkaStatus) {
         if (kafka.usesKRaft()) {
-            return ReconcilerUtils.clientSecrets(reconciliation, secretOperator)
-                .compose(secrets -> KRaftMetadataManager.maybeUpdateMetadataVersion(
+            return KRaftMetadataManager.maybeUpdateMetadataVersion(
                         reconciliation,
                         vertx,
-                        new ClusterCaTrustStoreSupplier(secrets.resultAt(0)),
-                        new ClusterOperatorKeyStoreSupplier(secrets.resultAt(1)),
+                        this.pemTrustStoreSupplier,
+                        this.pemKeyStoreSupplier,
                         adminClientProvider,
                         kafka.getMetadataVersion(),
-                        kafkaStatus)
+                        kafkaStatus
                 );
         } else {
             return Future.succeededFuture();
