@@ -6,17 +6,14 @@ package io.strimzi.operator.cluster.operator.assembly;
 
 import io.strimzi.api.kafka.model.kafka.KafkaResources;
 import io.strimzi.api.kafka.model.kafka.KafkaStatus;
-import io.strimzi.operator.cluster.model.ClusterOperatorKeyStoreSupplier;
 import io.strimzi.operator.cluster.model.KafkaCluster;
 import io.strimzi.operator.common.AdminClientProvider;
 import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.ReconciliationLogger;
 import io.strimzi.operator.common.VertxUtil;
-import io.strimzi.operator.common.model.ClusterCaTrustStoreSupplier;
 import io.strimzi.operator.common.model.PemKeyStoreSupplier;
 import io.strimzi.operator.common.model.PemTrustStoreSupplier;
 import io.strimzi.operator.common.model.StatusUtils;
-import io.strimzi.operator.common.operator.resource.SecretOperator;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
@@ -57,7 +54,8 @@ public class KRaftMetadataManager {
      *
      * @param reconciliation            Reconciliation marker
      * @param vertx                     Vert.x instance
-     * @param secretOperator            Secret operator for getting the secrets for connecting to the Kafka cluster
+     * @param pemTrustStoreSupplier     PEM TrustStore supplier for connecting to the Kafka cluster
+     * @param pemKeyStoreSupplier       PEM KeyStore supplier for connecting to the Kafka cluster
      * @param adminClientProvider       Kafka Admin client provider
      * @param desiredMetadataVersion    Desired metadata version
      * @param status                    Kafka status
@@ -67,30 +65,26 @@ public class KRaftMetadataManager {
     public static Future<Void> maybeUpdateMetadataVersion(
             Reconciliation reconciliation,
             Vertx vertx,
-            SecretOperator secretOperator,
+            PemTrustStoreSupplier pemTrustStoreSupplier,
+            PemKeyStoreSupplier pemKeyStoreSupplier,
             AdminClientProvider adminClientProvider,
             String desiredMetadataVersion,
             KafkaStatus status
     ) {
-        return ReconcilerUtils.clientSecrets(reconciliation, secretOperator)
-                .compose(secrets -> {
-                    String bootstrapHostname = KafkaResources.bootstrapServiceName(reconciliation.name()) + "." + reconciliation.namespace() + ".svc:" + KafkaCluster.REPLICATION_PORT;
-                    LOGGER.debugCr(reconciliation, "Creating AdminClient for Kafka cluster in namespace {}", reconciliation.namespace());
-                    PemTrustStoreSupplier pemTrustStoreSupplier = new ClusterCaTrustStoreSupplier(secrets.resultAt(0));
-                    PemKeyStoreSupplier pemKeyStoreSupplier = new ClusterOperatorKeyStoreSupplier(secrets.resultAt(1));
-                    Admin kafkaAdmin = adminClientProvider.createAdminClient(bootstrapHostname, pemTrustStoreSupplier, pemKeyStoreSupplier);
+        String bootstrapHostname = KafkaResources.bootstrapServiceName(reconciliation.name()) + "." + reconciliation.namespace() + ".svc:" + KafkaCluster.REPLICATION_PORT;
+        LOGGER.debugCr(reconciliation, "Creating AdminClient for Kafka cluster in namespace {}", reconciliation.namespace());
+        Admin kafkaAdmin = adminClientProvider.createAdminClient(bootstrapHostname, pemTrustStoreSupplier, pemKeyStoreSupplier);
 
-                    Promise<Void> updatePromise = Promise.promise();
-                    maybeUpdateMetadataVersion(reconciliation, vertx, kafkaAdmin, desiredMetadataVersion, status)
-                            .onComplete(res -> {
-                                // Close the Admin client and return the original result
-                                LOGGER.debugCr(reconciliation, "Closing the Kafka Admin API connection");
-                                kafkaAdmin.close();
-                                updatePromise.handle(res);
-                            });
-
-                    return updatePromise.future();
+        Promise<Void> updatePromise = Promise.promise();
+        maybeUpdateMetadataVersion(reconciliation, vertx, kafkaAdmin, desiredMetadataVersion, status)
+                .onComplete(res -> {
+                    // Close the Admin client and return the original result
+                    LOGGER.debugCr(reconciliation, "Closing the Kafka Admin API connection");
+                    kafkaAdmin.close();
+                    updatePromise.handle(res);
                 });
+
+        return updatePromise.future();
     }
 
     private static Future<Void> maybeUpdateMetadataVersion(

@@ -757,7 +757,7 @@ public class KafkaAssemblyOperatorPodSetTest {
         ClusterOperatorConfig config = ResourceUtils.dummyClusterOperatorConfig(VERSIONS);
 
         PreventBrokerScaleDownCheck operations = supplier.brokerScaleDownOperations;
-        when(operations.canScaleDownBrokers(any(), any(), any(), any(), any())).thenReturn(Future.succeededFuture(Set.of()));
+        when(operations.canScaleDownBrokers(any(), any(), any(), any(), any(), any())).thenReturn(Future.succeededFuture(Set.of()));
 
         MockZooKeeperReconciler zr = new MockZooKeeperReconciler(
                 new Reconciliation("test-trigger", Kafka.RESOURCE_KIND, NAMESPACE, CLUSTER_NAME),
@@ -840,7 +840,7 @@ public class KafkaAssemblyOperatorPodSetTest {
         ClusterOperatorConfig config = ResourceUtils.dummyClusterOperatorConfig(VERSIONS);
 
         PreventBrokerScaleDownCheck operations = supplier.brokerScaleDownOperations;
-        when(operations.canScaleDownBrokers(any(), any(), any(), any(), any())).thenReturn(Future.succeededFuture(Set.of(3)));
+        when(operations.canScaleDownBrokers(any(), any(), any(), any(), any(), any())).thenReturn(Future.succeededFuture(Set.of(3)));
 
         MockKafkaReconciler kr = new MockKafkaReconciler(
                 new Reconciliation("test-trigger", Kafka.RESOURCE_KIND, NAMESPACE, CLUSTER_NAME),
@@ -860,7 +860,7 @@ public class KafkaAssemblyOperatorPodSetTest {
 
         kr.reconcile(status, Clock.systemUTC())
                 .onComplete(context.failing(v -> context.verify(() -> {
-                    verify(operations, times(1)).canScaleDownBrokers(any(), any(), any(), any(), any());
+                    verify(operations, times(1)).canScaleDownBrokers(any(), any(), any(), any(), any(), any());
                     assertEquals(v.getMessage(), "Cannot scale down brokers [3, 4] because brokers [3] are not empty");
                     async.flag();
                 })));
@@ -933,7 +933,7 @@ public class KafkaAssemblyOperatorPodSetTest {
         ClusterOperatorConfig config = ResourceUtils.dummyClusterOperatorConfig(VERSIONS);
 
         PreventBrokerScaleDownCheck operations = supplier.brokerScaleDownOperations;
-        when(operations.canScaleDownBrokers(any(), any(), any(), any(), any())).thenReturn(Future.succeededFuture(Set.of()));
+        when(operations.canScaleDownBrokers(any(), any(), any(), any(), any(), any())).thenReturn(Future.succeededFuture(Set.of()));
 
         KafkaAssemblyOperatorPodSetTest.MockKafkaReconciler kr = new KafkaAssemblyOperatorPodSetTest.MockKafkaReconciler(
                 new Reconciliation("test-trigger", Kafka.RESOURCE_KIND, NAMESPACE, CLUSTER_NAME),
@@ -953,7 +953,7 @@ public class KafkaAssemblyOperatorPodSetTest {
         kr.reconcile(status, Clock.systemUTC())
                 .onComplete(context.succeeding(v -> context.verify(() -> {
 
-                    verify(operations, times(1)).canScaleDownBrokers(any(), any(), any(), any(), any());
+                    verify(operations, times(1)).canScaleDownBrokers(any(), any(), any(), any(), any(), any());
 
                     // Scale-down of Kafka is done in one go => we should see two invocations (first from scale-down and second from regular patching)
                     assertThat(kafkaPodSetCaptor.getAllValues().size(), is(1));
@@ -1043,7 +1043,7 @@ public class KafkaAssemblyOperatorPodSetTest {
         ClusterOperatorConfig config = ResourceUtils.dummyClusterOperatorConfig(VERSIONS);
 
         PreventBrokerScaleDownCheck operations = supplier.brokerScaleDownOperations;
-        when(operations.canScaleDownBrokers(any(), any(), any(), any(), any())).thenReturn(Future.succeededFuture(Set.of(3, 4)));
+        when(operations.canScaleDownBrokers(any(), any(), any(), any(), any(), any())).thenReturn(Future.succeededFuture(Set.of(3, 4)));
 
         KafkaAssemblyOperatorPodSetTest.MockKafkaReconciler kr = new KafkaAssemblyOperatorPodSetTest.MockKafkaReconciler(
                 new Reconciliation("test-trigger", Kafka.RESOURCE_KIND, NAMESPACE, CLUSTER_NAME),
@@ -1064,7 +1064,7 @@ public class KafkaAssemblyOperatorPodSetTest {
         kr.reconcile(status, Clock.systemUTC())
                 .onComplete(context.succeeding(v -> context.verify(() -> {
 
-                    verify(operations, times(0)).canScaleDownBrokers(any(), any(), any(), any(), any());
+                    verify(operations, times(0)).canScaleDownBrokers(any(), any(), any(), any(), any(), any());
 
                     // Scale-down of Kafka is done in one go => we should see two invocations (first from scale-down and second from regular patching)
                     assertThat(kafkaPodSetCaptor.getAllValues().size(), is(1));

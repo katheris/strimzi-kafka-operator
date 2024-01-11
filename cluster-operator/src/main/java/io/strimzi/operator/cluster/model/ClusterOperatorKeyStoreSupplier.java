@@ -9,14 +9,15 @@ import io.strimzi.operator.common.model.PemKeyStoreSupplier;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.Optional;
 
 /**
  * Provides the default KeyStore supplier for the cluster operator private and public key
  */
 public class ClusterOperatorKeyStoreSupplier implements PemKeyStoreSupplier {
 
-    private String pemPrivateKey;
-    private String pemCertificateChain;
+    private final String pemPrivateKey;
+    private final String pemCertificateChain;
 
     private static final String KEY_CERT_NAME = "cluster-operator";
 
@@ -24,10 +25,8 @@ public class ClusterOperatorKeyStoreSupplier implements PemKeyStoreSupplier {
      * @param keyCertSecret Kubernetes Secret with the Cluster Operator public and private key
      */
     public ClusterOperatorKeyStoreSupplier(Secret keyCertSecret) {
-        if (keyCertSecret != null) {
-            pemPrivateKey = new String(decodeFromSecret(keyCertSecret, KEY_CERT_NAME + ".key"), StandardCharsets.US_ASCII);
-            pemCertificateChain = new String(decodeFromSecret(keyCertSecret, KEY_CERT_NAME + ".crt"), StandardCharsets.US_ASCII);
-        }
+        pemPrivateKey = decodeFromSecret(keyCertSecret, KEY_CERT_NAME + ".key");
+        pemCertificateChain = decodeFromSecret(keyCertSecret, KEY_CERT_NAME + ".crt");
     }
     @Override
     public String pemPrivateKey() {
@@ -39,7 +38,12 @@ public class ClusterOperatorKeyStoreSupplier implements PemKeyStoreSupplier {
         return pemCertificateChain;
     }
 
-    private static byte[] decodeFromSecret(Secret secret, String key) {
-        return Base64.getDecoder().decode(secret.getData().get(key));
+    private static String decodeFromSecret(Secret secret, String key) {
+        return Optional.ofNullable(secret)
+                .map(Secret::getData)
+                .map(data -> data.get(key))
+                .map(value -> Base64.getDecoder().decode(value))
+                .map(bytes -> new String(bytes, StandardCharsets.US_ASCII))
+                .orElse("");
     }
 }

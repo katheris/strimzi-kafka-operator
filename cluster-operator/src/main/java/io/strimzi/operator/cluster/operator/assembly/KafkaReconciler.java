@@ -285,7 +285,8 @@ public class KafkaReconciler {
         if (skipBrokerScaleDownCheck || kafka.removedNodes().isEmpty()) {
             return Future.succeededFuture();
         } else {
-            return brokerScaleDownOperations.canScaleDownBrokers(reconciliation, vertx, kafka.removedNodes(), secretOperator, adminClientProvider)
+            return ReconcilerUtils.clientSecrets(reconciliation, secretOperator)
+                    .compose(secrets -> brokerScaleDownOperations.canScaleDownBrokers(reconciliation, vertx, kafka.removedNodes(), new ClusterCaTrustStoreSupplier(secrets.resultAt(0)), new ClusterOperatorKeyStoreSupplier(secrets.resultAt(1)), adminClientProvider))
                     .compose(brokersContainingPartitions -> {
                         if (!brokersContainingPartitions.isEmpty()) {
                             throw new InvalidResourceException("Cannot scale down brokers " + kafka.removedNodes() + " because brokers " + brokersContainingPartitions + " are not empty");
@@ -929,7 +930,16 @@ public class KafkaReconciler {
      */
     protected Future<Void> metadataVersion(KafkaStatus kafkaStatus) {
         if (kafka.usesKRaft()) {
-            return KRaftMetadataManager.maybeUpdateMetadataVersion(reconciliation, vertx, secretOperator, adminClientProvider, kafka.getMetadataVersion(), kafkaStatus);
+            return ReconcilerUtils.clientSecrets(reconciliation, secretOperator)
+                .compose(secrets -> KRaftMetadataManager.maybeUpdateMetadataVersion(
+                        reconciliation,
+                        vertx,
+                        new ClusterCaTrustStoreSupplier(secrets.resultAt(0)),
+                        new ClusterOperatorKeyStoreSupplier(secrets.resultAt(1)),
+                        adminClientProvider,
+                        kafka.getMetadataVersion(),
+                        kafkaStatus)
+                );
         } else {
             return Future.succeededFuture();
         }
