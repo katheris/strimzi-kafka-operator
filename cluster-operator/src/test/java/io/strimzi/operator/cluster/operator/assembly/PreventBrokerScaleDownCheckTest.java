@@ -4,15 +4,10 @@
  */
 package io.strimzi.operator.cluster.operator.assembly;
 
-import io.fabric8.kubernetes.api.model.Secret;
 import io.strimzi.api.kafka.model.kafka.Kafka;
-import io.strimzi.api.kafka.model.kafka.KafkaResources;
-import io.strimzi.operator.cluster.ResourceUtils;
 import io.strimzi.operator.cluster.model.KafkaCluster;
 import io.strimzi.operator.common.AdminClientProvider;
 import io.strimzi.operator.common.Reconciliation;
-import io.strimzi.operator.common.operator.resource.SecretOperator;
-import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.junit5.Checkpoint;
 import io.vertx.junit5.VertxExtension;
@@ -40,7 +35,6 @@ import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -99,14 +93,10 @@ public class PreventBrokerScaleDownCheckTest {
         doReturn(Set.of(4, 5)).when(cluster).removedNodes();
 
         Checkpoint checkpoint = context.checkpoint();
-        SecretOperator mockSecretOps = ResourceUtils.supplierWithMocks(false).secretOperations;
-        Secret secret = new Secret();
-        when(mockSecretOps.getAsync(eq(NAMESPACE), eq(KafkaResources.clusterCaCertificateSecretName(CLUSTER_NAME)))).thenReturn(Future.succeededFuture(secret));
-        when(mockSecretOps.getAsync(eq(NAMESPACE), eq(KafkaResources.secretName(CLUSTER_NAME)))).thenReturn(Future.succeededFuture(secret));
 
         PreventBrokerScaleDownCheck operations = new PreventBrokerScaleDownCheck();
 
-        operations.canScaleDownBrokers(RECONCILIATION, vertx, cluster.removedNodes(), mockSecretOps, mock)
+        operations.canScaleDownBrokers(RECONCILIATION, vertx, cluster.removedNodes(), null, null, mock)
                 .onComplete(context.succeeding(s -> {
                     assertThat(s.isEmpty(), is(true));
                     assertThat(s.size(), is(0));
@@ -129,14 +119,10 @@ public class PreventBrokerScaleDownCheckTest {
         doReturn(Set.of(2, 3)).when(cluster).removedNodes();
 
         Checkpoint checkpoint = context.checkpoint();
-        SecretOperator mockSecretOps = ResourceUtils.supplierWithMocks(false).secretOperations;
-        Secret secret = new Secret();
-        when(mockSecretOps.getAsync(eq(NAMESPACE), eq(KafkaResources.clusterCaCertificateSecretName(CLUSTER_NAME)))).thenReturn(Future.succeededFuture(secret));
-        when(mockSecretOps.getAsync(eq(NAMESPACE), eq(KafkaResources.secretName(CLUSTER_NAME)))).thenReturn(Future.succeededFuture(secret));
 
         PreventBrokerScaleDownCheck operations = new PreventBrokerScaleDownCheck();
 
-        operations.canScaleDownBrokers(RECONCILIATION, vertx, cluster.removedNodes(), mockSecretOps, mock)
+        operations.canScaleDownBrokers(RECONCILIATION, vertx, cluster.removedNodes(), null, null, mock)
                 .onComplete(context.succeeding(s -> {
                     assertThat(s.isEmpty(), is(false));
                     assertThat(s.size(), is(1));
