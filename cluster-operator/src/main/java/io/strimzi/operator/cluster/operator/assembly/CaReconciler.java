@@ -19,7 +19,6 @@ import io.strimzi.operator.cluster.ClusterOperatorConfig;
 import io.strimzi.operator.cluster.model.AbstractModel;
 import io.strimzi.operator.cluster.model.CertUtils;
 import io.strimzi.operator.cluster.model.ClusterCa;
-import io.strimzi.operator.cluster.model.ClusterOperatorKeyStoreSupplier;
 import io.strimzi.operator.cluster.model.ModelUtils;
 import io.strimzi.operator.cluster.model.NodeRef;
 import io.strimzi.operator.cluster.model.RestartReason;
@@ -37,10 +36,11 @@ import io.strimzi.operator.common.ReconciliationLogger;
 import io.strimzi.operator.common.Util;
 import io.strimzi.operator.common.model.Ca;
 import io.strimzi.operator.common.model.ClientsCa;
-import io.strimzi.operator.common.model.ClusterCaTrustStoreSupplier;
 import io.strimzi.operator.common.model.InvalidResourceException;
 import io.strimzi.operator.common.model.Labels;
 import io.strimzi.operator.common.model.PasswordGenerator;
+import io.strimzi.operator.common.model.PemAuthIdentity;
+import io.strimzi.operator.common.model.PemTrustSet;
 import io.strimzi.operator.common.operator.resource.DeploymentOperator;
 import io.strimzi.operator.common.operator.resource.PodOperator;
 import io.strimzi.operator.common.operator.resource.ReconcileResult;
@@ -292,12 +292,6 @@ public class CaReconciler {
                         secretReconciliations.add(clusterSecretReconciliation);
                     }
 
-                    if (clientsCaConfig == null || clientsCaConfig.isGenerateCertificateAuthority())   {
-                        Future<ReconcileResult<Secret>> clientsSecretReconciliation = secretOperator.reconcile(reconciliation, reconciliation.namespace(), clientsCaCertName, clientsCa.caCertSecret())
-                                .compose(ignored -> secretOperator.reconcile(reconciliation, reconciliation.namespace(), clientsCaKeyName, clientsCa.caKeySecret()));
-                        secretReconciliations.add(clientsSecretReconciliation);
-                    }
-
                     Future.join(secretReconciliations).onComplete(res -> {
                         if (res.succeeded())    {
                             caUpdatePromise.complete();
@@ -495,7 +489,7 @@ public class CaReconciler {
                 return reason;
             };
             return new ZooKeeperRoller(podOperator, zookeeperLeaderFinder, operationTimeoutMs)
-                    .maybeRollingUpdate(reconciliation, replicas, zkSelectorLabels, rollZkPodAndLogReason, clusterCa.caCertSecret(), oldCoSecret);
+                    .maybeRollingUpdate(reconciliation, replicas, zkSelectorLabels, rollZkPodAndLogReason, new PemTrustSet(clusterCa.caCertSecret()), PemAuthIdentity.clusterOperator(oldCoSecret));
         } else {
             return Future.succeededFuture();
         }
@@ -530,8 +524,8 @@ public class CaReconciler {
                 operationTimeoutMs,
                 () -> new BackOff(250, 2, 10),
                 nodes,
-                new ClusterCaTrustStoreSupplier(clusterCa.caCertSecret()),
-                new ClusterOperatorKeyStoreSupplier(oldCoSecret),
+                new PemTrustSet(clusterCa.caCertSecret()),
+                PemAuthIdentity.clusterOperator(oldCoSecret),
                 adminClientProvider,
                 brokerId -> null,
                 null,

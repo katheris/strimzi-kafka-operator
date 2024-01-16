@@ -129,6 +129,31 @@ public class Util {
     }
 
     /**
+     * Returns exception when secret is missing a particular key. This is used from several different methods to provide identical exception.
+     *
+     * @param namespace     Namespace of the Secret
+     * @param secretName    Name of the Secret
+     * @param keyName       Name of the Secret key
+     * @return              RuntimeException
+     */
+    public static RuntimeException missingSecretKeyException(String namespace, String secretName, String keyName) {
+        return new RuntimeException("The Secret " + namespace + "/" + secretName + " is missing the key " + keyName);
+    }
+
+    /**
+     * Returns exception when certificate is corrupt. This is used from several different methods to provide identical exception.
+     *
+     * @param namespace     Namespace of the Secret
+     * @param secretName    Name of the Secret
+     * @param keyName       Name of the Secret key
+     * @return              RuntimeException
+     */
+    public static RuntimeException corruptCertificateException(String namespace, String secretName, String keyName) {
+        return new RuntimeException("Bad/corrupt certificate found in data." + keyName + ".crt of Secret "
+                + secretName + " in namespace " + namespace);
+    }
+
+    /**
      * Create a file with Keystore or Truststore from the given {@code bytes}.
      * The file will be set to get deleted when the JVM exist.
      *

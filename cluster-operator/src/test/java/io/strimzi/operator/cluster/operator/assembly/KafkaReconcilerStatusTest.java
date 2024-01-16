@@ -867,7 +867,7 @@ public class KafkaReconcilerStatusTest {
         @Override
         public Future<Void> reconcile(KafkaStatus kafkaStatus, Clock clock)    {
             return modelWarnings(kafkaStatus)
-                    .compose(i -> initAdminClientKeyStoreTrustStore())
+                    .compose(i -> initClientAuthenticationCertificates())
                     .compose(i -> listeners())
                     .compose(i -> clusterId(kafkaStatus))
                     .compose(i -> nodePortExternalListenerStatus())

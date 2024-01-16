@@ -50,8 +50,8 @@ import io.strimzi.operator.common.model.Ca;
 import io.strimzi.operator.common.model.ClientsCa;
 import io.strimzi.operator.common.model.Labels;
 import io.strimzi.operator.common.model.PasswordGenerator;
-import io.strimzi.operator.common.model.PemKeyStoreSupplier;
-import io.strimzi.operator.common.model.PemTrustStoreSupplier;
+import io.strimzi.operator.common.model.PemAuthIdentity;
+import io.strimzi.operator.common.model.PemTrustSet;
 import io.strimzi.operator.common.operator.MockCertManager;
 import io.strimzi.platform.KubernetesVersion;
 import io.strimzi.test.TestUtils;
@@ -493,12 +493,12 @@ public class KubernetesRestartEventsMockTest {
     private ResourceOperatorSupplier supplierWithAdmin(Vertx vertx, Supplier<Admin> adminClientSupplier) {
         AdminClientProvider adminClientProvider = new AdminClientProvider() {
             @Override
-            public Admin createAdminClient(String bootstrapHostnames, PemTrustStoreSupplier pemTrustStoreSupplier, PemKeyStoreSupplier pemKeyStoreSupplier) {
+            public Admin createAdminClient(String bootstrapHostnames, PemTrustSet trustSet, PemAuthIdentity clientAuthIdentity) {
                 return adminClientSupplier.get();
             }
 
             @Override
-            public Admin createAdminClient(String bootstrapHostnames, PemTrustStoreSupplier pemTrustStoreSupplier, PemKeyStoreSupplier pemKeyStoreSupplier, Properties config) {
+            public Admin createAdminClient(String bootstrapHostnames, PemTrustSet trustSet, PemAuthIdentity clientAuthIdentity, Properties config) {
                 return adminClientSupplier.get();
             }
         };

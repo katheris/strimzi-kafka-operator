@@ -4,8 +4,8 @@
  */
 package io.strimzi.operator.common;
 
-import io.strimzi.operator.common.model.PemKeyStoreSupplier;
-import io.strimzi.operator.common.model.PemTrustStoreSupplier;
+import io.strimzi.operator.common.model.PemAuthIdentity;
+import io.strimzi.operator.common.model.PemTrustSet;
 import org.apache.kafka.clients.admin.Admin;
 import org.apache.kafka.clients.admin.AdminClientConfig;
 import org.apache.kafka.common.config.SslConfigs;
@@ -17,8 +17,8 @@ import java.util.Properties;
  */
 public class DefaultAdminClientProvider implements AdminClientProvider {
     @Override
-    public Admin createAdminClient(String bootstrapHostnames, PemTrustStoreSupplier pemTrustStoreSupplier, PemKeyStoreSupplier pemKeyStoreSupplier) {
-        return createAdminClient(bootstrapHostnames, pemTrustStoreSupplier, pemKeyStoreSupplier, new Properties());
+    public Admin createAdminClient(String bootstrapHostnames, PemTrustSet pemTrustSet, PemAuthIdentity pemAuthIdentity) {
+        return createAdminClient(bootstrapHostnames, pemTrustSet, pemAuthIdentity, new Properties());
     }
 
     /**
@@ -26,42 +26,38 @@ public class DefaultAdminClientProvider implements AdminClientProvider {
      *
      * 1. No TLS connection, no TLS client authentication:
      *
-     * If {@code clusterCaCertSecret}, {@code keyCertSecret} and {@code keyCertName} are null, the returned Admin Client instance
+     * If {@code pemTrustSet} and {@code pemAuthIdentity} are null, the returned Admin Client instance
      * is configured to connect to the Apache Kafka bootstrap (defined via {@code hostname}) on plain connection with no
      * TLS encryption and no TLS client authentication.
      *
      * 2. TLS connection, no TLS client authentication
      *
-     * If only {@code clusterCaCertSecret} is provided as not null, the returned Admin Client instance is configured to
+     * If only {@code pemTrustSet} is provided as not null, the returned Admin Client instance is configured to
      * connect to the Apache Kafka bootstrap (defined via {@code hostname}) on TLS encrypted connection but with no
      * TLS authentication.
      *
      * 3. TLS connection and TLS client authentication
      *
-     * If {@code clusterCaCertSecret}, {@code keyCertSecret} and {@code keyCertName} are provided as not null, the returned
+     * If {@code pemTrustSet} and {@code pemAuthIdentity} are provided as not null, the returned
      * Admin Client instance is configured to connect to the Apache Kafka bootstrap (defined via {@code hostname}) on
      * TLS encrypted connection and with TLS client authentication.
      */
     @Override
-    public Admin createAdminClient(String bootstrapHostnames, PemTrustStoreSupplier pemTrustStoreSupplier, PemKeyStoreSupplier pemKeyStoreSupplier, Properties config) {
-        String trustedCertificates = pemTrustStoreSupplier.pemTrustedCertificates();
-        String privateKey = pemKeyStoreSupplier.pemPrivateKey();
-        String certificateChain = pemKeyStoreSupplier.pemCertificateChain();
-
+    public Admin createAdminClient(String bootstrapHostnames, PemTrustSet pemTrustSet, PemAuthIdentity pemAuthIdentity, Properties config) {
         config.setProperty(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapHostnames);
 
         // configuring TLS encryption if requested
-        if (trustedCertificates != null) {
+        if (pemTrustSet != null) {
             config.setProperty(AdminClientConfig.SECURITY_PROTOCOL_CONFIG, "SSL");
             config.setProperty(SslConfigs.SSL_TRUSTSTORE_TYPE_CONFIG, "PEM");
-            config.setProperty(SslConfigs.SSL_TRUSTSTORE_CERTIFICATES_CONFIG, trustedCertificates);
+            config.setProperty(SslConfigs.SSL_TRUSTSTORE_CERTIFICATES_CONFIG, pemTrustSet.trustedCertificatesString());
         }
 
         // configuring TLS client authentication
-        if (certificateChain != null && privateKey != null) {
+        if (pemAuthIdentity != null) {
             config.setProperty(SslConfigs.SSL_KEYSTORE_TYPE_CONFIG, "PEM");
-            config.setProperty(SslConfigs.SSL_KEYSTORE_CERTIFICATE_CHAIN_CONFIG, certificateChain);
-            config.setProperty(SslConfigs.SSL_KEYSTORE_KEY_CONFIG, privateKey);
+            config.setProperty(SslConfigs.SSL_KEYSTORE_CERTIFICATE_CHAIN_CONFIG, pemAuthIdentity.pemCertificateChainString());
+            config.setProperty(SslConfigs.SSL_KEYSTORE_KEY_CONFIG, pemAuthIdentity.pemPrivateKeyString());
         }
 
         config.putIfAbsent(AdminClientConfig.METADATA_MAX_AGE_CONFIG, "30000");

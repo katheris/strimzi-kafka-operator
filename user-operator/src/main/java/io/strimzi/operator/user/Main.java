@@ -24,12 +24,10 @@ import io.strimzi.operator.common.MicrometerMetricsProvider;
 import io.strimzi.operator.common.OperatorKubernetesClientBuilder;
 import io.strimzi.operator.common.Util;
 import io.strimzi.operator.common.http.HealthCheckAndMetricsServer;
-import io.strimzi.operator.common.model.ClusterCaTrustStoreSupplier;
-import io.strimzi.operator.common.model.PemKeyStoreSupplier;
-import io.strimzi.operator.common.model.PemTrustStoreSupplier;
+import io.strimzi.operator.common.model.PemAuthIdentity;
+import io.strimzi.operator.common.model.PemTrustSet;
 import io.strimzi.operator.common.operator.resource.concurrent.CrdOperator;
 import io.strimzi.operator.common.operator.resource.concurrent.SecretOperator;
-import io.strimzi.operator.user.model.UserOperatorKeyStoreSupplier;
 import io.strimzi.operator.user.operator.DisabledSimpleAclOperator;
 import io.strimzi.operator.user.operator.KafkaUserOperator;
 import io.strimzi.operator.user.operator.QuotasOperator;
@@ -146,13 +144,15 @@ public class Main {
      * @return  An instance of the Admin API client
      */
     private static Admin createAdminClient(UserOperatorConfig config, SecretOperator secretOperator, AdminClientProvider adminClientProvider)    {
-        PemTrustStoreSupplier pemTrustStoreSupplier = new ClusterCaTrustStoreSupplier(getSecret(secretOperator, config.getCaNamespaceOrNamespace(), config.getClusterCaCertSecretName()));
-        PemKeyStoreSupplier pemKeyStoreSupplier = new UserOperatorKeyStoreSupplier(getSecret(secretOperator, config.getCaNamespaceOrNamespace(), config.getEuoKeySecretName()));
+        PemTrustSet pemTrustSet = new PemTrustSet(getSecret(secretOperator, config.getCaNamespaceOrNamespace(), config.getClusterCaCertSecretName()));
+        Secret uoKeyAndCert = getSecret(secretOperator, config.getCaNamespaceOrNamespace(), config.getEuoKeySecretName());
+        // When the UO secret is not null (i.e. mTLS is used), we set the name. Otherwise, we just pass null.
+        PemAuthIdentity pemAuthIdentity = uoKeyAndCert != null ? PemAuthIdentity.entityOperator(uoKeyAndCert) : null;
 
         return adminClientProvider.createAdminClient(
                 config.getKafkaBootstrapServers(),
-                pemTrustStoreSupplier,
-                pemKeyStoreSupplier,
+                pemTrustSet,
+                pemAuthIdentity,
                 config.getKafkaAdminClientConfiguration());
     }
 

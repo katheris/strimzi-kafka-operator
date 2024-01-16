@@ -7,7 +7,7 @@
   If needed, `UseKRaft` can be disabled in the feature gates configuration in the Cluster Operator.
 * Fix NullPointerException from missing listenerConfig when using custom auth
 * Added support for Kafka Exporter `offset.show-all` parameter
-* Create interfaces for accessing TrustStore and KeyStore certificates within the operators when creating clients
+* Create classes to represent the trust set and identity for client authentication when creating clients using TLS in operators.
 
 ### Changes, deprecations and removals
 

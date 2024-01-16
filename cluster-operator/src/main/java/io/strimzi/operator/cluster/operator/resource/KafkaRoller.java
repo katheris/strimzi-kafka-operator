@@ -24,8 +24,8 @@ import io.strimzi.operator.common.ReconciliationLogger;
 import io.strimzi.operator.common.Util;
 import io.strimzi.operator.common.VertxUtil;
 import io.strimzi.operator.common.model.OrderedProperties;
-import io.strimzi.operator.common.model.PemKeyStoreSupplier;
-import io.strimzi.operator.common.model.PemTrustStoreSupplier;
+import io.strimzi.operator.common.model.PemAuthIdentity;
+import io.strimzi.operator.common.model.PemTrustSet;
 import io.strimzi.operator.common.operator.resource.PodOperator;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
@@ -117,8 +117,8 @@ public class KafkaRoller {
     protected final long operationTimeoutMs;
     protected final Vertx vertx;
     private final String cluster;
-    private final PemTrustStoreSupplier pemTrustStoreSupplier;
-    private final PemKeyStoreSupplier pemKeyStoreSupplier;
+    private final PemTrustSet pemTrustSet;
+    private final PemAuthIdentity pemAuthIdentity;
     private final Set<NodeRef> nodes;
     private final KubernetesRestartEventPublisher eventsPublisher;
     private final Supplier<BackOff> backoffSupplier;
@@ -150,8 +150,8 @@ public class KafkaRoller {
      * @param operationTimeoutMs    Operation timeout in milliseconds
      * @param backOffSupplier       Backoff supplier
      * @param nodes                 List of Kafka node references to consider rolling
-     * @param pemTrustStoreSupplier TrustStore supplier to use in KafkaAgentClient
-     * @param pemKeyStoreSupplier   KeyStore supplier to use in KafkaAgentClient
+     * @param pemTrustSet           Trust set to use in KafkaAgentClient
+     * @param pemAuthIdentity       Identity for TLS client authentication to use in KafkaAgentClient
      * @param adminClientProvider   Kafka Admin client provider
      * @param kafkaConfigProvider   Kafka configuration provider
      * @param kafkaLogging          Kafka logging configuration
@@ -161,7 +161,7 @@ public class KafkaRoller {
      */
     public KafkaRoller(Reconciliation reconciliation, Vertx vertx, PodOperator podOperations,
                        long pollingIntervalMs, long operationTimeoutMs, Supplier<BackOff> backOffSupplier, Set<NodeRef> nodes,
-                       PemTrustStoreSupplier pemTrustStoreSupplier, PemKeyStoreSupplier pemKeyStoreSupplier,
+                       PemTrustSet pemTrustSet, PemAuthIdentity pemAuthIdentity,
                        AdminClientProvider adminClientProvider,
                        Function<Integer, String> kafkaConfigProvider, String kafkaLogging, KafkaVersion kafkaVersion, boolean allowReconfiguration, KubernetesRestartEventPublisher eventsPublisher) {
         this.namespace = reconciliation.namespace();
@@ -172,8 +172,8 @@ public class KafkaRoller {
             throw new IllegalArgumentException();
         }
         this.backoffSupplier = backOffSupplier;
-        this.pemTrustStoreSupplier = pemTrustStoreSupplier;
-        this.pemKeyStoreSupplier = pemKeyStoreSupplier;
+        this.pemTrustSet = pemTrustSet;
+        this.pemAuthIdentity = pemAuthIdentity;
         this.vertx = vertx;
         this.operationTimeoutMs = operationTimeoutMs;
         this.podOperations = podOperations;
@@ -514,7 +514,7 @@ public class KafkaRoller {
 
     KafkaAgentClient initKafkaAgentClient() throws FatalProblem {
         try {
-            return new KafkaAgentClient(reconciliation, cluster, namespace, pemTrustStoreSupplier, pemKeyStoreSupplier);
+            return new KafkaAgentClient(reconciliation, cluster, namespace, pemTrustSet, pemAuthIdentity);
         } catch (Exception e) {
             throw new FatalProblem("Failed to initialise KafkaAgentClient", e);
         }
@@ -923,7 +923,7 @@ public class KafkaRoller {
 
         try {
             LOGGER.debugCr(reconciliation, "Creating AdminClient for {}", bootstrapHostnames);
-            return adminClientProvider.createAdminClient(bootstrapHostnames, pemTrustStoreSupplier, pemKeyStoreSupplier);
+            return adminClientProvider.createAdminClient(bootstrapHostnames, pemTrustSet, pemAuthIdentity);
         } catch (KafkaException e) {
             if (ceShouldBeFatal && (e instanceof ConfigException
                     || e.getCause() instanceof ConfigException)) {
