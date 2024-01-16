@@ -34,7 +34,6 @@ import io.strimzi.operator.cluster.ClusterOperatorConfig;
 import io.strimzi.operator.cluster.PlatformFeaturesAvailability;
 import io.strimzi.operator.cluster.model.CertUtils;
 import io.strimzi.operator.cluster.model.ClusterCa;
-import io.strimzi.operator.cluster.model.ClusterOperatorKeyStoreSupplier;
 import io.strimzi.operator.cluster.model.ImagePullPolicy;
 import io.strimzi.operator.cluster.model.KafkaCluster;
 import io.strimzi.operator.cluster.model.KafkaConfiguration;
@@ -60,12 +59,11 @@ import io.strimzi.operator.common.ReconciliationLogger;
 import io.strimzi.operator.common.Util;
 import io.strimzi.operator.common.model.Ca;
 import io.strimzi.operator.common.model.ClientsCa;
-import io.strimzi.operator.common.model.ClusterCaTrustStoreSupplier;
 import io.strimzi.operator.common.model.InvalidResourceException;
 import io.strimzi.operator.common.model.Labels;
 import io.strimzi.operator.common.model.NodeUtils;
-import io.strimzi.operator.common.model.PemKeyStoreSupplier;
-import io.strimzi.operator.common.model.PemTrustStoreSupplier;
+import io.strimzi.operator.common.model.PemAuthIdentity;
+import io.strimzi.operator.common.model.PemTrustSet;
 import io.strimzi.operator.common.model.StatusDiff;
 import io.strimzi.operator.common.operator.resource.ClusterRoleBindingOperator;
 import io.strimzi.operator.common.operator.resource.ConfigMapOperator;
@@ -158,8 +156,8 @@ public class KafkaReconciler {
     private final boolean skipBrokerScaleDownCheck;
     private final Map<Integer, String> brokerConfigurationHash = new HashMap<>();
     private final Map<Integer, String> kafkaServerCertificateHash = new HashMap<>();
-    private PemTrustStoreSupplier pemTrustStoreSupplier = new ClusterCaTrustStoreSupplier(null);
-    private PemKeyStoreSupplier pemKeyStoreSupplier = new ClusterOperatorKeyStoreSupplier(null);
+    private PemTrustSet pemTrustSet;
+    private PemAuthIdentity pemAuthIdentity;
 
     // Result of the listener reconciliation with the listener details
     /* test */ KafkaListenersReconciler.ReconciliationResult listenerReconciliationResults;
@@ -253,7 +251,7 @@ public class KafkaReconciler {
      */
     public Future<Void> reconcile(KafkaStatus kafkaStatus, Clock clock)    {
         return modelWarnings(kafkaStatus)
-                .compose(i -> initAdminClientKeyStoreTrustStore())
+                .compose(i -> initAuth())
                 .compose(i -> brokerScaleDownCheck())
                 .compose(i -> manualPodCleaning())
                 .compose(i -> networkPolicy())
@@ -288,7 +286,7 @@ public class KafkaReconciler {
         if (skipBrokerScaleDownCheck || kafka.removedNodes().isEmpty()) {
             return Future.succeededFuture();
         } else {
-            return brokerScaleDownOperations.canScaleDownBrokers(reconciliation, vertx, kafka.removedNodes(), this.pemTrustStoreSupplier, this.pemKeyStoreSupplier, adminClientProvider)
+            return brokerScaleDownOperations.canScaleDownBrokers(reconciliation, vertx, kafka.removedNodes(), this.pemTrustSet, this.pemAuthIdentity, adminClientProvider)
                     .compose(brokersContainingPartitions -> {
                         if (!brokersContainingPartitions.isEmpty()) {
                             throw new InvalidResourceException("Cannot scale down brokers " + kafka.removedNodes() + " because brokers " + brokersContainingPartitions + " are not empty");
@@ -316,15 +314,15 @@ public class KafkaReconciler {
     }
 
     /**
-     * Initialize the TrustStore and KeyStore suppliers to be used by admin clients during reconciliation
+     * Initialize the TrustSet and PemAuthIdentity to be used by admin clients during reconciliation
      *
-     * @return Completes when the TrustStore and KeyStore suppliers have been created
+     * @return Completes when the TrustStore and PemAuthIdentity have been created
      */
-    protected Future<Void> initAdminClientKeyStoreTrustStore() {
-        return ReconcilerUtils.clientSecrets(reconciliation, secretOperator)
+    protected Future<Void> initAuth() {
+        return ReconcilerUtils.pemAuthIdentities(reconciliation, secretOperator)
                 .compose(res -> {
-                    this.pemTrustStoreSupplier = new ClusterCaTrustStoreSupplier(res.resultAt(0));
-                    this.pemKeyStoreSupplier = new ClusterOperatorKeyStoreSupplier(res.resultAt(1));
+                    this.pemTrustSet = res.resultAt(0);
+                    this.pemAuthIdentity = res.resultAt(1);
                     return Future.succeededFuture();
                 });
     }
@@ -477,8 +475,8 @@ public class KafkaReconciler {
                     operationTimeoutMs,
                     () -> new BackOff(250, 2, 10),
                     nodes,
-                    this.pemTrustStoreSupplier,
-                    this.pemKeyStoreSupplier,
+                    this.pemTrustSet,
+                    this.pemAuthIdentity,
                     adminClientProvider,
                     brokerId -> kafka.generatePerBrokerConfiguration(brokerId, kafkaAdvertisedHostnames, kafkaAdvertisedPorts),
                     logging,
@@ -914,7 +912,7 @@ public class KafkaReconciler {
                     try {
                         String bootstrapHostname = KafkaResources.bootstrapServiceName(reconciliation.name()) + "." + reconciliation.namespace() + ".svc:" + KafkaCluster.REPLICATION_PORT;
                         LOGGER.debugCr(reconciliation, "Creating AdminClient for clusterId using {}", bootstrapHostname);
-                        kafkaAdmin = adminClientProvider.createAdminClient(bootstrapHostname, this.pemTrustStoreSupplier, this.pemKeyStoreSupplier);
+                        kafkaAdmin = adminClientProvider.createAdminClient(bootstrapHostname, this.pemTrustSet, this.pemAuthIdentity);
                         kafkaStatus.setClusterId(kafkaAdmin.describeCluster().clusterId().get());
                     } catch (KafkaException e) {
                         LOGGER.warnCr(reconciliation, "Kafka exception getting clusterId {}", e.getMessage());
@@ -942,8 +940,8 @@ public class KafkaReconciler {
             return KRaftMetadataManager.maybeUpdateMetadataVersion(
                         reconciliation,
                         vertx,
-                        this.pemTrustStoreSupplier,
-                        this.pemKeyStoreSupplier,
+                        this.pemTrustSet,
+                        this.pemAuthIdentity,
                         adminClientProvider,
                         kafka.getMetadataVersion(),
                         kafkaStatus

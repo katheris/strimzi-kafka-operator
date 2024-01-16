@@ -10,8 +10,8 @@ import io.strimzi.operator.common.AdminClientProvider;
 import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.ReconciliationLogger;
 import io.strimzi.operator.common.VertxUtil;
-import io.strimzi.operator.common.model.PemKeyStoreSupplier;
-import io.strimzi.operator.common.model.PemTrustStoreSupplier;
+import io.strimzi.operator.common.model.PemAuthIdentity;
+import io.strimzi.operator.common.model.PemTrustSet;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
@@ -40,14 +40,14 @@ public class PreventBrokerScaleDownCheck {
      * @param reconciliation      Reconciliation marker
      * @param vertx               Vert.x instance
      * @param idsToBeRemoved      Ids to be removed
-     * @param pemTrustStoreSupplier     PEM TrustStore supplier for connecting to the Kafka cluster
-     * @param pemKeyStoreSupplier       PEM KeyStore supplier for connecting to the Kafka cluster
+     * @param pemTrustSet         Trust set for connecting to the Kafka cluster
+     * @param pemAuthIdentity     Identity for TLS client authentication for connecting to the Kafka cluster
      * @param adminClientProvider Used to create the Admin client instance
      * @return returns future set of node ids containing partition replicas based on the outcome of the check
      */
     public Future<Set<Integer>> canScaleDownBrokers(Reconciliation reconciliation, Vertx vertx,
-                                                    Set<Integer> idsToBeRemoved, PemTrustStoreSupplier pemTrustStoreSupplier,
-                                                    PemKeyStoreSupplier pemKeyStoreSupplier, AdminClientProvider adminClientProvider) {
+                                                    Set<Integer> idsToBeRemoved, PemTrustSet pemTrustSet,
+                                                    PemAuthIdentity pemAuthIdentity, AdminClientProvider adminClientProvider) {
 
         Promise<Set<Integer>> cannotScaleDown = Promise.promise();
 
@@ -55,7 +55,7 @@ public class PreventBrokerScaleDownCheck {
         try {
             String bootstrapHostname = KafkaResources.bootstrapServiceName(reconciliation.name()) + "." + reconciliation.namespace() + ".svc:" + KafkaCluster.REPLICATION_PORT;
             LOGGER.debugCr(reconciliation, "Creating AdminClient for Kafka cluster in namespace {}", reconciliation.namespace());
-            Admin kafkaAdmin = adminClientProvider.createAdminClient(bootstrapHostname, pemTrustStoreSupplier, pemKeyStoreSupplier);
+            Admin kafkaAdmin = adminClientProvider.createAdminClient(bootstrapHostname, pemTrustSet, pemAuthIdentity);
 
             Future<Set<String>> topicNames = topicNames(reconciliation, vertx, kafkaAdmin);
             descriptions = topicNames.compose(names -> describeTopics(reconciliation, vertx, kafkaAdmin, names));

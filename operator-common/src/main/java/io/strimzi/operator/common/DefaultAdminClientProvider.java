@@ -4,8 +4,8 @@
  */
 package io.strimzi.operator.common;
 
-import io.strimzi.operator.common.model.PemKeyStoreSupplier;
-import io.strimzi.operator.common.model.PemTrustStoreSupplier;
+import io.strimzi.operator.common.model.PemAuthIdentity;
+import io.strimzi.operator.common.model.PemTrustSet;
 import org.apache.kafka.clients.admin.Admin;
 import org.apache.kafka.clients.admin.AdminClientConfig;
 import org.apache.kafka.common.config.SslConfigs;
@@ -17,8 +17,8 @@ import java.util.Properties;
  */
 public class DefaultAdminClientProvider implements AdminClientProvider {
     @Override
-    public Admin createAdminClient(String bootstrapHostnames, PemTrustStoreSupplier pemTrustStoreSupplier, PemKeyStoreSupplier pemKeyStoreSupplier) {
-        return createAdminClient(bootstrapHostnames, pemTrustStoreSupplier, pemKeyStoreSupplier, new Properties());
+    public Admin createAdminClient(String bootstrapHostnames, PemTrustSet pemTrustSet, PemAuthIdentity pemAuthIdentity) {
+        return createAdminClient(bootstrapHostnames, pemTrustSet, pemAuthIdentity, new Properties());
     }
 
     /**
@@ -43,10 +43,10 @@ public class DefaultAdminClientProvider implements AdminClientProvider {
      * TLS encrypted connection and with TLS client authentication.
      */
     @Override
-    public Admin createAdminClient(String bootstrapHostnames, PemTrustStoreSupplier pemTrustStoreSupplier, PemKeyStoreSupplier pemKeyStoreSupplier, Properties config) {
-        String trustedCertificates = pemTrustStoreSupplier.pemTrustedCertificates();
-        String privateKey = pemKeyStoreSupplier.pemPrivateKey();
-        String certificateChain = pemKeyStoreSupplier.pemCertificateChain();
+    public Admin createAdminClient(String bootstrapHostnames, PemTrustSet pemTrustSet, PemAuthIdentity pemAuthIdentity, Properties config) {
+        String trustedCertificates = pemTrustSet.trustedCertificatesString();
+        String privateKey = pemAuthIdentity.pemPrivateKeyString();
+        String certificateChain = pemAuthIdentity.pemCertificateChainString();
 
         config.setProperty(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapHostnames);
 

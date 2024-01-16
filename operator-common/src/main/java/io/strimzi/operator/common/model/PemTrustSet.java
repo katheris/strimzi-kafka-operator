@@ -1,0 +1,105 @@
+/*
+ * Copyright Strimzi authors.
+ * License: Apache License 2.0 (see the file LICENSE or http://apache.org/licenses/LICENSE-2.0.html).
+ */
+package io.strimzi.operator.common.model;
+
+import io.fabric8.kubernetes.api.model.Secret;
+import io.strimzi.operator.common.Util;
+
+import java.nio.charset.StandardCharsets;
+import java.security.cert.CertificateException;
+import java.security.cert.X509Certificate;
+import java.util.Base64;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+/**
+ * Class to represent the set of trusted certificates used by TLS clients
+ */
+public class PemTrustSet {
+    private static String CERT_SUFFIX = ".crt";
+
+    private final Set<X509Certificate> trustedCertificates;
+    private final Map<String, byte[]> trustedCertificateMap;
+    private String secretName;
+    private String secretNamespace;
+
+    /**
+     * Constructs the PemTrustSet. This also validates the provided Secret contains valid certificates.
+     * @param secret Kubernetes Secret containing the trusted certificates
+     */
+    public PemTrustSet(Secret secret) {
+        if (secret == null || secret.getData() == null) {
+            throw new RuntimeException("Cannot extract trust set from null secret");
+        }
+        Optional.of(secret)
+                .map(Secret::getMetadata)
+                .ifPresent(objectMeta -> {
+                    secretName = objectMeta.getName();
+                    secretNamespace = objectMeta.getNamespace();
+                });
+        trustedCertificateMap = extractCerts(secret);
+        trustedCertificates = validateCertificates();
+    }
+
+    /**
+     * @return The set of trusted certificates as X509Certificate objects
+     */
+    public Set<X509Certificate> trustedCertificates() {
+        return trustedCertificates;
+    }
+
+    /**
+     * @return The set of trusted certificates as byte arrays
+     */
+    public Set<byte[]> trustedCertificatesBytes() {
+        return new HashSet<>(trustedCertificateMap.values());
+    }
+
+    /**
+     * @return The set of trusted certificates as a concatenated String
+     */
+    public String trustedCertificatesString() {
+        return trustedCertificateMap.values()
+                .stream()
+                .map(bytes -> new String(bytes, StandardCharsets.US_ASCII))
+                .collect(Collectors.joining("\n"));
+    }
+
+    /**
+     * Validate the set of certificates in this PemTrustSet.
+     */
+    private Set<X509Certificate> validateCertificates() {
+        return trustedCertificateMap.entrySet()
+                .stream()
+                .map(entry -> {
+                    try {
+                        return Ca.x509Certificate(entry.getValue());
+                    } catch (CertificateException e) {
+                        String key = entry.getKey();
+                        throw Util.corruptCertificateException(secretNamespace, secretName, key.substring(0, key.length() - CERT_SUFFIX.length()));
+                    }
+                }).collect(Collectors.toSet());
+    }
+
+    /**
+     * Extract of all public keys (all .crt records) from a secret.
+     */
+    private static Map<String, byte[]> extractCerts(Secret secret)  {
+        Base64.Decoder decoder = Base64.getDecoder();
+
+        return secret
+                .getData()
+                .entrySet()
+                .stream()
+                .filter(record -> record.getKey().endsWith(CERT_SUFFIX))
+                .collect(Collectors.toMap(
+                        Map.Entry::getKey,
+                        entry -> decoder.decode(entry.getValue()))
+                );
+    }
+}
