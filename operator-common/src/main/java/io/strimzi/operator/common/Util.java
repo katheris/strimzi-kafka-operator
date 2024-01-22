@@ -13,21 +13,13 @@ import io.strimzi.operator.common.model.OrderedProperties;
 import org.apache.kafka.common.config.ConfigResource;
 import org.quartz.CronExpression;
 
-import java.io.BufferedOutputStream;
-import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.OutputStream;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.KeyStore;
-import java.security.KeyStoreException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.security.cert.CertificateException;
-import java.security.cert.X509Certificate;
 import java.text.ParseException;
 import java.time.Instant;
 import java.util.Base64;
@@ -36,7 +28,6 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.StringTokenizer;
 import java.util.TimeZone;
 import java.util.TreeMap;
@@ -129,32 +120,6 @@ public class Util {
     }
 
     /**
-     * Create a file with Keystore or Truststore from the given {@code bytes}.
-     * The file will be set to get deleted when the JVM exist.
-     *
-     * @param prefix    Prefix which will be used for the filename
-     * @param suffix    Suffix which will be used for the filename
-     * @param bytes     Byte array with the certificate store
-     * @return          File with the certificate store
-     */
-    public static File createFileStore(String prefix, String suffix, byte[] bytes) {
-        File f = null;
-        try {
-            f = Files.createTempFile(prefix, suffix).toFile();
-            f.deleteOnExit();
-            try (OutputStream os = new BufferedOutputStream(new FileOutputStream(f))) {
-                os.write(bytes);
-            }
-            return f;
-        } catch (IOException e) {
-            if (f != null && !f.delete()) {
-                LOGGER.warnOp("Failed to delete temporary file in exception handler");
-            }
-            throw new RuntimeException(e);
-        }
-    }
-
-    /**
      * Decode binary item from Kubernetes Secret from base64 into byte array
      *
      * @param secret    Kubernetes Secret
@@ -163,65 +128,6 @@ public class Util {
      */
     public static byte[] decodeFromSecret(Secret secret, String key) {
         return Base64.getDecoder().decode(secret.getData().get(key));
-    }
-
-    /**
-     * Decode the binary item in a Kubernetes Secret, which holds a private key in PEM format, from base64 to a byte array.
-     * Before decoding it into byte array, it removes the PEM header and footer.
-     * @param secret    Kubernetes Secret
-     * @param key       Key which should be retrieved and decoded
-     * @return          Decoded bytes
-     */
-    public static byte[] decodePemPrivateKeyFromSecret(Secret secret, String key) {
-        String privateKey = new String(decodeFromSecret(secret, key), StandardCharsets.UTF_8)
-                .replace("-----BEGIN PRIVATE KEY-----", "")
-                .replaceAll(System.lineSeparator(), "")
-                .replace("-----END PRIVATE KEY-----", "");
-        return Base64.getDecoder().decode(privateKey);
-    }
-
-    /**
-     * Create a Truststore file containing the given {@code certificate} and protected with {@code password}.
-     * The file will be set to get deleted when the JVM exist.
-     *
-     * @param prefix Prefix which will be used for the filename
-     * @param suffix Suffix which will be used for the filename
-     * @param certificates X509 certificates to put inside the Truststore
-     * @param password Password protecting the Truststore
-     * @return File with the Truststore
-     */
-    public static File createFileTrustStore(String prefix, String suffix, Set<X509Certificate> certificates, char[] password) {
-        try {
-            KeyStore trustStore = KeyStore.getInstance("PKCS12");
-            trustStore.load(null, password);
-
-            int aliasIndex = 0;
-            for (X509Certificate certificate : certificates) {
-                trustStore.setEntry(certificate.getSubjectX500Principal().getName() + "-" + aliasIndex, new KeyStore.TrustedCertificateEntry(certificate), null);
-                aliasIndex++;
-            }
-
-            return store(prefix, suffix, trustStore, password);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    private static File store(String prefix, String suffix, KeyStore trustStore, char[] password) throws Exception {
-        File f = null;
-        try {
-            f = Files.createTempFile(prefix, suffix).toFile();
-            f.deleteOnExit();
-            try (OutputStream os = new BufferedOutputStream(new FileOutputStream(f))) {
-                trustStore.store(os, password);
-            }
-            return f;
-        } catch (IOException | KeyStoreException | NoSuchAlgorithmException | CertificateException | RuntimeException e) {
-            if (f != null && !f.delete()) {
-                LOGGER.warnOp("Failed to delete temporary file in exception handler");
-            }
-            throw e;
-        }
     }
 
     /**

@@ -8,10 +8,12 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.strimzi.api.kafka.model.kafka.KafkaResources;
+import io.strimzi.operator.cluster.model.CertUtils;
 import io.strimzi.operator.cluster.model.DnsNameGenerator;
 import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.ReconciliationLogger;
 import io.strimzi.operator.common.Util;
+import io.strimzi.operator.common.model.Ca;
 
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
@@ -78,11 +80,11 @@ class KafkaAgentClient {
         try {
             String trustManagerFactoryAlgorithm = TrustManagerFactory.getDefaultAlgorithm();
             TrustManagerFactory trustManagerFactory = TrustManagerFactory.getInstance(trustManagerFactoryAlgorithm);
-            trustManagerFactory.init(getTrustStore());
+            trustManagerFactory.init(CertUtils.getTrustStore(CertUtils.KEYSTORE_TYPE_JKS, Ca.certs(clusterCaCertSecret), KEYSTORE_PASSWORD));
 
             String keyManagerFactoryAlgorithm = KeyManagerFactory.getDefaultAlgorithm();
             KeyManagerFactory keyManagerFactory = KeyManagerFactory.getInstance(keyManagerFactoryAlgorithm);
-            keyManagerFactory.init(getKeyStore(), KEYSTORE_PASSWORD);
+            keyManagerFactory.init(CertUtils.getKeyStore(CertUtils.KEYSTORE_TYPE_JKS, coKeySecret, KEYSTORE_PASSWORD), KEYSTORE_PASSWORD);
 
             SSLContext sslContext = SSLContext.getInstance("TLS");
             sslContext.init(keyManagerFactory.getKeyManagers(), trustManagerFactory.getTrustManagers(), null);
@@ -90,36 +92,9 @@ class KafkaAgentClient {
             return HttpClient.newBuilder()
                     .sslContext(sslContext)
                     .build();
-        } catch (GeneralSecurityException | IOException e) {
+        } catch (GeneralSecurityException e) {
             throw new RuntimeException("Failed to configure HTTP client", e);
         }
-    }
-
-    private KeyStore getTrustStore() throws CertificateException, KeyStoreException, IOException, NoSuchAlgorithmException {
-        final CertificateFactory caCertFactory = CertificateFactory.getInstance(CERT_TYPE_X509);
-        final Certificate caCert = caCertFactory.generateCertificate(new ByteArrayInputStream(
-                Util.decodeFromSecret(clusterCaCertSecret, "ca.crt")));
-        KeyStore trustStore = KeyStore.getInstance(KEYSTORE_TYPE_JKS);
-        trustStore.load(null);
-        trustStore.setCertificateEntry("ca", caCert);
-        return trustStore;
-    }
-
-    private KeyStore getKeyStore() throws KeyStoreException, CertificateException, NoSuchAlgorithmException, InvalidKeySpecException, IOException {
-        final CertificateFactory coCertFactory = CertificateFactory.getInstance(CERT_TYPE_X509);
-        final Certificate coCert = coCertFactory.generateCertificate(new ByteArrayInputStream(
-                Util.decodeFromSecret(coKeySecret, "cluster-operator.crt")));
-
-        byte[] decodedKey = Util.decodePemPrivateKeyFromSecret(coKeySecret, "cluster-operator.key");
-        PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(decodedKey);
-        final KeyFactory keyFactory = KeyFactory.getInstance("RSA");
-        final PrivateKey key = keyFactory.generatePrivate(keySpec);
-
-        KeyStore coKeyStore = KeyStore.getInstance(KEYSTORE_TYPE_JKS);
-        coKeyStore.load(null);
-        coKeyStore.setKeyEntry("cluster-operator", key, KEYSTORE_PASSWORD, new Certificate[]{coCert});
-
-        return coKeyStore;
     }
 
     String doGet(URI uri) {

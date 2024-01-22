@@ -13,15 +13,33 @@ import io.strimzi.operator.common.Util;
 import io.strimzi.operator.common.model.Ca;
 import io.strimzi.operator.common.model.Labels;
 
+import java.io.BufferedOutputStream;
+import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.security.KeyFactory;
+import java.security.KeyStore;
+import java.security.KeyStoreException;
+import java.security.NoSuchAlgorithmException;
+import java.security.PrivateKey;
+import java.security.cert.Certificate;
 import java.security.cert.CertificateEncodingException;
+import java.security.cert.CertificateException;
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
+import java.security.spec.InvalidKeySpecException;
+import java.security.spec.PKCS8EncodedKeySpec;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static java.util.Collections.emptyMap;
 
@@ -30,6 +48,9 @@ import static java.util.Collections.emptyMap;
  */
 public class CertUtils {
     protected static final ReconciliationLogger LOGGER = ReconciliationLogger.create(CertUtils.class.getName());
+    private static final String CERT_TYPE_X509 = "X.509";
+    public static final String KEYSTORE_TYPE_JKS = "JKS";
+    public static final String KEYSTORE_TYPE_PKCS12 = "PKCS12";
 
     /**
      * Generates a short SHA1-hash (a hash stub) of the certificate which is used to track when the certificate changes and rolling update needs to be triggered.
@@ -200,5 +221,96 @@ public class CertUtils {
         }
 
         return false;
+    }
+
+    /**
+     * Get a Truststore containing the given {@code certificate} and protected with {@code password}.
+     *
+     * @param type Type, e.g. PKCS12 or JKS
+     * @param certificates X509 certificates to put inside the Truststore
+     * @param password Password protecting the Truststore
+     * @return File with the Truststore
+     */
+    public static KeyStore getTrustStore(String type, Set<X509Certificate> certificates, char[] password) {
+        try {
+            KeyStore trustStore = KeyStore.getInstance(type);
+            trustStore.load(null, password);
+
+            int aliasIndex = 0;
+            for (X509Certificate certificate : certificates) {
+                trustStore.setEntry(certificate.getSubjectX500Principal().getName() + "-" + aliasIndex, new KeyStore.TrustedCertificateEntry(certificate), null);
+                aliasIndex++;
+            }
+            return trustStore;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    /**
+     * Get a Cluster Operator KeyStore from the provided Secret.
+     *
+     * @param type Type, e.g. PKCS12 or JKS
+     * @param secret Kubernetes Secret containing the certificate chain and private key
+     * @param password Password protecting the Truststore
+     * @return File with the KeyStore
+     */
+    public static KeyStore getKeyStore(String type, Secret secret, char[] password) {
+        try {
+            final CertificateFactory coCertFactory = CertificateFactory.getInstance(CERT_TYPE_X509);
+            final Certificate coCert = coCertFactory.generateCertificate(new ByteArrayInputStream(Util.decodeFromSecret(secret, "cluster-operator.crt")));
+            PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(decodePemPrivateKeyFromSecret(secret, "cluster-operator.key"));
+            final KeyFactory keyFactory = KeyFactory.getInstance("RSA");
+            final PrivateKey privateKey = keyFactory.generatePrivate(keySpec);
+
+            KeyStore coKeyStore = KeyStore.getInstance(type);
+            coKeyStore.load(null);
+            coKeyStore.setKeyEntry("cluster-operator", privateKey, password, new Certificate[]{coCert});
+            return coKeyStore;
+        } catch (KeyStoreException | CertificateException | NoSuchAlgorithmException | InvalidKeySpecException | IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    /**
+     * Create a file for the given KeyStore or TrustStore.
+     * The file will be set to get deleted when the JVM exist.
+     *
+     * @param prefix Prefix which will be used for the filename
+     * @param suffix Suffix which will be used for the filename
+     * @param keyStore KeyStore to store
+     * @param password Password protecting the Truststore
+     * @return File with the certificate store
+     */
+    public static File createFileStore(String prefix, String suffix, KeyStore keyStore, char[] password) {
+        File f = null;
+        try {
+            f = Files.createTempFile(prefix, suffix).toFile();
+            f.deleteOnExit();
+            try (OutputStream os = new BufferedOutputStream(new FileOutputStream(f))) {
+                keyStore.store(os, password);
+            }
+            return f;
+        } catch (IOException | KeyStoreException | NoSuchAlgorithmException | CertificateException | RuntimeException e) {
+            if (f != null && !f.delete()) {
+                LOGGER.warnOp("Failed to delete temporary file in exception handler");
+            }
+            throw new RuntimeException(e);
+        }
+    }
+
+    /**
+     * Decode the binary item in a Kubernetes Secret, which holds a private key in PEM format, from base64 to a byte array.
+     * Before decoding it into byte array, it removes the PEM header and footer.
+     * @param secret    Kubernetes Secret
+     * @param key       Key which should be retrieved and decoded
+     * @return          Decoded bytes
+     */
+    private static byte[] decodePemPrivateKeyFromSecret(Secret secret, String key) {
+        String privateKey = new String(Util.decodeFromSecret(secret, key), StandardCharsets.UTF_8)
+                .replace("-----BEGIN PRIVATE KEY-----", "")
+                .replaceAll(System.lineSeparator(), "")
+                .replace("-----END PRIVATE KEY-----", "");
+        return Base64.getDecoder().decode(privateKey);
     }
 }

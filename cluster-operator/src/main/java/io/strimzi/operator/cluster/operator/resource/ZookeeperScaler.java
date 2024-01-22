@@ -5,6 +5,7 @@
 package io.strimzi.operator.cluster.operator.resource;
 
 import io.fabric8.kubernetes.api.model.Secret;
+import io.strimzi.operator.cluster.model.CertUtils;
 import io.strimzi.operator.cluster.model.ZookeeperCluster;
 import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.ReconciliationLogger;
@@ -22,6 +23,7 @@ import org.apache.zookeeper.client.ZKClientConfig;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.security.KeyStore;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -81,14 +83,16 @@ public class ZookeeperScaler implements AutoCloseable {
         this.zkAdminSessionTimeoutMs = zkAdminSessionTimeoutMs;
 
         // Setup truststore from PEM file in cluster CA secret
-        // We cannot use P12 because of custom CAs which for simplicity provide only PEM
         PasswordGenerator pg = new PasswordGenerator(12);
         trustStorePassword = pg.generate();
-        trustStoreFile = Util.createFileTrustStore(getClass().getName(), "p12", Ca.certs(clusterCaCertSecret), trustStorePassword.toCharArray());
+        KeyStore trustStore = CertUtils.getTrustStore(CertUtils.KEYSTORE_TYPE_PKCS12, Ca.certs(clusterCaCertSecret), trustStorePassword.toCharArray());
+        trustStoreFile = CertUtils.createFileStore(getClass().getName(), "p12", trustStore, trustStorePassword.toCharArray());
 
-        // Setup keystore from PKCS12 in cluster-operator secret
-        keyStorePassword = new String(Util.decodeFromSecret(coKeySecret, "cluster-operator.password"), StandardCharsets.US_ASCII);
-        keyStoreFile = Util.createFileStore(getClass().getName(), "p12", Util.decodeFromSecret(coKeySecret, "cluster-operator.p12"));
+        // Setup keystore from PEM file in cluster-operator secret
+        keyStorePassword = pg.generate();
+        KeyStore keyStore = CertUtils.getKeyStore(CertUtils.KEYSTORE_TYPE_PKCS12, coKeySecret, keyStorePassword.toCharArray());
+
+        keyStoreFile = CertUtils.createFileStore(getClass().getName(), "p12", keyStore, keyStorePassword.toCharArray());
     }
 
     /**
