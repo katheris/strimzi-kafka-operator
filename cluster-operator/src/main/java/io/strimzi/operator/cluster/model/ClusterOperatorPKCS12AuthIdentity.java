@@ -5,13 +5,13 @@
 package io.strimzi.operator.cluster.model;
 
 import io.fabric8.kubernetes.api.model.Secret;
-import io.strimzi.operator.common.model.AbstractAuthIdentity;
+import io.strimzi.operator.common.Util;
 
 /**
- * Class to represent the identity used byt the cluster operator during TLS client authentication in the PKCS12 format.
+ * Represents the identity used by the cluster operator during TLS client authentication in the PKCS12 format.
  * Can be used by clients that are unable to use the PEM format provided by PemAuthIdentity.
  */
-public class ClusterOperatorPKCS12AuthIdentity extends AbstractAuthIdentity {
+public class ClusterOperatorPKCS12AuthIdentity {
     private static final String SECRET_KEY = "cluster-operator";
     private final byte[] keyStore;
     private final String password;
@@ -21,8 +21,8 @@ public class ClusterOperatorPKCS12AuthIdentity extends AbstractAuthIdentity {
      * @param secret Kubernetes Secret containing the client authentication identity
      */
     public ClusterOperatorPKCS12AuthIdentity(Secret secret) {
-        keyStore = AbstractAuthIdentity.extractPKCS12KeyStore(secret, SECRET_KEY);
-        password = AbstractAuthIdentity.extractPKCS12Password(secret, SECRET_KEY);
+        keyStore = Util.decodeFromSecret(secret, String.format("%s.p12", SECRET_KEY));
+        password = Util.decodeFromSecretAsString(secret, String.format("%s.password", SECRET_KEY));
     }
 
     /**

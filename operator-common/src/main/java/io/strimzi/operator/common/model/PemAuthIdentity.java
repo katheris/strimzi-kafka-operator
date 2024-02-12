@@ -14,10 +14,10 @@ import java.security.cert.X509Certificate;
 import java.util.Optional;
 
 /**
- * Represents the identity used during TLS client authentication in the PEM format.
+ * Represents the identity used during TLS client authentication.
  * This consists of an X509 end entity certificate, corresponding private key, and a chain of X509 CA certificates, all in PEM format.
  */
-public class PemAuthIdentity extends AbstractAuthIdentity {
+public class PemAuthIdentity {
 
     private final byte[] pemPrivateKey;
     private final byte[] pemCertificateChainBytes;
@@ -36,8 +36,8 @@ public class PemAuthIdentity extends AbstractAuthIdentity {
                     secretName = objectMeta.getName();
                     secretNamespace = objectMeta.getNamespace();
                 });
-        pemPrivateKey = AbstractAuthIdentity.extractPemPrivateKey(secret, secretKey);
-        pemCertificateChainBytes = AbstractAuthIdentity.extractPemCertificateChain(secret, secretKey);
+        pemPrivateKey = Util.decodeFromSecret(secret, String.format("%s.key", secretKey));
+        pemCertificateChainBytes = Util.decodeFromSecret(secret, String.format("%s.crt", secretKey));
         pemCertificateChain = validateCertificateChain(secretKey);
     }
 
@@ -85,7 +85,7 @@ public class PemAuthIdentity extends AbstractAuthIdentity {
      * @return The certificate chain for this authentication identity as a String
      */
     public String pemCertificateChainString() {
-        return AbstractAuthIdentity.asString(pemCertificateChainBytes);
+        return Util.decodeToString(pemCertificateChainBytes);
     }
 
     /**
@@ -99,7 +99,7 @@ public class PemAuthIdentity extends AbstractAuthIdentity {
      * @return The private key for this authentication identity as a String
      */
     public String pemPrivateKeyString() {
-        return AbstractAuthIdentity.asString(pemPrivateKey);
+        return Util.decodeToString(pemPrivateKey);
     }
 
     private X509Certificate validateCertificateChain(String secretKey) {

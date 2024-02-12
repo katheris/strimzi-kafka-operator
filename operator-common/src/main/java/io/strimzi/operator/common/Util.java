@@ -6,6 +6,7 @@ package io.strimzi.operator.common;
 
 import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.api.model.LabelSelector;
+import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.strimzi.operator.common.model.InvalidResourceException;
 import io.strimzi.operator.common.model.Labels;
@@ -36,6 +37,7 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.StringTokenizer;
 import java.util.TimeZone;
@@ -187,7 +189,32 @@ public class Util {
      * @return          Decoded bytes
      */
     public static byte[] decodeFromSecret(Secret secret, String key) {
-        return Base64.getDecoder().decode(secret.getData().get(key));
+        return Optional.ofNullable(secret)
+                .map(Secret::getData)
+                .map(data -> data.get(key))
+                .map(value -> Base64.getDecoder().decode(value))
+                .orElseThrow(() -> {
+                    String name = Optional.ofNullable(secret)
+                            .map(Secret::getMetadata)
+                            .map(ObjectMeta::getName)
+                            .orElse("unknown");
+                    String namespace = Optional.ofNullable(secret)
+                            .map(Secret::getMetadata)
+                            .map(ObjectMeta::getNamespace)
+                            .orElse("unknown");
+                    return Util.missingSecretKeyException(namespace, name, key);
+                });
+    }
+
+    /**
+     * Decode binary item from Kubernetes Secret from base64 into String
+     *
+     * @param secret    Kubernetes Secret
+     * @param key       Key which should be retrieved and decoded
+     * @return          Decoded String
+     */
+    public static String decodeFromSecretAsString(Secret secret, String key) {
+        return decodeToString(decodeFromSecret(secret, key));
     }
 
     /**
@@ -550,4 +577,14 @@ public class Util {
     public static String encodeToBase64(String encode)  {
         return Base64.getEncoder().encodeToString(encode.getBytes(StandardCharsets.US_ASCII));
     }
+
+    /**
+     * Decodes the provided byte array using the charset StandardCharsets.US_ASCII
+     * @param bytes Byte array to convert to String
+     * @return New String object containing the provided byte array
+     */
+    public static String decodeToString(byte[] bytes) {
+        return new String(bytes, StandardCharsets.US_ASCII);
+    }
+
 }
