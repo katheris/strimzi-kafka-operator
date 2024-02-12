@@ -8,19 +8,20 @@ import io.fabric8.kubernetes.api.model.Secret;
 import io.strimzi.operator.common.Util;
 
 import java.io.ByteArrayInputStream;
-import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
 import java.util.Optional;
 
 /**
- * Class to represent the identity used during TLS client authentication in the PEM format.
+ * Represents the identity used during TLS client authentication in the PEM format.
+ * This consists of an X509 end entity certificate, corresponding private key, and a chain of X509 CA certificates, all in PEM format.
  */
 public class PemAuthIdentity extends AbstractAuthIdentity {
 
     private final byte[] pemPrivateKey;
     private final byte[] pemCertificateChainBytes;
-    private final Certificate pemCertificateChain;
+    private final X509Certificate pemCertificateChain;
     private String secretName;
     private String secretNamespace;
 
@@ -67,9 +68,9 @@ public class PemAuthIdentity extends AbstractAuthIdentity {
     }
 
     /**
-     * @return The certificate chain for this authentication identity as a Certificate
+     * @return The certificate chain for this authentication identity as a X509Certificate
      */
-    public Certificate pemCertificateChain() {
+    public X509Certificate pemCertificateChain() {
         return pemCertificateChain;
     }
 
@@ -101,10 +102,10 @@ public class PemAuthIdentity extends AbstractAuthIdentity {
         return AbstractAuthIdentity.asString(pemPrivateKey);
     }
 
-    private Certificate validateCertificateChain(String secretKey) {
+    private X509Certificate validateCertificateChain(String secretKey) {
         try {
             final CertificateFactory certificateFactory = CertificateFactory.getInstance("X.509");
-            return certificateFactory.generateCertificate(new ByteArrayInputStream(pemCertificateChainBytes));
+            return (X509Certificate) certificateFactory.generateCertificate(new ByteArrayInputStream(pemCertificateChainBytes));
         } catch (CertificateException e) {
             throw Util.corruptCertificateException(secretNamespace, secretName, secretKey);
         }

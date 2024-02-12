@@ -18,7 +18,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * Class to represent the set of trusted certificates used by TLS clients
+ * Represents the set of certificates to be trusted by a TLS client or server
  */
 public class PemTrustSet {
     private static final String CERT_SUFFIX = ".crt";
@@ -43,7 +43,7 @@ public class PemTrustSet {
                     secretNamespace = objectMeta.getNamespace();
                 });
         trustedCertificateMap = extractCerts(secret);
-        trustedCertificates = new HashSet<>(validateCertificates().values());
+        trustedCertificates = new HashSet<>(asX509Certificates().values());
     }
 
     /**
@@ -71,9 +71,11 @@ public class PemTrustSet {
     }
 
     /**
-     * Validate the set of certificates in this PemTrustSet.
+     * Fetch the set of certificates in this PemTrustSet as X509Certificate objects.
+     * This also validates each entry is a valid certificate and throws an exception if it is not.
+     * @return The set of trusted certificates as X509Certificate.
      */
-    private Map<String, X509Certificate> validateCertificates() {
+    private Map<String, X509Certificate> asX509Certificates() {
         return trustedCertificateMap.entrySet()
                 .stream()
                 .collect(Collectors.toMap(
@@ -90,7 +92,7 @@ public class PemTrustSet {
     }
 
     /**
-     * Extract of all public keys (all .crt records) from a secret.
+     * Extract all public keys (all .crt records) from a secret.
      */
     private static Map<String, byte[]> extractCerts(Secret secret)  {
         Base64.Decoder decoder = Base64.getDecoder();
