@@ -48,8 +48,11 @@ import io.strimzi.operator.cluster.ClusterOperatorConfig.ClusterOperatorConfigBu
 import io.strimzi.operator.cluster.model.KafkaVersion;
 import io.strimzi.operator.cluster.model.MockSharedEnvironmentProvider;
 import io.strimzi.operator.cluster.operator.assembly.BrokersInUseCheck;
+import io.strimzi.operator.cluster.operator.resource.KafkaAdminOperatorSupplier;
+import io.strimzi.operator.cluster.operator.resource.KafkaAgentClient;
 import io.strimzi.operator.cluster.operator.resource.ResourceOperatorSupplier;
 import io.strimzi.operator.cluster.operator.resource.StatefulSetOperator;
+import io.strimzi.operator.cluster.operator.resource.ZookeeperAdminOperatorSupplier;
 import io.strimzi.operator.cluster.operator.resource.ZookeeperLeaderFinder;
 import io.strimzi.operator.cluster.operator.resource.ZookeeperScaler;
 import io.strimzi.operator.cluster.operator.resource.ZookeeperScalerProvider;
@@ -61,8 +64,6 @@ import io.strimzi.operator.common.MicrometerMetricsProvider;
 import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.model.Ca;
 import io.strimzi.operator.common.model.Labels;
-import io.strimzi.operator.common.model.PemAuthIdentity;
-import io.strimzi.operator.common.model.PemTrustSet;
 import io.strimzi.operator.common.operator.resource.BuildConfigOperator;
 import io.strimzi.operator.common.operator.resource.BuildOperator;
 import io.strimzi.operator.common.operator.resource.ClusterRoleBindingOperator;
@@ -465,7 +466,7 @@ public class ResourceUtils {
     }
 
     public static ZookeeperLeaderFinder zookeeperLeaderFinder(Vertx vertx, KubernetesClient client) {
-        return new ZookeeperLeaderFinder(vertx, () -> new BackOff(5_000, 2, 4)) {
+        return new ZookeeperLeaderFinder(vertx, () -> new BackOff(5_000, 2, 4), null, null) {
                 @Override
                 protected Future<Boolean> isLeader(Reconciliation reconciliation, String podName, NetClientOptions options) {
                     return Future.succeededFuture(true);
@@ -572,19 +573,19 @@ public class ResourceUtils {
     public static AdminClientProvider adminClientProvider(Admin mockAdminClient) {
         return new AdminClientProvider() {
             @Override
-            public Admin createAdminClient(String bootstrapHostnames, PemTrustSet pemTrustSet, PemAuthIdentity pemAuthIdentity) {
-                return createAdminClient(bootstrapHostnames, pemTrustSet, pemAuthIdentity, new Properties());
+            public Admin createAdminClient(String bootstrapHostnames) {
+                return createAdminClient(bootstrapHostnames, new Properties());
             }
 
             @Override
-            public Admin createAdminClient(String bootstrapHostnames, PemTrustSet pemTrustSet, PemAuthIdentity pemAuthIdentity, Properties config) {
+            public Admin createAdminClient(String bootstrapHostnames, Properties config) {
                 return mockAdminClient;
             }
         };
     }
 
     public static ZookeeperScalerProvider zookeeperScalerProvider() {
-        return (reconciliation, vertx, zookeeperConnectionString, zkNodeAddress, trustSet, clientAuthIdentity, operationTimeoutMs, zkAdminSessionTimoutMs) -> {
+        return (reconciliation, vertx, zookeeperConnectionString, zkNodeAddress, operationTimeoutMs, zkAdminSessionTimoutMs) -> {
             ZookeeperScaler mockZooScaler = mock(ZookeeperScaler.class);
             when(mockZooScaler.scale(anyInt())).thenReturn(Future.succeededFuture());
             return mockZooScaler;
@@ -630,13 +631,9 @@ public class ResourceUtils {
                 mock(StrimziPodSetOperator.class),
                 mock(StorageClassOperator.class),
                 mock(NodeOperator.class),
-                zookeeperScalerProvider(),
                 metricsProvider(),
-                adminClientProvider(),
-                mock(ZookeeperLeaderFinder.class),
                 mock(KubernetesRestartEventPublisher.class),
-                new MockSharedEnvironmentProvider(),
-                mock(BrokersInUseCheck.class));
+                new MockSharedEnvironmentProvider());
 
         when(supplier.secretOperations.getAsync(any(), any())).thenReturn(Future.succeededFuture());
         when(supplier.serviceAccountOperations.reconcile(any(), anyString(), anyString(), any())).thenReturn(Future.succeededFuture());
@@ -671,6 +668,19 @@ public class ResourceUtils {
                     .build());
 
         return supplier;
+    }
+
+    public static ZookeeperAdminOperatorSupplier zkSupplierWithMocks() {
+        return new ZookeeperAdminOperatorSupplier(
+                mock(ZookeeperLeaderFinder.class),
+                zookeeperScalerProvider());
+    }
+
+    public static KafkaAdminOperatorSupplier kafkaAdminSupplierWithMocks() {
+        return new KafkaAdminOperatorSupplier(
+                adminClientProvider(),
+                mock(KafkaAgentClient.class),
+                mock(BrokersInUseCheck.class));
     }
 
     public static ClusterOperatorConfig dummyClusterOperatorConfig() {

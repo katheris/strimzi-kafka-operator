@@ -24,6 +24,7 @@ import io.strimzi.operator.cluster.model.KafkaConfiguration;
 import io.strimzi.operator.cluster.model.KafkaVersion;
 import io.strimzi.operator.cluster.model.KafkaVersionChange;
 import io.strimzi.operator.cluster.model.PodSetUtils;
+import io.strimzi.operator.cluster.operator.resource.KafkaAdminOperatorSupplier;
 import io.strimzi.operator.cluster.operator.resource.ResourceOperatorSupplier;
 import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.model.ClientsCa;
@@ -135,6 +136,7 @@ public class KafkaReconcilerUpgradeDowngradeTest {
         KafkaVersionChange versionChange = new KafkaVersionChange(VERSIONS.defaultVersion(), VERSIONS.defaultVersion(), null, null, null);
 
         ResourceOperatorSupplier supplier = ResourceUtils.supplierWithMocks(false);
+        KafkaAdminOperatorSupplier kafkaAdminSupplier = ResourceUtils.kafkaAdminSupplierWithMocks();
 
         // Mock StrimziPodSet operations
         StrimziPodSetOperator mockSpsOps = supplier.strimziPodSetOperator;
@@ -147,6 +149,7 @@ public class KafkaReconcilerUpgradeDowngradeTest {
         KafkaReconciler reconciler = new MockKafkaReconciler(
                 new Reconciliation("test-trigger", Kafka.RESOURCE_KIND, NAMESPACE, CLUSTER_NAME),
                 supplier,
+                kafkaAdminSupplier,
                 kafka,
                 versionChange
         );
@@ -177,6 +180,7 @@ public class KafkaReconcilerUpgradeDowngradeTest {
         KafkaVersionChange versionChange = new KafkaVersionChange(VERSIONS.defaultVersion(), VERSIONS.defaultVersion(), VERSIONS.defaultVersion().protocolVersion(), VERSIONS.defaultVersion().messageVersion(), null);
 
         ResourceOperatorSupplier supplier = ResourceUtils.supplierWithMocks(false);
+        KafkaAdminOperatorSupplier kafkaAdminSupplier = ResourceUtils.kafkaAdminSupplierWithMocks();
 
         // Mock StrimziPodSet operations
         StrimziPodSetOperator mockSpsOps = supplier.strimziPodSetOperator;
@@ -189,6 +193,7 @@ public class KafkaReconcilerUpgradeDowngradeTest {
         KafkaReconciler reconciler = new MockKafkaReconciler(
                 new Reconciliation("test-trigger", Kafka.RESOURCE_KIND, NAMESPACE, CLUSTER_NAME),
                 supplier,
+                kafkaAdminSupplier,
                 KAFKA,
                 versionChange
         );
@@ -229,6 +234,7 @@ public class KafkaReconcilerUpgradeDowngradeTest {
         KafkaVersionChange versionChange = new KafkaVersionChange(VERSIONS.version(KafkaVersionTestUtils.PREVIOUS_KAFKA_VERSION), VERSIONS.defaultVersion(), KafkaVersionTestUtils.PREVIOUS_PROTOCOL_VERSION, KafkaVersionTestUtils.PREVIOUS_FORMAT_VERSION, null);
 
         ResourceOperatorSupplier supplier = ResourceUtils.supplierWithMocks(false);
+        KafkaAdminOperatorSupplier kafkaAdminSupplier = ResourceUtils.kafkaAdminSupplierWithMocks();
 
         // Mock StrimziPodSet operations
         StrimziPodSetOperator mockSpsOps = supplier.strimziPodSetOperator;
@@ -241,6 +247,7 @@ public class KafkaReconcilerUpgradeDowngradeTest {
         KafkaReconciler reconciler = new MockKafkaReconciler(
                 new Reconciliation("test-trigger", Kafka.RESOURCE_KIND, NAMESPACE, CLUSTER_NAME),
                 supplier,
+                kafkaAdminSupplier,
                 kafka,
                 versionChange
         );
@@ -267,8 +274,8 @@ public class KafkaReconcilerUpgradeDowngradeTest {
     }
 
     static class MockKafkaReconciler extends KafkaReconciler {
-        public MockKafkaReconciler(Reconciliation reconciliation, ResourceOperatorSupplier supplier, Kafka kafkaCr, KafkaVersionChange versionChange) {
-            super(reconciliation, kafkaCr, null, createKafkaCluster(reconciliation, supplier, kafkaCr, versionChange), CLUSTER_CA, CLIENTS_CA, CO_CONFIG, supplier, PFA, vertx);
+        public MockKafkaReconciler(Reconciliation reconciliation, ResourceOperatorSupplier supplier, KafkaAdminOperatorSupplier kafkaAdminSupplier, Kafka kafkaCr, KafkaVersionChange versionChange) {
+            super(reconciliation, kafkaCr, null, createKafkaCluster(reconciliation, supplier, kafkaCr, versionChange), CLUSTER_CA, CLIENTS_CA, CO_CONFIG, supplier, kafkaAdminSupplier, PFA, vertx);
             listenerReconciliationResults = new KafkaListenersReconciler.ReconciliationResult();
         }
 

@@ -38,7 +38,7 @@ import java.security.spec.PKCS8EncodedKeySpec;
 /**
  * Creates HTTP client and interacts with Kafka Agent's REST endpoint
  */
-class KafkaAgentClient {
+public class KafkaAgentClient {
 
     private static final ReconciliationLogger LOGGER = ReconciliationLogger.create(KafkaAgentClient.class.getName());
     private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -60,7 +60,6 @@ class KafkaAgentClient {
         this.namespace = namespace;
         this.pemTrustSet = pemTrustSet;
         this.pemAuthIdentity = pemAuthIdentity;
-        this.httpClient = createHttpClient();
     }
 
     /* test */ KafkaAgentClient(Reconciliation reconciliation, String cluster, String namespace) {
@@ -69,7 +68,12 @@ class KafkaAgentClient {
         this.cluster =  cluster;
     }
 
-    private HttpClient createHttpClient() {
+    /**
+     * Create Kafka Agent client
+     *
+     * @return the KafkaAgentClient class with a running Kafka Agent client
+     */
+    public KafkaAgentClient createClient() {
         if (pemTrustSet == null || pemAuthIdentity == null) {
             throw new RuntimeException("Missing cluster CA and operator certificates required to create connection to Kafka Agent");
         }
@@ -86,9 +90,10 @@ class KafkaAgentClient {
             SSLContext sslContext = SSLContext.getInstance("TLS");
             sslContext.init(keyManagerFactory.getKeyManagers(), trustManagerFactory.getTrustManagers(), null);
 
-            return HttpClient.newBuilder()
+            this.httpClient = HttpClient.newBuilder()
                     .sslContext(sslContext)
                     .build();
+            return this;
         } catch (GeneralSecurityException | IOException e) {
             throw new RuntimeException("Failed to configure HTTP client", e);
         }

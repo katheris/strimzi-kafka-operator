@@ -18,11 +18,7 @@ import io.strimzi.operator.cluster.KafkaVersionTestUtils;
 import io.strimzi.operator.cluster.PlatformFeaturesAvailability;
 import io.strimzi.operator.cluster.ResourceUtils;
 import io.strimzi.operator.cluster.model.KafkaVersion;
-import io.strimzi.operator.cluster.operator.resource.DefaultZookeeperScalerProvider;
 import io.strimzi.operator.cluster.operator.resource.ResourceOperatorSupplier;
-import io.strimzi.operator.cluster.operator.resource.ZookeeperLeaderFinder;
-import io.strimzi.operator.common.BackOff;
-import io.strimzi.operator.common.DefaultAdminClientProvider;
 import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.model.Labels;
 import io.strimzi.operator.common.model.OrderedProperties;
@@ -108,11 +104,6 @@ public class KafkaMirrorMaker2AssemblyOperatorMockTest {
         mockKube.start();
 
         supplier = new ResourceOperatorSupplier(vertx, client,
-                new ZookeeperLeaderFinder(vertx,
-                        // Retry up to 3 times (4 attempts), with overall max delay of 35000ms
-                        () -> new BackOff(5_000, 2, 4)),
-                new DefaultAdminClientProvider(),
-                new DefaultZookeeperScalerProvider(),
                 ResourceUtils.metricsProvider(),
                 PFA, 60_000L);
         podSetController = new StrimziPodSetController(NAMESPACE, Labels.EMPTY, supplier.kafkaOperator, supplier.connectOperator, supplier.mirrorMaker2Operator, supplier.strimziPodSetOperator, supplier.podOperations, supplier.metricsProvider, Integer.parseInt(ClusterOperatorConfig.POD_SET_CONTROLLER_WORK_QUEUE_SIZE.defaultValue()));

@@ -17,7 +17,6 @@ import io.strimzi.operator.cluster.ClusterOperatorConfig;
 import io.strimzi.operator.cluster.PlatformFeaturesAvailability;
 import io.strimzi.operator.cluster.model.CertUtils;
 import io.strimzi.operator.cluster.model.ClusterCa;
-import io.strimzi.operator.cluster.model.ClusterOperatorPKCS12AuthIdentity;
 import io.strimzi.operator.cluster.model.DnsNameGenerator;
 import io.strimzi.operator.cluster.model.ImagePullPolicy;
 import io.strimzi.operator.cluster.model.KafkaVersionChange;
@@ -25,6 +24,7 @@ import io.strimzi.operator.cluster.model.ZookeeperCluster;
 import io.strimzi.operator.cluster.operator.resource.ResourceOperatorSupplier;
 import io.strimzi.operator.cluster.operator.resource.StatefulSetOperator;
 import io.strimzi.operator.cluster.operator.resource.ZooKeeperRoller;
+import io.strimzi.operator.cluster.operator.resource.ZookeeperAdminOperatorSupplier;
 import io.strimzi.operator.cluster.operator.resource.ZookeeperLeaderFinder;
 import io.strimzi.operator.cluster.operator.resource.ZookeeperScaler;
 import io.strimzi.operator.cluster.operator.resource.ZookeeperScalerProvider;
@@ -34,8 +34,6 @@ import io.strimzi.operator.common.ReconciliationLogger;
 import io.strimzi.operator.common.Util;
 import io.strimzi.operator.common.model.Ca;
 import io.strimzi.operator.common.model.Labels;
-import io.strimzi.operator.common.model.PemAuthIdentity;
-import io.strimzi.operator.common.model.PemTrustSet;
 import io.strimzi.operator.common.operator.resource.ConfigMapOperator;
 import io.strimzi.operator.common.operator.resource.NetworkPolicyOperator;
 import io.strimzi.operator.common.operator.resource.PodDisruptionBudgetOperator;
@@ -111,9 +109,6 @@ public class ZooKeeperReconciler {
     private final Map<Integer, String> zkCertificateHash = new HashMap<>();
 
     private String loggingHash = "";
-    private PemTrustSet pemTrustSet;
-    private PemAuthIdentity pemAuthIdentity;
-    private ClusterOperatorPKCS12AuthIdentity pkcs12AuthIdentity;
 
     /**
      * Constructs the ZooKeeper reconciler
@@ -122,6 +117,7 @@ public class ZooKeeperReconciler {
      * @param vertx                     Vert.x instance
      * @param config                    Cluster Operator Configuration
      * @param supplier                  Supplier with Kubernetes Resource Operators
+     * @param adminSupplier             Supplier with ZooKeeper Clients
      * @param pfa                       PlatformFeaturesAvailability describing the environment we run in
      * @param kafkaAssembly             The Kafka custom resource
      * @param versionChange             Description of Kafka upgrade / downgrade state
@@ -134,6 +130,7 @@ public class ZooKeeperReconciler {
             Vertx vertx,
             ClusterOperatorConfig config,
             ResourceOperatorSupplier supplier,
+            ZookeeperAdminOperatorSupplier adminSupplier,
             PlatformFeaturesAvailability pfa,
             Kafka kafkaAssembly,
             KafkaVersionChange versionChange,
@@ -169,8 +166,8 @@ public class ZooKeeperReconciler {
         this.podDisruptionBudgetOperator = supplier.podDisruptionBudgetOperator;
         this.podOperator = supplier.podOperations;
 
-        this.zooScalerProvider = supplier.zkScalerProvider;
-        this.zooLeaderFinder = supplier.zookeeperLeaderFinder;
+        this.zooScalerProvider = adminSupplier.zkScalerProvider;
+        this.zooLeaderFinder = adminSupplier.zookeeperLeaderFinder;
     }
 
     /**
@@ -185,7 +182,6 @@ public class ZooKeeperReconciler {
      */
     public Future<Void> reconcile(KafkaStatus kafkaStatus, Clock clock)    {
         return modelWarnings(kafkaStatus)
-                .compose(i -> initClientAuthenticationCertificates())
                 .compose(i -> jmxSecret())
                 .compose(i -> manualPodCleaning())
                 .compose(i -> networkPolicy())
@@ -220,23 +216,6 @@ public class ZooKeeperReconciler {
     protected Future<Void> modelWarnings(KafkaStatus kafkaStatus) {
         kafkaStatus.addConditions(zk.getWarningConditions());
         return Future.succeededFuture();
-    }
-
-    /**
-     * Initialize the TrustSet, PemAuthIdentity and ClusterOperatorPKSC12AuthIdentity to be used by TLS clients during reconciliation
-     *
-     * @return Completes when the TrustSet, PemAuthIdentity and ClusterOperatorPKSC12AuthIdentity have been created
-     */
-    protected Future<Void> initClientAuthenticationCertificates() {
-        return Future.join(
-                ReconcilerUtils.pemTrustSet(reconciliation, secretOperator)
-                        .onSuccess(pemTrustSet -> this.pemTrustSet = pemTrustSet),
-                ReconcilerUtils.clientAuthIdentitySecret(reconciliation, secretOperator)
-                        .onSuccess(secret -> {
-                            this.pemAuthIdentity = PemAuthIdentity.clusterOperator(secret);
-                            this.pkcs12AuthIdentity = new ClusterOperatorPKCS12AuthIdentity(secret);
-                        }))
-                .mapEmpty();
     }
 
     /**
@@ -294,7 +273,7 @@ public class ZooKeeperReconciler {
                         return maybeRollZooKeeper(pod -> {
                             LOGGER.debugCr(reconciliation, "Rolling Zookeeper pod {} due to manual rolling update", pod.getMetadata().getName());
                             return singletonList("manual rolling update");
-                        }, pemTrustSet, pemAuthIdentity);
+                        });
                     } else {
                         // The StrimziPodSet does not exist or is not annotated
                         // But maybe the individual pods are annotated to restart only some of them.
@@ -327,7 +306,7 @@ public class ZooKeeperReconciler {
                             } else {
                                 return null;
                             }
-                        }, pemTrustSet, pemAuthIdentity);
+                        });
                     } else {
                         return Future.succeededFuture();
                     }
@@ -584,8 +563,6 @@ public class ZooKeeperReconciler {
                         vertx,
                         zkConnectionString(connectToReplicas, zkNodeAddress),
                         zkNodeAddress,
-                        pemTrustSet,
-                        pkcs12AuthIdentity,
                         operationTimeoutMs,
                         adminSessionTimeoutMs
                 );
@@ -688,9 +665,7 @@ public class ZooKeeperReconciler {
                         fsResizingRestartRequest,
                         ReconcilerUtils.trackedServerCertChanged(pod, zkCertificateHash),
                         clusterCa)
-                        .getAllReasonNotes(),
-                pemTrustSet,
-                pemAuthIdentity
+                        .getAllReasonNotes()
         );
     }
 
@@ -698,20 +673,16 @@ public class ZooKeeperReconciler {
      * Checks if the ZooKeeper cluster needs rolling and if it does, it will roll it.
      *
      * @param podNeedsRestart       Function to determine if the ZooKeeper pod needs to be restarted
-     * @param pemTrustSet           Trust set to use to connect to Zookeeper
-     * @param pemAuthIdentity       Cluster Operator auth identity in PEM format
      *
      * @return                      Future which completes when any of the ZooKeeper pods which need rolling is rolled
      */
-    /* test */ Future<Void> maybeRollZooKeeper(Function<Pod, List<String>> podNeedsRestart, PemTrustSet pemTrustSet, PemAuthIdentity pemAuthIdentity) {
+    /* test */ Future<Void> maybeRollZooKeeper(Function<Pod, List<String>> podNeedsRestart) {
         return new ZooKeeperRoller(podOperator, zooLeaderFinder, operationTimeoutMs)
                 .maybeRollingUpdate(
                         reconciliation,
                         currentReplicas > 0 && currentReplicas < zk.getReplicas() ? currentReplicas : zk.getReplicas(),
                         zk.getSelectorLabels(),
-                        podNeedsRestart,
-                        pemTrustSet,
-                        pemAuthIdentity
+                        podNeedsRestart
                 );
     }
 

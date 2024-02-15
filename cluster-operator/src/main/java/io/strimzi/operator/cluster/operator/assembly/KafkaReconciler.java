@@ -43,11 +43,11 @@ import io.strimzi.operator.cluster.model.PodSetUtils;
 import io.strimzi.operator.cluster.model.RestartReason;
 import io.strimzi.operator.cluster.model.RestartReasons;
 import io.strimzi.operator.cluster.operator.resource.ConcurrentDeletionException;
+import io.strimzi.operator.cluster.operator.resource.KafkaAdminOperatorSupplier;
 import io.strimzi.operator.cluster.operator.resource.KafkaRoller;
 import io.strimzi.operator.cluster.operator.resource.ResourceOperatorSupplier;
 import io.strimzi.operator.cluster.operator.resource.StatefulSetOperator;
 import io.strimzi.operator.cluster.operator.resource.events.KubernetesRestartEventPublisher;
-import io.strimzi.operator.common.AdminClientProvider;
 import io.strimzi.operator.common.Annotations;
 import io.strimzi.operator.common.BackOff;
 import io.strimzi.operator.common.Reconciliation;
@@ -57,8 +57,6 @@ import io.strimzi.operator.common.model.Ca;
 import io.strimzi.operator.common.model.ClientsCa;
 import io.strimzi.operator.common.model.Labels;
 import io.strimzi.operator.common.model.NodeUtils;
-import io.strimzi.operator.common.model.PemAuthIdentity;
-import io.strimzi.operator.common.model.PemTrustSet;
 import io.strimzi.operator.common.model.StatusDiff;
 import io.strimzi.operator.common.operator.resource.ClusterRoleBindingOperator;
 import io.strimzi.operator.common.operator.resource.ConfigMapOperator;
@@ -144,7 +142,7 @@ public class KafkaReconciler {
     private final NodeOperator nodeOperator;
     private final CrdOperator<KubernetesClient, KafkaNodePool, KafkaNodePoolList> kafkaNodePoolOperator;
     private final KubernetesRestartEventPublisher eventsPublisher;
-    private final AdminClientProvider adminClientProvider;
+    private final KafkaAdminOperatorSupplier adminSupplier;
 
     // State of the reconciliation => these objects might change during the reconciliation (the collection objects are
     // marked as final, but their contents is modified during the reconciliation)
@@ -153,8 +151,6 @@ public class KafkaReconciler {
     private String loggingHash = "";
     private final Map<Integer, String> brokerConfigurationHash = new HashMap<>();
     private final Map<Integer, String> kafkaServerCertificateHash = new HashMap<>();
-    private PemTrustSet pemTrustSet;
-    private PemAuthIdentity pemAuthIdentity;
     /* test */ KafkaListenersReconciler.ReconciliationResult listenerReconciliationResults; // Result of the listener reconciliation with the listener details
 
     /**
@@ -168,6 +164,7 @@ public class KafkaReconciler {
      * @param clientsCa                 The Clients CA instance
      * @param config                    Cluster Operator Configuration
      * @param supplier                  Supplier with Kubernetes Resource Operators
+     * @param adminSupplier             Supplier with Kafka Admin Operators
      * @param pfa                       PlatformFeaturesAvailability describing the environment we run in
      * @param vertx                     Vert.x instance
      */
@@ -180,6 +177,7 @@ public class KafkaReconciler {
             ClientsCa clientsCa,
             ClusterOperatorConfig config,
             ResourceOperatorSupplier supplier,
+            KafkaAdminOperatorSupplier adminSupplier,
             PlatformFeaturesAvailability pfa,
             Vertx vertx
     ) {
@@ -218,7 +216,7 @@ public class KafkaReconciler {
         this.kafkaNodePoolOperator = supplier.kafkaNodePoolOperator;
         this.eventsPublisher = supplier.restartEventsPublisher;
 
-        this.adminClientProvider = supplier.adminClientProvider;
+        this.adminSupplier = adminSupplier;
     }
 
     /**
@@ -233,7 +231,6 @@ public class KafkaReconciler {
      */
     public Future<Void> reconcile(KafkaStatus kafkaStatus, Clock clock)    {
         return modelWarnings(kafkaStatus)
-                .compose(i -> initClientAuthenticationCertificates())
                 .compose(i -> manualPodCleaning())
                 .compose(i -> networkPolicy())
                 .compose(i -> manualRollingUpdate())
@@ -276,20 +273,6 @@ public class KafkaReconciler {
         kafkaStatus.addConditions(conditions);
 
         return Future.succeededFuture();
-    }
-
-    /**
-     * Initialize the TrustSet and PemAuthIdentity to be used by TLS clients during reconciliation
-     *
-     * @return Completes when the TrustStore and PemAuthIdentity have been created
-     */
-    protected Future<Void> initClientAuthenticationCertificates() {
-        return ReconcilerUtils.pemClientCertificates(reconciliation, secretOperator)
-                .compose(res -> {
-                    this.pemTrustSet = res.resultAt(0);
-                    this.pemAuthIdentity = res.resultAt(1);
-                    return Future.succeededFuture();
-                });
     }
 
     /**
@@ -440,9 +423,7 @@ public class KafkaReconciler {
                     operationTimeoutMs,
                     () -> new BackOff(250, 2, 10),
                     nodes,
-                    this.pemTrustSet,
-                    this.pemAuthIdentity,
-                    adminClientProvider,
+                adminSupplier,
                     brokerId -> kafka.generatePerBrokerConfiguration(brokerId, kafkaAdvertisedHostnames, kafkaAdvertisedPorts),
                     logging,
                     kafka.getKafkaVersion(),
@@ -877,7 +858,7 @@ public class KafkaReconciler {
                     try {
                         String bootstrapHostname = KafkaResources.bootstrapServiceName(reconciliation.name()) + "." + reconciliation.namespace() + ".svc:" + KafkaCluster.REPLICATION_PORT;
                         LOGGER.debugCr(reconciliation, "Creating AdminClient for clusterId using {}", bootstrapHostname);
-                        kafkaAdmin = adminClientProvider.createAdminClient(bootstrapHostname, this.pemTrustSet, this.pemAuthIdentity);
+                        kafkaAdmin = adminSupplier.kafkaAdminClientProvider.createAdminClient(bootstrapHostname);
                         kafkaStatus.setClusterId(kafkaAdmin.describeCluster().clusterId().get());
                     } catch (KafkaException e) {
                         LOGGER.warnCr(reconciliation, "Kafka exception getting clusterId {}", e.getMessage());
@@ -905,9 +886,7 @@ public class KafkaReconciler {
             return KRaftMetadataManager.maybeUpdateMetadataVersion(
                         reconciliation,
                         vertx,
-                        this.pemTrustSet,
-                        this.pemAuthIdentity,
-                        adminClientProvider,
+                        adminSupplier.kafkaAdminClientProvider,
                         kafka.getMetadataVersion(),
                         kafkaStatus
                 );

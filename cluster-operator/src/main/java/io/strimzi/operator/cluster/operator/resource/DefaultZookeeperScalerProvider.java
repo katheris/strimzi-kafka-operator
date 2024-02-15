@@ -16,6 +16,19 @@ import java.util.function.Function;
  */
 public class DefaultZookeeperScalerProvider implements ZookeeperScalerProvider {
     private static final ZooKeeperAdminProvider ZOO_ADMIN_PROVIDER = new DefaultZooKeeperAdminProvider();
+    private final PemTrustSet pemTrustSet;
+    private final ClusterOperatorPKCS12AuthIdentity pksc12AuthIdentity;
+
+    /**
+     * Constructor
+     *
+     * @param pemTrustSet           Trust set to use to connect Kafka
+     * @param pksc12AuthIdentity    Identity for TLS client authentication to use to connect to Kafka for clients that require the PKSC12 format
+     */
+    public DefaultZookeeperScalerProvider(PemTrustSet pemTrustSet, ClusterOperatorPKCS12AuthIdentity pksc12AuthIdentity) {
+        this.pemTrustSet = pemTrustSet;
+        this.pksc12AuthIdentity = pksc12AuthIdentity;
+    }
 
     /**
      * Creates an instance of ZookeeperScaler
@@ -24,15 +37,12 @@ public class DefaultZookeeperScalerProvider implements ZookeeperScalerProvider {
      * @param vertx                         Vertx instance
      * @param zookeeperConnectionString     Connection string to connect to the right Zookeeper
      * @param zkNodeAddress                 Function for generating the Zookeeper node addresses
-     * @param pemTrustSet                   Trust set for connecting to Zookeeper
-     * @param pksc12AuthIdentity            Identity for TLS client authentication for connecting to Zookeeper
      * @param operationTimeoutMs            Operation timeout
      *
      * @return  ZookeeperScaler instance
      */
     public ZookeeperScaler createZookeeperScaler(Reconciliation reconciliation, Vertx vertx, String zookeeperConnectionString,
-                                                 Function<Integer, String> zkNodeAddress, PemTrustSet pemTrustSet,
-                                                 ClusterOperatorPKCS12AuthIdentity pksc12AuthIdentity, long operationTimeoutMs, int zkAdminSessionTimeoutMs) {
+                                                 Function<Integer, String> zkNodeAddress, long operationTimeoutMs, int zkAdminSessionTimeoutMs) {
         return new ZookeeperScaler(reconciliation, vertx, ZOO_ADMIN_PROVIDER, zookeeperConnectionString, zkNodeAddress,
                 pemTrustSet, pksc12AuthIdentity, operationTimeoutMs, zkAdminSessionTimeoutMs);
     }

@@ -42,19 +42,25 @@ public class ZookeeperLeaderFinder {
 
     private final Vertx vertx;
     private final Supplier<BackOff> backOffSupplier;
+    private final PemTrustSet pemTrustSet;
+    private final PemAuthIdentity pemAuthIdentity;
 
     /**
      * Constructor
      *
      * @param vertx             Vert.x instance
      * @param backOffSupplier   Backoff supplier
+     * @param pemTrustSet       Trust set for connecting to ZooKeeper
+     * @param pemAuthIdentity   Identity for TLS client authentication for connecting to ZooKeeper
      */
-    public ZookeeperLeaderFinder(Vertx vertx, Supplier<BackOff> backOffSupplier) {
+    public ZookeeperLeaderFinder(Vertx vertx, Supplier<BackOff> backOffSupplier, PemTrustSet pemTrustSet, PemAuthIdentity pemAuthIdentity) {
         this.vertx = vertx;
         this.backOffSupplier = backOffSupplier;
+        this.pemTrustSet = pemTrustSet;
+        this.pemAuthIdentity = pemAuthIdentity;
     }
 
-    /*test*/ NetClientOptions clientOptions(PemTrustSet pemTrustSet, PemAuthIdentity pemAuthIdentity) {
+    /*test*/ NetClientOptions clientOptions() {
         PemTrustOptions pto = new PemTrustOptions();
         pemTrustSet.trustedCertificatesBytes().forEach(certBytes -> pto.addCertValue(Buffer.buffer(certBytes)));
         PemKeyCertOptions pkco = new PemKeyCertOptions()
@@ -73,7 +79,7 @@ public class ZookeeperLeaderFinder {
      * An exponential backoff is used if no ZK node is leader on the attempt to find it.
      * If there is no leader after 3 attempts then the returned Future completes with {@link #UNKNOWN_LEADER}.
      */
-    Future<String> findZookeeperLeader(Reconciliation reconciliation, Set<String> pods, PemTrustSet pemTrustSet, PemAuthIdentity pemAuthIdentity) {
+    Future<String> findZookeeperLeader(Reconciliation reconciliation, Set<String> pods) {
         if (pods.size() == 0) {
             return Future.succeededFuture(UNKNOWN_LEADER);
         } else if (pods.size() == 1) {
@@ -81,7 +87,7 @@ public class ZookeeperLeaderFinder {
         }
 
         try {
-            NetClientOptions netClientOptions = clientOptions(pemTrustSet, pemAuthIdentity);
+            NetClientOptions netClientOptions = clientOptions();
             return zookeeperLeaderWithBackoff(reconciliation, pods, netClientOptions);
         } catch (Throwable e) {
             return Future.failedFuture(e);

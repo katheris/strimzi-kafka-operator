@@ -79,7 +79,7 @@ public class Main {
         ExecutorService kafkaUserOperatorExecutor = Executors.newFixedThreadPool(config.getUserOperationsThreadPoolSize(), new OperatorWorkThreadFactory());
         KubernetesClient client = new OperatorKubernetesClientBuilder("strimzi-user-operator", Main.class.getPackage().getImplementationVersion()).build();
         SecretOperator secretOperator = new SecretOperator(kafkaUserOperatorExecutor, client);
-        Admin adminClient = createAdminClient(config, secretOperator, new DefaultAdminClientProvider());
+        Admin adminClient = createAdminClient(config, createAdminClientProvider(config, secretOperator));
         var kafkaUserCrdOperator = new CrdOperator<>(kafkaUserOperatorExecutor, client, KafkaUser.class, KafkaUserList.class, "KafkaUser");
 
         KafkaUserOperator kafkaUserOperator = new KafkaUserOperator(
@@ -138,21 +138,13 @@ public class Main {
      * Creates the Kafka Admin API client
      *
      * @param config                User Operator configuration
-     * @param secretOperator        Secret operator for managing secrets
      * @param adminClientProvider   Admin client provider
      *
      * @return  An instance of the Admin API client
      */
-    private static Admin createAdminClient(UserOperatorConfig config, SecretOperator secretOperator, AdminClientProvider adminClientProvider)    {
-        PemTrustSet pemTrustSet = new PemTrustSet(getSecret(secretOperator, config.getCaNamespaceOrNamespace(), config.getClusterCaCertSecretName()));
-        Secret uoKeyAndCert = getSecret(secretOperator, config.getCaNamespaceOrNamespace(), config.getEuoKeySecretName());
-        // When the UO secret is not null (i.e. mTLS is used), we set the name. Otherwise, we just pass null.
-        PemAuthIdentity pemAuthIdentity = uoKeyAndCert != null ? PemAuthIdentity.entityOperator(uoKeyAndCert) : null;
-
+    private static Admin createAdminClient(UserOperatorConfig config, AdminClientProvider adminClientProvider)    {
         return adminClientProvider.createAdminClient(
                 config.getKafkaBootstrapServers(),
-                pemTrustSet,
-                pemAuthIdentity,
                 config.getKafkaAdminClientConfiguration());
     }
 
@@ -188,6 +180,25 @@ public class Main {
         new JvmThreadMetrics().bindTo(registry);
 
         return new MicrometerMetricsProvider(registry);
+    }
+
+    /**
+     * Creates the KafkaAdminClientProvider instance that can securely connect to Kafka
+     *
+     * @return  KafkaAdminClientProvider instance
+     */
+    private static AdminClientProvider createAdminClientProvider(UserOperatorConfig config, SecretOperator secretOperator) {
+        PemTrustSet pemTrustSet = new PemTrustSet(getSecret(secretOperator, config.getCaNamespaceOrNamespace(), config.getClusterCaCertSecretName()));
+        Secret uoKeyAndCert = getSecret(secretOperator, config.getCaNamespaceOrNamespace(), config.getEuoKeySecretName());
+
+        AdminClientProvider adminClientProvider;
+        // When the UO secret is not null (i.e. mTLS is used), we configure the admin client provider with a PemAuthIdentity
+        if (uoKeyAndCert != null) {
+            adminClientProvider = new DefaultAdminClientProvider(pemTrustSet, PemAuthIdentity.entityOperator(uoKeyAndCert));
+        } else {
+            adminClientProvider = new DefaultAdminClientProvider(pemTrustSet);
+        }
+        return adminClientProvider;
     }
 
     private static class OperatorWorkThreadFactory implements ThreadFactory {

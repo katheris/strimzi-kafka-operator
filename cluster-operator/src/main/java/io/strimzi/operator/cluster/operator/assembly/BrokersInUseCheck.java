@@ -10,8 +10,6 @@ import io.strimzi.operator.common.AdminClientProvider;
 import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.ReconciliationLogger;
 import io.strimzi.operator.common.VertxUtil;
-import io.strimzi.operator.common.model.PemAuthIdentity;
-import io.strimzi.operator.common.model.PemTrustSet;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import org.apache.kafka.clients.admin.Admin;
@@ -33,23 +31,33 @@ public class BrokersInUseCheck {
      */
     private static final ReconciliationLogger LOGGER = ReconciliationLogger.create(BrokersInUseCheck.class.getName());
 
+    private final Vertx vertx;
+    private final Reconciliation reconciliation;
+    private final AdminClientProvider adminClientProvider;
+
+    /**
+     * Constructor
+     *
+     * @param reconciliation        Reconciliation marker
+     * @param adminClientProvider   Used to create the Admin client instance
+     * @param vertx                 Vert.x instance
+     */
+    public BrokersInUseCheck(Reconciliation reconciliation, AdminClientProvider adminClientProvider, Vertx vertx) {
+        this.vertx = vertx;
+        this.reconciliation = reconciliation;
+        this.adminClientProvider = adminClientProvider;
+    }
+
     /**
      * Checks if broker contains any partition replicas when scaling down
      *
-     * @param reconciliation        Reconciliation marker
-     * @param vertx                 Vert.x instance
-     * @param pemTrustSet           Trust set for connecting to the Kafka cluster
-     * @param pemAuthIdentity       Identity for TLS client authentication for connecting to the Kafka cluster
-     * @param adminClientProvider   Used to create the Admin client instance
-     *
      * @return returns future set of node ids containing partition replicas based on the outcome of the check
      */
-    public Future<Set<Integer>> brokersInUse(Reconciliation reconciliation, Vertx vertx, PemTrustSet pemTrustSet,
-                                             PemAuthIdentity pemAuthIdentity, AdminClientProvider adminClientProvider) {
+    public Future<Set<Integer>> brokersInUse() {
         try {
             String bootstrapHostname = KafkaResources.bootstrapServiceName(reconciliation.name()) + "." + reconciliation.namespace() + ".svc:" + KafkaCluster.REPLICATION_PORT;
             LOGGER.debugCr(reconciliation, "Creating AdminClient for Kafka cluster in namespace {}", reconciliation.namespace());
-            Admin kafkaAdmin = adminClientProvider.createAdminClient(bootstrapHostname, pemTrustSet, pemAuthIdentity);
+            Admin kafkaAdmin = adminClientProvider.createAdminClient(bootstrapHostname);
 
             return topicNames(reconciliation, vertx, kafkaAdmin)
                     .compose(names -> describeTopics(reconciliation, vertx, kafkaAdmin, names))

@@ -11,8 +11,6 @@ import io.strimzi.operator.common.AdminClientProvider;
 import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.ReconciliationLogger;
 import io.strimzi.operator.common.VertxUtil;
-import io.strimzi.operator.common.model.PemAuthIdentity;
-import io.strimzi.operator.common.model.PemTrustSet;
 import io.strimzi.operator.common.model.StatusUtils;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
@@ -54,8 +52,6 @@ public class KRaftMetadataManager {
      *
      * @param reconciliation            Reconciliation marker
      * @param vertx                     Vert.x instance
-     * @param pemTrustSet               Trust set for connecting to the Kafka cluster
-     * @param pemAuthIdentity           Identity for TLS client authentication for connecting to the Kafka cluster
      * @param adminClientProvider       Kafka Admin client provider
      * @param desiredMetadataVersion    Desired metadata version
      * @param status                    Kafka status
@@ -65,15 +61,13 @@ public class KRaftMetadataManager {
     public static Future<Void> maybeUpdateMetadataVersion(
             Reconciliation reconciliation,
             Vertx vertx,
-            PemTrustSet pemTrustSet,
-            PemAuthIdentity pemAuthIdentity,
             AdminClientProvider adminClientProvider,
             String desiredMetadataVersion,
             KafkaStatus status
     ) {
         String bootstrapHostname = KafkaResources.bootstrapServiceName(reconciliation.name()) + "." + reconciliation.namespace() + ".svc:" + KafkaCluster.REPLICATION_PORT;
         LOGGER.debugCr(reconciliation, "Creating AdminClient for Kafka cluster in namespace {}", reconciliation.namespace());
-        Admin kafkaAdmin = adminClientProvider.createAdminClient(bootstrapHostname, pemTrustSet, pemAuthIdentity);
+        Admin kafkaAdmin = adminClientProvider.createAdminClient(bootstrapHostname);
 
         Promise<Void> updatePromise = Promise.promise();
         maybeUpdateMetadataVersion(reconciliation, vertx, kafkaAdmin, desiredMetadataVersion, status)

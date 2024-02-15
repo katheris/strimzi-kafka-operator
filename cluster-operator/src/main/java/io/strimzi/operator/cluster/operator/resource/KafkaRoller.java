@@ -17,15 +17,12 @@ import io.strimzi.operator.cluster.model.NodeRef;
 import io.strimzi.operator.cluster.model.RestartReason;
 import io.strimzi.operator.cluster.model.RestartReasons;
 import io.strimzi.operator.cluster.operator.resource.events.KubernetesRestartEventPublisher;
-import io.strimzi.operator.common.AdminClientProvider;
 import io.strimzi.operator.common.BackOff;
 import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.ReconciliationLogger;
 import io.strimzi.operator.common.Util;
 import io.strimzi.operator.common.VertxUtil;
 import io.strimzi.operator.common.model.OrderedProperties;
-import io.strimzi.operator.common.model.PemAuthIdentity;
-import io.strimzi.operator.common.model.PemTrustSet;
 import io.strimzi.operator.common.operator.resource.PodOperator;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
@@ -117,13 +114,11 @@ public class KafkaRoller {
     protected final long operationTimeoutMs;
     protected final Vertx vertx;
     private final String cluster;
-    private final PemTrustSet pemTrustSet;
-    private final PemAuthIdentity pemAuthIdentity;
     private final Set<NodeRef> nodes;
     private final KubernetesRestartEventPublisher eventsPublisher;
     private final Supplier<BackOff> backoffSupplier;
     protected String namespace;
-    private final AdminClientProvider adminClientProvider;
+    private final KafkaAdminOperatorSupplier kafkaAdminSupplier;
     private final Function<Integer, String> kafkaConfigProvider;
     private final String kafkaLogging;
     private final KafkaVersion kafkaVersion;
@@ -150,9 +145,7 @@ public class KafkaRoller {
      * @param operationTimeoutMs    Operation timeout in milliseconds
      * @param backOffSupplier       Backoff supplier
      * @param nodes                 List of Kafka node references to consider rolling
-     * @param pemTrustSet           Trust set to use in KafkaAgentClient
-     * @param pemAuthIdentity       Identity for TLS client authentication to use in KafkaAgentClient
-     * @param adminClientProvider   Kafka Admin client provider
+     * @param kafkaAdminSupplier    Supplier with Kafka Admin Operators
      * @param kafkaConfigProvider   Kafka configuration provider
      * @param kafkaLogging          Kafka logging configuration
      * @param kafkaVersion          Kafka version
@@ -161,9 +154,8 @@ public class KafkaRoller {
      */
     public KafkaRoller(Reconciliation reconciliation, Vertx vertx, PodOperator podOperations,
                        long pollingIntervalMs, long operationTimeoutMs, Supplier<BackOff> backOffSupplier, Set<NodeRef> nodes,
-                       PemTrustSet pemTrustSet, PemAuthIdentity pemAuthIdentity,
-                       AdminClientProvider adminClientProvider,
-                       Function<Integer, String> kafkaConfigProvider, String kafkaLogging, KafkaVersion kafkaVersion, boolean allowReconfiguration, KubernetesRestartEventPublisher eventsPublisher) {
+                       KafkaAdminOperatorSupplier kafkaAdminSupplier, Function<Integer, String> kafkaConfigProvider,
+                       String kafkaLogging, KafkaVersion kafkaVersion, boolean allowReconfiguration, KubernetesRestartEventPublisher eventsPublisher) {
         this.namespace = reconciliation.namespace();
         this.cluster = reconciliation.name();
         this.nodes = nodes;
@@ -172,13 +164,11 @@ public class KafkaRoller {
             throw new IllegalArgumentException();
         }
         this.backoffSupplier = backOffSupplier;
-        this.pemTrustSet = pemTrustSet;
-        this.pemAuthIdentity = pemAuthIdentity;
         this.vertx = vertx;
         this.operationTimeoutMs = operationTimeoutMs;
         this.podOperations = podOperations;
         this.pollingIntervalMs = pollingIntervalMs;
-        this.adminClientProvider = adminClientProvider;
+        this.kafkaAdminSupplier = kafkaAdminSupplier;
         this.kafkaConfigProvider = kafkaConfigProvider;
         this.kafkaLogging = kafkaLogging;
         this.kafkaVersion = kafkaVersion;
@@ -514,7 +504,7 @@ public class KafkaRoller {
 
     KafkaAgentClient initKafkaAgentClient() throws FatalProblem {
         try {
-            return new KafkaAgentClient(reconciliation, cluster, namespace, pemTrustSet, pemAuthIdentity);
+            return kafkaAdminSupplier.kafkaAgentClient.createClient();
         } catch (Exception e) {
             throw new FatalProblem("Failed to initialise KafkaAgentClient", e);
         }
@@ -923,7 +913,7 @@ public class KafkaRoller {
 
         try {
             LOGGER.debugCr(reconciliation, "Creating AdminClient for {}", bootstrapHostnames);
-            return adminClientProvider.createAdminClient(bootstrapHostnames, pemTrustSet, pemAuthIdentity);
+            return kafkaAdminSupplier.kafkaAdminClientProvider.createAdminClient(bootstrapHostnames);
         } catch (KafkaException e) {
             if (ceShouldBeFatal && (e instanceof ConfigException
                     || e.getCause() instanceof ConfigException)) {

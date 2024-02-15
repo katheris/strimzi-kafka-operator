@@ -63,7 +63,7 @@ public class BrokersInUseCheckTest {
     public void testBrokersInUse(VertxTestContext context) {
         Admin admin = mock(Admin.class);
         AdminClientProvider mock = mock(AdminClientProvider.class);
-        when(mock.createAdminClient(anyString(), any(), any())).thenReturn(admin);
+        when(mock.createAdminClient(anyString())).thenReturn(admin);
 
         // Mock topic description
         TopicDescription t1 = new TopicDescription("my-topic", false, List.of(new TopicPartitionInfo(0, NODE.apply(0), List.of(NODE.apply(0)), List.of(NODE.apply(0)))));
@@ -83,8 +83,8 @@ public class BrokersInUseCheckTest {
 
         // Get brokers in use
         Checkpoint checkpoint = context.checkpoint();
-        BrokersInUseCheck operations = new BrokersInUseCheck();
-        operations.brokersInUse(RECONCILIATION, vertx, null, null, mock)
+        BrokersInUseCheck operations = new BrokersInUseCheck(RECONCILIATION, mock, vertx);
+        operations.brokersInUse()
                 .onComplete(context.succeeding(brokersInUse -> {
                     Collection<String> topicList = topicListCaptor.getValue();
                     assertThat(topicList.size(), is(3));
@@ -101,7 +101,7 @@ public class BrokersInUseCheckTest {
     public void testBrokersInUseWithSingleTopicAndMultiplePartitions(VertxTestContext context) {
         Admin admin = mock(Admin.class);
         AdminClientProvider mock = mock(AdminClientProvider.class);
-        when(mock.createAdminClient(anyString(), any(), any())).thenReturn(admin);
+        when(mock.createAdminClient(anyString())).thenReturn(admin);
 
         // Mock topic description
         TopicDescription t = new TopicDescription("my-topic", false, List.of(
@@ -122,8 +122,8 @@ public class BrokersInUseCheckTest {
 
         // Get brokers in use
         Checkpoint checkpoint = context.checkpoint();
-        BrokersInUseCheck operations = new BrokersInUseCheck();
-        operations.brokersInUse(RECONCILIATION, vertx, null, null, mock)
+        BrokersInUseCheck operations = new BrokersInUseCheck(RECONCILIATION, mock, vertx);
+        operations.brokersInUse()
                 .onComplete(context.succeeding(brokersInUse -> {
                     Collection<String> topicList = topicListCaptor.getValue();
                     assertThat(topicList.size(), is(1));
@@ -140,7 +140,7 @@ public class BrokersInUseCheckTest {
     public void testTopicDescriptionFailure(VertxTestContext context) {
         Admin admin = mock(Admin.class);
         AdminClientProvider mock = mock(AdminClientProvider.class);
-        when(mock.createAdminClient(anyString(), any(), any())).thenReturn(admin);
+        when(mock.createAdminClient(anyString())).thenReturn(admin);
 
         // Mock topic description
         @SuppressWarnings(value = "unchecked")
@@ -161,8 +161,8 @@ public class BrokersInUseCheckTest {
 
         // Get brokers in use
         Checkpoint checkpoint = context.checkpoint();
-        BrokersInUseCheck operations = new BrokersInUseCheck();
-        operations.brokersInUse(RECONCILIATION, vertx, null, null, mock)
+        BrokersInUseCheck operations = new BrokersInUseCheck(RECONCILIATION, mock, vertx);
+        operations.brokersInUse()
                 .onComplete(context.failing(e -> {
                     assertThat(e.getMessage(), is("Test error ..."));
 
@@ -174,7 +174,7 @@ public class BrokersInUseCheckTest {
     public void testListTopicsFailure(VertxTestContext context) {
         Admin admin = mock(Admin.class);
         AdminClientProvider mock = mock(AdminClientProvider.class);
-        when(mock.createAdminClient(anyString(), any(), any())).thenReturn(admin);
+        when(mock.createAdminClient(anyString())).thenReturn(admin);
 
         // Mock list topics
         @SuppressWarnings(value = "unchecked")
@@ -190,8 +190,8 @@ public class BrokersInUseCheckTest {
 
         // Get brokers in use
         Checkpoint checkpoint = context.checkpoint();
-        BrokersInUseCheck operations = new BrokersInUseCheck();
-        operations.brokersInUse(RECONCILIATION, vertx, null, null, mock)
+        BrokersInUseCheck operations = new BrokersInUseCheck(RECONCILIATION, mock, vertx);
+        operations.brokersInUse()
                 .onComplete(context.failing(e -> {
                     assertThat(e.getMessage(), is("Test error ..."));
 
@@ -203,15 +203,15 @@ public class BrokersInUseCheckTest {
     public void testKafkaClientFailure(VertxTestContext context) {
         Admin admin = mock(Admin.class);
         AdminClientProvider mock = mock(AdminClientProvider.class);
-        when(mock.createAdminClient(anyString(), any(), any())).thenReturn(admin);
+        when(mock.createAdminClient(anyString())).thenReturn(admin);
 
         // Mock list topics
         when(admin.listTopics(any())).thenThrow(new KafkaException("Test error ..."));
 
         // Get brokers in use
         Checkpoint checkpoint = context.checkpoint();
-        BrokersInUseCheck operations = new BrokersInUseCheck();
-        operations.brokersInUse(RECONCILIATION, vertx, null, null, mock)
+        BrokersInUseCheck operations = new BrokersInUseCheck(RECONCILIATION, mock, vertx);
+        operations.brokersInUse()
                 .onComplete(context.failing(e -> {
                     assertThat(e.getMessage(), is("Test error ..."));
 
