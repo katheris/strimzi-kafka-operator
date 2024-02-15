@@ -8,7 +8,6 @@ import io.fabric8.kubernetes.api.model.ConfigMap;
 import io.fabric8.kubernetes.api.model.LocalObjectReference;
 import io.fabric8.kubernetes.api.model.PersistentVolumeClaim;
 import io.fabric8.kubernetes.api.model.Pod;
-import io.fabric8.kubernetes.api.model.Secret;
 import io.strimzi.api.kafka.model.kafka.Kafka;
 import io.strimzi.api.kafka.model.kafka.KafkaResources;
 import io.strimzi.api.kafka.model.kafka.KafkaStatus;
@@ -25,6 +24,7 @@ import io.strimzi.operator.cluster.model.ZookeeperCluster;
 import io.strimzi.operator.cluster.operator.resource.ResourceOperatorSupplier;
 import io.strimzi.operator.cluster.operator.resource.StatefulSetOperator;
 import io.strimzi.operator.cluster.operator.resource.ZooKeeperRoller;
+import io.strimzi.operator.cluster.operator.resource.ZookeeperAdminOperatorSupplier;
 import io.strimzi.operator.cluster.operator.resource.ZookeeperLeaderFinder;
 import io.strimzi.operator.cluster.operator.resource.ZookeeperScaler;
 import io.strimzi.operator.cluster.operator.resource.ZookeeperScalerProvider;
@@ -117,6 +117,7 @@ public class ZooKeeperReconciler {
      * @param vertx                     Vert.x instance
      * @param config                    Cluster Operator Configuration
      * @param supplier                  Supplier with Kubernetes Resource Operators
+     * @param adminSupplier             Supplier with ZooKeeper Clients
      * @param pfa                       PlatformFeaturesAvailability describing the environment we run in
      * @param kafkaAssembly             The Kafka custom resource
      * @param versionChange             Description of Kafka upgrade / downgrade state
@@ -129,6 +130,7 @@ public class ZooKeeperReconciler {
             Vertx vertx,
             ClusterOperatorConfig config,
             ResourceOperatorSupplier supplier,
+            ZookeeperAdminOperatorSupplier adminSupplier,
             PlatformFeaturesAvailability pfa,
             Kafka kafkaAssembly,
             KafkaVersionChange versionChange,
@@ -164,8 +166,8 @@ public class ZooKeeperReconciler {
         this.podDisruptionBudgetOperator = supplier.podDisruptionBudgetOperator;
         this.podOperator = supplier.podOperations;
 
-        this.zooScalerProvider = supplier.zkScalerProvider;
-        this.zooLeaderFinder = supplier.zookeeperLeaderFinder;
+        this.zooScalerProvider = adminSupplier.zkScalerProvider;
+        this.zooLeaderFinder = adminSupplier.zookeeperLeaderFinder;
     }
 
     /**
@@ -552,28 +554,20 @@ public class ZooKeeperReconciler {
      * @return                      Zookeeper scaler instance.
      */
     private Future<ZookeeperScaler> zkScaler(int connectToReplicas)  {
-        return ReconcilerUtils.clientSecrets(reconciliation, secretOperator)
-                .compose(compositeFuture -> {
-                    Secret clusterCaCertSecret = compositeFuture.resultAt(0);
-                    Secret coKeySecret = compositeFuture.resultAt(1);
+        Function<Integer, String> zkNodeAddress = (Integer i) ->
+                DnsNameGenerator.podDnsNameWithoutClusterDomain(reconciliation.namespace(), KafkaResources.zookeeperHeadlessServiceName(reconciliation.name()), KafkaResources.zookeeperPodName(reconciliation.name(), i));
 
-                    Function<Integer, String> zkNodeAddress = (Integer i) ->
-                            DnsNameGenerator.podDnsNameWithoutClusterDomain(reconciliation.namespace(), KafkaResources.zookeeperHeadlessServiceName(reconciliation.name()), KafkaResources.zookeeperPodName(reconciliation.name(), i));
+        ZookeeperScaler zkScaler = zooScalerProvider
+                .createZookeeperScaler(
+                        reconciliation,
+                        vertx,
+                        zkConnectionString(connectToReplicas, zkNodeAddress),
+                        zkNodeAddress,
+                        operationTimeoutMs,
+                        adminSessionTimeoutMs
+                );
 
-                    ZookeeperScaler zkScaler = zooScalerProvider
-                            .createZookeeperScaler(
-                                    reconciliation,
-                                    vertx,
-                                    zkConnectionString(connectToReplicas, zkNodeAddress),
-                                    zkNodeAddress,
-                                    clusterCaCertSecret,
-                                    coKeySecret,
-                                    operationTimeoutMs,
-                                    adminSessionTimeoutMs
-                            );
-
-                    return Future.succeededFuture(zkScaler);
-                });
+        return Future.succeededFuture(zkScaler);
     }
 
     /**
@@ -678,38 +672,17 @@ public class ZooKeeperReconciler {
     /**
      * Checks if the ZooKeeper cluster needs rolling and if it does, it will roll it.
      *
-     * @param podNeedsRestart   Function to determine if the ZooKeeper pod needs to be restarted
-     *
-     * @return                  Future which completes when any of the ZooKeeper pods which need rolling is rolled
-     */
-    /* test */ Future<Void> maybeRollZooKeeper(Function<Pod, List<String>> podNeedsRestart) {
-        return ReconcilerUtils.clientSecrets(reconciliation, secretOperator)
-                .compose(compositeFuture -> {
-                    Secret clusterCaCertSecret = compositeFuture.resultAt(0);
-                    Secret coKeySecret = compositeFuture.resultAt(1);
-
-                    return maybeRollZooKeeper(podNeedsRestart, clusterCaCertSecret, coKeySecret);
-                });
-    }
-
-    /**
-     * Checks if the ZooKeeper cluster needs rolling and if it does, it will roll it.
-     *
      * @param podNeedsRestart       Function to determine if the ZooKeeper pod needs to be restarted
-     * @param clusterCaCertSecret   Secret with the Cluster CA certificates
-     * @param coKeySecret           Secret with the Cluster Operator certificates
      *
      * @return                      Future which completes when any of the ZooKeeper pods which need rolling is rolled
      */
-    private Future<Void> maybeRollZooKeeper(Function<Pod, List<String>> podNeedsRestart, Secret clusterCaCertSecret, Secret coKeySecret) {
+    /* test */ Future<Void> maybeRollZooKeeper(Function<Pod, List<String>> podNeedsRestart) {
         return new ZooKeeperRoller(podOperator, zooLeaderFinder, operationTimeoutMs)
                 .maybeRollingUpdate(
                         reconciliation,
                         currentReplicas > 0 && currentReplicas < zk.getReplicas() ? currentReplicas : zk.getReplicas(),
                         zk.getSelectorLabels(),
-                        podNeedsRestart,
-                        clusterCaCertSecret,
-                        coKeySecret
+                        podNeedsRestart
                 );
     }
 

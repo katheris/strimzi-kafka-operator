@@ -15,11 +15,7 @@ import io.strimzi.api.kafka.model.connector.KafkaConnectorStatus;
 import io.strimzi.operator.cluster.ClusterOperatorConfig;
 import io.strimzi.operator.cluster.KafkaVersionTestUtils;
 import io.strimzi.operator.cluster.PlatformFeaturesAvailability;
-import io.strimzi.operator.cluster.operator.resource.DefaultZookeeperScalerProvider;
 import io.strimzi.operator.cluster.operator.resource.ResourceOperatorSupplier;
-import io.strimzi.operator.cluster.operator.resource.ZookeeperLeaderFinder;
-import io.strimzi.operator.common.BackOff;
-import io.strimzi.operator.common.DefaultAdminClientProvider;
 import io.strimzi.operator.common.MetricsProvider;
 import io.strimzi.operator.common.MicrometerMetricsProvider;
 import io.strimzi.operator.common.Reconciliation;
@@ -140,11 +136,6 @@ public class KafkaConnectorIT {
 
         MetricsProvider metrics = new MicrometerMetricsProvider();
         ResourceOperatorSupplier ros = new ResourceOperatorSupplier(vertx, client,
-                new ZookeeperLeaderFinder(vertx,
-                        // Retry up to 3 times (4 attempts), with overall max delay of 35000ms
-                        () -> new BackOff(5_000, 2, 4)),
-                new DefaultAdminClientProvider(),
-                new DefaultZookeeperScalerProvider(),
                 metrics,
                 pfa, 10_000
         );
@@ -210,11 +201,6 @@ public class KafkaConnectorIT {
 
         MetricsProvider metrics = new MicrometerMetricsProvider();
         ResourceOperatorSupplier ros = new ResourceOperatorSupplier(vertx, client,
-                new ZookeeperLeaderFinder(vertx,
-                        // Retry up to 3 times (4 attempts), with overall max delay of 35000ms
-                        () -> new BackOff(5_000, 2, 4)),
-                new DefaultAdminClientProvider(),
-                new DefaultZookeeperScalerProvider(),
                 metrics,
                 pfa, 10_000
         );
@@ -259,11 +245,6 @@ public class KafkaConnectorIT {
 
         MetricsProvider metrics = new MicrometerMetricsProvider();
         ResourceOperatorSupplier ros = new ResourceOperatorSupplier(vertx, client,
-                new ZookeeperLeaderFinder(vertx,
-                        // Retry up to 3 times (4 attempts), with overall max delay of 35000ms
-                        () -> new BackOff(5_000, 2, 4)),
-                new DefaultAdminClientProvider(),
-                new DefaultZookeeperScalerProvider(),
                 metrics,
                 pfa, 10_000
         );
@@ -319,11 +300,6 @@ public class KafkaConnectorIT {
 
         MetricsProvider metrics = new MicrometerMetricsProvider();
         ResourceOperatorSupplier ros = new ResourceOperatorSupplier(vertx, client,
-            new ZookeeperLeaderFinder(vertx,
-                // Retry up to 3 times (4 attempts), with overall max delay of 35000ms
-                () -> new BackOff(5_000, 2, 4)),
-            new DefaultAdminClientProvider(),
-            new DefaultZookeeperScalerProvider(),
             metrics,
             pfa, 10_000
         );
@@ -368,11 +344,6 @@ public class KafkaConnectorIT {
 
         MetricsProvider metrics = new MicrometerMetricsProvider();
         ResourceOperatorSupplier ros = new ResourceOperatorSupplier(vertx, client,
-            new ZookeeperLeaderFinder(vertx,
-                // Retry up to 3 times (4 attempts), with overall max delay of 35000ms
-                () -> new BackOff(5_000, 2, 4)),
-            new DefaultAdminClientProvider(),
-            new DefaultZookeeperScalerProvider(),
             metrics,
             pfa, 10_000
         );

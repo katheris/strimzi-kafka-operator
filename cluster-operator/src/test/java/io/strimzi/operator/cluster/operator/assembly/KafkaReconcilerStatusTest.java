@@ -9,7 +9,6 @@ import io.fabric8.kubernetes.api.model.NodeAddress;
 import io.fabric8.kubernetes.api.model.NodeBuilder;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodBuilder;
-import io.fabric8.kubernetes.api.model.Secret;
 import io.strimzi.api.kafka.model.kafka.Kafka;
 import io.strimzi.api.kafka.model.kafka.KafkaBuilder;
 import io.strimzi.api.kafka.model.kafka.KafkaResources;
@@ -30,6 +29,7 @@ import io.strimzi.operator.cluster.model.ClusterCa;
 import io.strimzi.operator.cluster.model.KafkaCluster;
 import io.strimzi.operator.cluster.model.KafkaVersion;
 import io.strimzi.operator.cluster.model.KafkaVersionChange;
+import io.strimzi.operator.cluster.operator.resource.KafkaAdminOperatorSupplier;
 import io.strimzi.operator.cluster.operator.resource.ResourceOperatorSupplier;
 import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.ReconciliationLogger;
@@ -39,7 +39,6 @@ import io.strimzi.operator.common.model.PasswordGenerator;
 import io.strimzi.operator.common.operator.MockCertManager;
 import io.strimzi.operator.common.operator.resource.NodeOperator;
 import io.strimzi.operator.common.operator.resource.PodOperator;
-import io.strimzi.operator.common.operator.resource.SecretOperator;
 import io.strimzi.platform.KubernetesVersion;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
@@ -150,17 +149,13 @@ public class KafkaReconcilerStatusTest {
                 .build();
 
         ResourceOperatorSupplier supplier = ResourceUtils.supplierWithMocks(false);
-
-        // Mock the secrets needed for Kafka client
-        SecretOperator mockSecretOps = supplier.secretOperations;
-        Secret secret = new Secret();
-        when(mockSecretOps.getAsync(eq(NAMESPACE), eq(KafkaResources.clusterCaCertificateSecretName(CLUSTER_NAME)))).thenReturn(Future.succeededFuture(secret));
-        when(mockSecretOps.getAsync(eq(NAMESPACE), eq(KafkaResources.secretName(CLUSTER_NAME)))).thenReturn(Future.succeededFuture(secret));
+        KafkaAdminOperatorSupplier kafkaAdminSupplier = ResourceUtils.kafkaAdminSupplierWithMocks();
 
         // Run the test
         KafkaReconciler reconciler = new MockKafkaReconcilerStatusTasks(
                 new Reconciliation("test-trigger", Kafka.RESOURCE_KIND, NAMESPACE, CLUSTER_NAME),
                 supplier,
+                kafkaAdminSupplier,
                 kafka
         );
 
@@ -199,17 +194,13 @@ public class KafkaReconcilerStatusTest {
                 .build();
 
         ResourceOperatorSupplier supplier = ResourceUtils.supplierWithMocks(false);
-
-        // Mock the secrets needed for Kafka client
-        SecretOperator mockSecretOps = supplier.secretOperations;
-        Secret secret = new Secret();
-        when(mockSecretOps.getAsync(eq(NAMESPACE), eq(KafkaResources.clusterCaCertificateSecretName(CLUSTER_NAME)))).thenReturn(Future.succeededFuture(secret));
-        when(mockSecretOps.getAsync(eq(NAMESPACE), eq(KafkaResources.secretName(CLUSTER_NAME)))).thenReturn(Future.succeededFuture(secret));
+        KafkaAdminOperatorSupplier kafkaAdminSupplier = ResourceUtils.kafkaAdminSupplierWithMocks();
 
         // Run the test
         KafkaReconciler reconciler = new MockKafkaReconcilerStatusTasks(
                 new Reconciliation("test-trigger", Kafka.RESOURCE_KIND, NAMESPACE, CLUSTER_NAME),
                 supplier,
+                kafkaAdminSupplier,
                 kafka
         );
 
@@ -239,17 +230,13 @@ public class KafkaReconcilerStatusTest {
                 .build();
 
         ResourceOperatorSupplier supplier = ResourceUtils.supplierWithMocks(false);
-
-        // Mock the secrets needed for Kafka client
-        SecretOperator mockSecretOps = supplier.secretOperations;
-        Secret secret = new Secret();
-        when(mockSecretOps.getAsync(eq(NAMESPACE), eq(KafkaResources.clusterCaCertificateSecretName(CLUSTER_NAME)))).thenReturn(Future.failedFuture("expected failure"));
-        when(mockSecretOps.getAsync(eq(NAMESPACE), eq(KafkaResources.secretName(CLUSTER_NAME)))).thenReturn(Future.succeededFuture(secret));
+        KafkaAdminOperatorSupplier kafkaAdminSupplier = ResourceUtils.kafkaAdminSupplierWithMocks();
 
         // Run the test
         KafkaReconciler reconciler = new MockKafkaReconcilerStatusTasks(
                 new Reconciliation("test-trigger", Kafka.RESOURCE_KIND, NAMESPACE, CLUSTER_NAME),
                 supplier,
+                kafkaAdminSupplier,
                 kafka
         );
 
@@ -277,17 +264,13 @@ public class KafkaReconcilerStatusTest {
                 .build();
 
         ResourceOperatorSupplier supplier = ResourceUtils.supplierWithMocks(false);
-
-        // Mock the secrets needed for Kafka client
-        SecretOperator mockSecretOps = supplier.secretOperations;
-        Secret secret = new Secret();
-        when(mockSecretOps.getAsync(eq(NAMESPACE), eq(KafkaResources.clusterCaCertificateSecretName(CLUSTER_NAME)))).thenReturn(Future.succeededFuture(secret));
-        when(mockSecretOps.getAsync(eq(NAMESPACE), eq(KafkaResources.secretName(CLUSTER_NAME)))).thenReturn(Future.succeededFuture(secret));
+        KafkaAdminOperatorSupplier kafkaAdminSupplier = ResourceUtils.kafkaAdminSupplierWithMocks();
 
         // Run the test
         KafkaReconciler reconciler = new MockKafkaReconcilerStatusTasks(
                 new Reconciliation("test-trigger", Kafka.RESOURCE_KIND, NAMESPACE, CLUSTER_NAME),
                 supplier,
+                kafkaAdminSupplier,
                 kafka
         );
 
@@ -306,17 +289,13 @@ public class KafkaReconcilerStatusTest {
     @Test
     public void testKafkaReconcilerStatusWithSpecCheckerWarnings(VertxTestContext context) {
         ResourceOperatorSupplier supplier = ResourceUtils.supplierWithMocks(false);
-
-        // Mock the secrets needed for Kafka client
-        SecretOperator mockSecretOps = supplier.secretOperations;
-        Secret secret = new Secret();
-        when(mockSecretOps.getAsync(eq(NAMESPACE), eq(KafkaResources.clusterCaCertificateSecretName(CLUSTER_NAME)))).thenReturn(Future.succeededFuture(secret));
-        when(mockSecretOps.getAsync(eq(NAMESPACE), eq(KafkaResources.secretName(CLUSTER_NAME)))).thenReturn(Future.succeededFuture(secret));
+        KafkaAdminOperatorSupplier kafkaAdminSupplier = ResourceUtils.kafkaAdminSupplierWithMocks();
 
         // Run the test
         KafkaReconciler reconciler = new MockKafkaReconcilerStatusTasks(
                 new Reconciliation("test-trigger", Kafka.RESOURCE_KIND, NAMESPACE, CLUSTER_NAME),
                 supplier,
+                kafkaAdminSupplier,
                 KAFKA
         );
 
@@ -353,12 +332,7 @@ public class KafkaReconcilerStatusTest {
                 .build();
 
         ResourceOperatorSupplier supplier = ResourceUtils.supplierWithMocks(false);
-
-        // Mock the secrets needed for Kafka client
-        SecretOperator mockSecretOps = supplier.secretOperations;
-        Secret secret = new Secret();
-        when(mockSecretOps.getAsync(eq(NAMESPACE), eq(KafkaResources.clusterCaCertificateSecretName(CLUSTER_NAME)))).thenReturn(Future.succeededFuture(secret));
-        when(mockSecretOps.getAsync(eq(NAMESPACE), eq(KafkaResources.secretName(CLUSTER_NAME)))).thenReturn(Future.succeededFuture(secret));
+        KafkaAdminOperatorSupplier kafkaAdminSupplier = ResourceUtils.kafkaAdminSupplierWithMocks();
 
         // Mock Kafka broker pods
         Pod pod0 = new PodBuilder()
@@ -404,6 +378,7 @@ public class KafkaReconcilerStatusTest {
         KafkaReconciler reconciler = new MockKafkaReconcilerStatusTasks(
                 new Reconciliation("test-trigger", Kafka.RESOURCE_KIND, NAMESPACE, CLUSTER_NAME),
                 supplier,
+                kafkaAdminSupplier,
                 kafka
         );
 
@@ -457,12 +432,7 @@ public class KafkaReconcilerStatusTest {
                 .build();
 
         ResourceOperatorSupplier supplier = ResourceUtils.supplierWithMocks(false);
-
-        // Mock the secrets needed for Kafka client
-        SecretOperator mockSecretOps = supplier.secretOperations;
-        Secret secret = new Secret();
-        when(mockSecretOps.getAsync(eq(NAMESPACE), eq(KafkaResources.clusterCaCertificateSecretName(CLUSTER_NAME)))).thenReturn(Future.succeededFuture(secret));
-        when(mockSecretOps.getAsync(eq(NAMESPACE), eq(KafkaResources.secretName(CLUSTER_NAME)))).thenReturn(Future.succeededFuture(secret));
+        KafkaAdminOperatorSupplier kafkaAdminSupplier = ResourceUtils.kafkaAdminSupplierWithMocks();
 
         // Mock Kafka broker pods
         Pod pod0 = new PodBuilder()
@@ -508,6 +478,7 @@ public class KafkaReconcilerStatusTest {
         KafkaReconciler reconciler = new MockKafkaReconcilerStatusTasks(
                 new Reconciliation("test-trigger", Kafka.RESOURCE_KIND, NAMESPACE, CLUSTER_NAME),
                 supplier,
+                kafkaAdminSupplier,
                 kafka
         );
 
@@ -551,12 +522,7 @@ public class KafkaReconcilerStatusTest {
                 .build();
 
         ResourceOperatorSupplier supplier = ResourceUtils.supplierWithMocks(false);
-
-        // Mock the secrets needed for Kafka client
-        SecretOperator mockSecretOps = supplier.secretOperations;
-        Secret secret = new Secret();
-        when(mockSecretOps.getAsync(eq(NAMESPACE), eq(KafkaResources.clusterCaCertificateSecretName(CLUSTER_NAME)))).thenReturn(Future.succeededFuture(secret));
-        when(mockSecretOps.getAsync(eq(NAMESPACE), eq(KafkaResources.secretName(CLUSTER_NAME)))).thenReturn(Future.succeededFuture(secret));
+        KafkaAdminOperatorSupplier kafkaAdminSupplier = ResourceUtils.kafkaAdminSupplierWithMocks();
 
         // Mock Kafka broker pods
         Pod pod0 = new PodBuilder()
@@ -602,6 +568,7 @@ public class KafkaReconcilerStatusTest {
         KafkaReconciler reconciler = new MockKafkaReconcilerStatusTasks(
                 new Reconciliation("test-trigger", Kafka.RESOURCE_KIND, NAMESPACE, CLUSTER_NAME),
                 supplier,
+                kafkaAdminSupplier,
                 kafka
         );
 
@@ -642,12 +609,7 @@ public class KafkaReconcilerStatusTest {
                 .build();
 
         ResourceOperatorSupplier supplier = ResourceUtils.supplierWithMocks(false);
-
-        // Mock the secrets needed for Kafka client
-        SecretOperator mockSecretOps = supplier.secretOperations;
-        Secret secret = new Secret();
-        when(mockSecretOps.getAsync(eq(NAMESPACE), eq(KafkaResources.clusterCaCertificateSecretName(CLUSTER_NAME)))).thenReturn(Future.succeededFuture(secret));
-        when(mockSecretOps.getAsync(eq(NAMESPACE), eq(KafkaResources.secretName(CLUSTER_NAME)))).thenReturn(Future.succeededFuture(secret));
+        KafkaAdminOperatorSupplier kafkaAdminSupplier = ResourceUtils.kafkaAdminSupplierWithMocks();
 
         // Mock Kafka broker pods
         Pod pod0 = new PodBuilder()
@@ -693,6 +655,7 @@ public class KafkaReconcilerStatusTest {
         KafkaReconciler reconciler = new MockKafkaReconcilerStatusTasks(
                 new Reconciliation("test-trigger", Kafka.RESOURCE_KIND, NAMESPACE, CLUSTER_NAME),
                 supplier,
+                kafkaAdminSupplier,
                 kafka
         );
 
@@ -730,12 +693,7 @@ public class KafkaReconcilerStatusTest {
                 .build();
 
         ResourceOperatorSupplier supplier = ResourceUtils.supplierWithMocks(false);
-
-        // Mock the secrets needed for Kafka client
-        SecretOperator mockSecretOps = supplier.secretOperations;
-        Secret secret = new Secret();
-        when(mockSecretOps.getAsync(eq(NAMESPACE), eq(KafkaResources.clusterCaCertificateSecretName(CLUSTER_NAME)))).thenReturn(Future.succeededFuture(secret));
-        when(mockSecretOps.getAsync(eq(NAMESPACE), eq(KafkaResources.secretName(CLUSTER_NAME)))).thenReturn(Future.succeededFuture(secret));
+        KafkaAdminOperatorSupplier kafkaAdminSupplier = ResourceUtils.kafkaAdminSupplierWithMocks();
 
         // Mock Kafka broker pods
         Pod pod0 = new PodBuilder()
@@ -781,6 +739,7 @@ public class KafkaReconcilerStatusTest {
         KafkaReconciler reconciler = new MockKafkaReconcilerStatusTasks(
                 new Reconciliation("test-trigger", Kafka.RESOURCE_KIND, NAMESPACE, CLUSTER_NAME),
                 supplier,
+                kafkaAdminSupplier,
                 kafka
         );
 
@@ -861,8 +820,8 @@ public class KafkaReconcilerStatusTest {
     static class MockKafkaReconcilerStatusTasks extends KafkaReconciler {
         private static final ReconciliationLogger LOGGER = ReconciliationLogger.create(MockKafkaReconcilerStatusTasks.class.getName());
 
-        public MockKafkaReconcilerStatusTasks(Reconciliation reconciliation, ResourceOperatorSupplier supplier, Kafka kafkaCr) {
-            super(reconciliation, kafkaCr, null, createKafkaCluster(reconciliation, supplier, kafkaCr), CLUSTER_CA, CLIENTS_CA, CO_CONFIG, supplier, PFA, vertx);
+        public MockKafkaReconcilerStatusTasks(Reconciliation reconciliation, ResourceOperatorSupplier supplier, KafkaAdminOperatorSupplier kafkaAdminSupplier, Kafka kafkaCr) {
+            super(reconciliation, kafkaCr, null, createKafkaCluster(reconciliation, supplier, kafkaCr), CLUSTER_CA, CLIENTS_CA, CO_CONFIG, supplier, kafkaAdminSupplier, PFA, vertx);
         }
 
         private static KafkaCluster createKafkaCluster(Reconciliation reconciliation, ResourceOperatorSupplier supplier, Kafka kafkaCr)   {

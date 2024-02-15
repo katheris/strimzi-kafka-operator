@@ -6,6 +6,7 @@ package io.strimzi.operator.cluster.operator.assembly;
 
 import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.api.model.ResourceRequirements;
+import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.apps.StatefulSet;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.Watcher;
@@ -29,14 +30,17 @@ import io.strimzi.operator.cluster.ClusterOperatorConfig;
 import io.strimzi.operator.cluster.FeatureGates;
 import io.strimzi.operator.cluster.PlatformFeaturesAvailability;
 import io.strimzi.operator.cluster.model.ClusterCa;
+import io.strimzi.operator.cluster.model.ClusterOperatorPKCS12AuthIdentity;
 import io.strimzi.operator.cluster.model.KRaftUtils;
 import io.strimzi.operator.cluster.model.KafkaCluster;
 import io.strimzi.operator.cluster.model.KafkaVersionChange;
 import io.strimzi.operator.cluster.model.ModelUtils;
 import io.strimzi.operator.cluster.model.NodeRef;
 import io.strimzi.operator.cluster.model.PodSetUtils;
+import io.strimzi.operator.cluster.operator.resource.KafkaAdminOperatorSupplier;
 import io.strimzi.operator.cluster.operator.resource.ResourceOperatorSupplier;
 import io.strimzi.operator.cluster.operator.resource.StatefulSetOperator;
+import io.strimzi.operator.cluster.operator.resource.ZookeeperAdminOperatorSupplier;
 import io.strimzi.operator.common.Annotations;
 import io.strimzi.operator.common.InvalidConfigurationException;
 import io.strimzi.operator.common.Reconciliation;
@@ -48,6 +52,8 @@ import io.strimzi.operator.common.model.ClientsCa;
 import io.strimzi.operator.common.model.InvalidResourceException;
 import io.strimzi.operator.common.model.Labels;
 import io.strimzi.operator.common.model.PasswordGenerator;
+import io.strimzi.operator.common.model.PemAuthIdentity;
+import io.strimzi.operator.common.model.PemTrustSet;
 import io.strimzi.operator.common.model.StatusDiff;
 import io.strimzi.operator.common.model.StatusUtils;
 import io.strimzi.operator.common.operator.resource.CrdOperator;
@@ -497,8 +503,10 @@ public class KafkaAssemblyOperator extends AbstractAssemblyOperator<KubernetesCl
         Future<ZooKeeperReconciler> zooKeeperReconciler()   {
             Future<StatefulSet> stsFuture = stsOperations.getAsync(namespace, KafkaResources.zookeeperComponentName(name));
             Future<StrimziPodSet> podSetFuture = strimziPodSetOperator.getAsync(namespace, KafkaResources.zookeeperComponentName(name));
+            Future<PemTrustSet> pemTrustSetFuture = ReconcilerUtils.pemTrustSet(reconciliation, secretOperations);
+            Future<Secret> clientAuthIdentitySecretFuture = ReconcilerUtils.clientAuthIdentitySecret(reconciliation, secretOperations);
 
-            return Future.join(stsFuture, podSetFuture)
+            return Future.join(stsFuture, podSetFuture, pemTrustSetFuture, clientAuthIdentitySecretFuture)
                     .compose(res -> {
                         StatefulSet sts = res.resultAt(0);
                         StrimziPodSet podSet = res.resultAt(1);
@@ -520,11 +528,17 @@ public class KafkaAssemblyOperator extends AbstractAssemblyOperator<KubernetesCl
                             currentReplicas = currentReplicas(sts);
                         }
 
+                        PemTrustSet pemTrustSet = res.resultAt(2);
+                        Secret clientAuthSecret = res.resultAt(3);
+                        PemAuthIdentity pemAuthIdentity = PemAuthIdentity.clusterOperator(clientAuthSecret);
+                        ClusterOperatorPKCS12AuthIdentity pkcs12AuthIdentity = new ClusterOperatorPKCS12AuthIdentity(clientAuthSecret);
+                        ZookeeperAdminOperatorSupplier zooKeeperAdminOperatorSupplier = new ZookeeperAdminOperatorSupplier(vertx, pemTrustSet, pemAuthIdentity, pkcs12AuthIdentity);
                         ZooKeeperReconciler reconciler = new ZooKeeperReconciler(
                                 reconciliation,
                                 vertx,
                                 config,
                                 supplier,
+                                zooKeeperAdminOperatorSupplier,
                                 pfa,
                                 kafkaAssembly,
                                 versionChange,
@@ -556,12 +570,13 @@ public class KafkaAssemblyOperator extends AbstractAssemblyOperator<KubernetesCl
          * method expects that the information about current storage and replicas are collected and passed as arguments.
          * Overriding this method can be used to get mocked reconciler.
          *
-         * @param nodePools         List of node pools belonging to this cluster
-         * @param kafkaCluster      The KafkaCluster model instance
+         * @param nodePools          List of node pools belonging to this cluster
+         * @param kafkaCluster       The KafkaCluster model instance
+         * @param kafkaAdminSupplier Kafka admin client supplier
          *
          * @return  KafkaReconciler instance
          */
-        KafkaReconciler kafkaReconciler(List<KafkaNodePool> nodePools, KafkaCluster kafkaCluster) {
+        KafkaReconciler kafkaReconciler(List<KafkaNodePool> nodePools, KafkaCluster kafkaCluster, KafkaAdminOperatorSupplier kafkaAdminSupplier) {
             return new KafkaReconciler(
                     reconciliation,
                     kafkaAssembly,
@@ -571,6 +586,7 @@ public class KafkaAssemblyOperator extends AbstractAssemblyOperator<KubernetesCl
                     clientsCa,
                     config,
                     supplier,
+                    kafkaAdminSupplier,
                     pfa,
                     vertx
             );
@@ -600,12 +616,15 @@ public class KafkaAssemblyOperator extends AbstractAssemblyOperator<KubernetesCl
 
             Future<StatefulSet> stsFuture = stsOperations.getAsync(namespace, KafkaResources.kafkaComponentName(name));
             Future<List<StrimziPodSet>> podSetFuture = strimziPodSetOperator.listAsync(namespace, kafkaSelectorLabels);
+            Future<KafkaAdminOperatorSupplier> kafkaAdminSupplierFuture = ReconcilerUtils.pemClientCertificates(reconciliation, secretOperations)
+                    .compose(res -> Future.succeededFuture(new KafkaAdminOperatorSupplier(reconciliation, res.resultAt(0), res.resultAt(1), vertx)));
 
-            return Future.join(stsFuture, podSetFuture, nodePoolFuture)
+            return Future.join(stsFuture, podSetFuture, nodePoolFuture, kafkaAdminSupplierFuture)
                     .compose(res -> {
                         StatefulSet sts = res.resultAt(0);
                         List<StrimziPodSet> podSets = res.resultAt(1);
                         List<KafkaNodePool> nodePools = res.resultAt(2);
+                        KafkaAdminOperatorSupplier kafkaAdminSupplier = res.resultAt(3);
 
                         if (config.featureGates().kafkaNodePoolsEnabled()
                                 && ReconcilerUtils.nodePoolsEnabled(kafkaAssembly)
@@ -629,7 +648,7 @@ public class KafkaAssemblyOperator extends AbstractAssemblyOperator<KubernetesCl
                             currentPods.put(sts.getMetadata().getName(), IntStream.range(0, sts.getSpec().getReplicas()).mapToObj(i -> KafkaResources.kafkaPodName(kafkaAssembly.getMetadata().getName(), i)).toList());
                         }
 
-                        return new KafkaClusterCreator(vertx, reconciliation, config, supplier)
+                        return new KafkaClusterCreator(reconciliation, config, supplier, kafkaAdminSupplier)
                                 .prepareKafkaCluster(kafkaAssembly, nodePools, oldStorage, currentPods, versionChange, true)
                                 .compose(kafkaCluster -> {
                                     // We store this for use with Cruise Control later. As these configurations might
@@ -640,7 +659,7 @@ public class KafkaAssemblyOperator extends AbstractAssemblyOperator<KubernetesCl
                                     kafkaBrokerStorage = kafkaCluster.getStorageByPoolName();
                                     kafkaBrokerResources = kafkaCluster.getBrokerResourceRequirementsByPoolName();
 
-                                    return Future.succeededFuture(kafkaReconciler(nodePools, kafkaCluster));
+                                    return Future.succeededFuture(kafkaReconciler(nodePools, kafkaCluster, kafkaAdminSupplier));
                                 });
                     });
         }

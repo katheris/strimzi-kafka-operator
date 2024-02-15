@@ -38,8 +38,10 @@ import io.strimzi.operator.cluster.model.RestartReasons;
 import io.strimzi.operator.cluster.model.SharedEnvironmentProvider;
 import io.strimzi.operator.cluster.model.ZookeeperCluster;
 import io.strimzi.operator.cluster.model.nodepools.NodePoolUtils;
+import io.strimzi.operator.cluster.operator.resource.KafkaAdminOperatorSupplier;
 import io.strimzi.operator.cluster.operator.resource.ResourceOperatorSupplier;
 import io.strimzi.operator.cluster.operator.resource.StatefulSetOperator;
+import io.strimzi.operator.cluster.operator.resource.ZookeeperAdminOperatorSupplier;
 import io.strimzi.operator.common.Annotations;
 import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.model.ClientsCa;
@@ -240,11 +242,15 @@ public class KafkaAssemblyOperatorPodSetTest {
 
         ClusterOperatorConfig config = ResourceUtils.dummyClusterOperatorConfig(VERSIONS);
 
+        ZookeeperAdminOperatorSupplier zkSupplier = ResourceUtils.zkSupplierWithMocks();
+        KafkaAdminOperatorSupplier kafkaAdminSupplier = ResourceUtils.kafkaAdminSupplierWithMocks();
+
         MockZooKeeperReconciler zr = new MockZooKeeperReconciler(
                 new Reconciliation("test-trigger", Kafka.RESOURCE_KIND, NAMESPACE, CLUSTER_NAME),
                 vertx,
                 config,
                 supplier,
+                zkSupplier,
                 new PlatformFeaturesAvailability(false, KUBERNETES_VERSION),
                 KAFKA,
                 VERSION_CHANGE,
@@ -257,6 +263,7 @@ public class KafkaAssemblyOperatorPodSetTest {
                 vertx,
                 config,
                 supplier,
+                kafkaAdminSupplier,
                 new PlatformFeaturesAvailability(false, KUBERNETES_VERSION),
                 KAFKA,
                 KAFKA_CLUSTER,
@@ -355,11 +362,15 @@ public class KafkaAssemblyOperatorPodSetTest {
 
         ClusterOperatorConfig config = ResourceUtils.dummyClusterOperatorConfig(VERSIONS);
 
+        ZookeeperAdminOperatorSupplier zkSupplier = ResourceUtils.zkSupplierWithMocks();
+        KafkaAdminOperatorSupplier kafkaAdminSupplier = ResourceUtils.kafkaAdminSupplierWithMocks();
+
         MockZooKeeperReconciler zr = new MockZooKeeperReconciler(
                 new Reconciliation("test-trigger", Kafka.RESOURCE_KIND, NAMESPACE, CLUSTER_NAME),
                 vertx,
                 config,
                 supplier,
+                zkSupplier,
                 new PlatformFeaturesAvailability(false, KUBERNETES_VERSION),
                 KAFKA,
                 VERSION_CHANGE,
@@ -372,6 +383,7 @@ public class KafkaAssemblyOperatorPodSetTest {
                 vertx,
                 config,
                 supplier,
+                kafkaAdminSupplier,
                 new PlatformFeaturesAvailability(false, KUBERNETES_VERSION),
                 KAFKA,
                 KAFKA_CLUSTER,
@@ -480,11 +492,15 @@ public class KafkaAssemblyOperatorPodSetTest {
 
         ClusterOperatorConfig config = ResourceUtils.dummyClusterOperatorConfig(VERSIONS);
 
+        ZookeeperAdminOperatorSupplier zkSupplier = ResourceUtils.zkSupplierWithMocks();
+        KafkaAdminOperatorSupplier kafkaAdminSupplier = ResourceUtils.kafkaAdminSupplierWithMocks();
+
         MockZooKeeperReconciler zr = new MockZooKeeperReconciler(
                 new Reconciliation("test-trigger", Kafka.RESOURCE_KIND, NAMESPACE, CLUSTER_NAME),
                 vertx,
                 config,
                 supplier,
+                zkSupplier,
                 new PlatformFeaturesAvailability(false, KUBERNETES_VERSION),
                 KAFKA,
                 VERSION_CHANGE,
@@ -497,6 +513,7 @@ public class KafkaAssemblyOperatorPodSetTest {
                 vertx,
                 config,
                 supplier,
+                kafkaAdminSupplier,
                 new PlatformFeaturesAvailability(false, KUBERNETES_VERSION),
                 KAFKA,
                 KAFKA_CLUSTER,
@@ -606,11 +623,15 @@ public class KafkaAssemblyOperatorPodSetTest {
 
         ClusterOperatorConfig config = ResourceUtils.dummyClusterOperatorConfig(VERSIONS);
 
+        ZookeeperAdminOperatorSupplier zkSupplier = ResourceUtils.zkSupplierWithMocks();
+        KafkaAdminOperatorSupplier kafkaAdminSupplier = ResourceUtils.kafkaAdminSupplierWithMocks();
+
         MockZooKeeperReconciler zr = new MockZooKeeperReconciler(
                 new Reconciliation("test-trigger", Kafka.RESOURCE_KIND, NAMESPACE, CLUSTER_NAME),
                 vertx,
                 config,
                 supplier,
+                zkSupplier,
                 new PlatformFeaturesAvailability(false, KUBERNETES_VERSION),
                 KAFKA,
                 VERSION_CHANGE,
@@ -623,6 +644,7 @@ public class KafkaAssemblyOperatorPodSetTest {
                 vertx,
                 config,
                 supplier,
+                kafkaAdminSupplier,
                 new PlatformFeaturesAvailability(false, KUBERNETES_VERSION),
                 KAFKA,
                 KAFKA_CLUSTER,
@@ -748,11 +770,15 @@ public class KafkaAssemblyOperatorPodSetTest {
 
         ClusterOperatorConfig config = ResourceUtils.dummyClusterOperatorConfig(VERSIONS);
 
+        ZookeeperAdminOperatorSupplier zkSupplier = ResourceUtils.zkSupplierWithMocks();
+        KafkaAdminOperatorSupplier kafkaAdminSupplier = ResourceUtils.kafkaAdminSupplierWithMocks();
+
         MockZooKeeperReconciler zr = new MockZooKeeperReconciler(
                 new Reconciliation("test-trigger", Kafka.RESOURCE_KIND, NAMESPACE, CLUSTER_NAME),
                 vertx,
                 config,
                 supplier,
+                zkSupplier,
                 new PlatformFeaturesAvailability(false, KUBERNETES_VERSION),
                 KAFKA,
                 VERSION_CHANGE,
@@ -765,6 +791,7 @@ public class KafkaAssemblyOperatorPodSetTest {
                 vertx,
                 config,
                 supplier,
+                kafkaAdminSupplier,
                 new PlatformFeaturesAvailability(false, KUBERNETES_VERSION),
                 KAFKA,
                 KAFKA_CLUSTER,
@@ -880,11 +907,14 @@ public class KafkaAssemblyOperatorPodSetTest {
 
         ClusterOperatorConfig config = ResourceUtils.dummyClusterOperatorConfig(VERSIONS);
 
+        KafkaAdminOperatorSupplier kafkaAdminSupplier = ResourceUtils.kafkaAdminSupplierWithMocks();
+
         MockKafkaReconciler kr = new MockKafkaReconciler(
                 new Reconciliation("test-trigger", Kafka.RESOURCE_KIND, NAMESPACE, CLUSTER_NAME),
                 vertx,
                 config,
                 supplier,
+                kafkaAdminSupplier,
                 new PlatformFeaturesAvailability(false, KUBERNETES_VERSION),
                 patchKafka,
                 KAFKA_CLUSTER,
@@ -965,8 +995,8 @@ public class KafkaAssemblyOperatorPodSetTest {
         int maybeRollZooKeeperInvocations = 0;
         Function<Pod, List<String>> zooPodNeedsRestart = null;
 
-        public MockZooKeeperReconciler(Reconciliation reconciliation, Vertx vertx, ClusterOperatorConfig config, ResourceOperatorSupplier supplier, PlatformFeaturesAvailability pfa, Kafka kafkaAssembly, KafkaVersionChange versionChange, Storage oldStorage, int currentReplicas, ClusterCa clusterCa) {
-            super(reconciliation, vertx, config, supplier, pfa, kafkaAssembly, versionChange, oldStorage, currentReplicas, clusterCa);
+        public MockZooKeeperReconciler(Reconciliation reconciliation, Vertx vertx, ClusterOperatorConfig config, ResourceOperatorSupplier supplier, ZookeeperAdminOperatorSupplier zkSupplier, PlatformFeaturesAvailability pfa, Kafka kafkaAssembly, KafkaVersionChange versionChange, Storage oldStorage, int currentReplicas, ClusterCa clusterCa) {
+            super(reconciliation, vertx, config, supplier, zkSupplier, pfa, kafkaAssembly, versionChange, oldStorage, currentReplicas, clusterCa);
         }
 
         @Override
@@ -992,8 +1022,8 @@ public class KafkaAssemblyOperatorPodSetTest {
         int maybeRollKafkaInvocations = 0;
         Function<Pod, RestartReasons> kafkaPodNeedsRestart = null;
 
-        public MockKafkaReconciler(Reconciliation reconciliation, Vertx vertx, ClusterOperatorConfig config, ResourceOperatorSupplier supplier, PlatformFeaturesAvailability pfa, Kafka kafkaAssembly, KafkaCluster kafkaCluster, ClusterCa clusterCa, ClientsCa clientsCa) {
-            super(reconciliation, kafkaAssembly, null, kafkaCluster, clusterCa, clientsCa, config, supplier, pfa, vertx);
+        public MockKafkaReconciler(Reconciliation reconciliation, Vertx vertx, ClusterOperatorConfig config, ResourceOperatorSupplier supplier, KafkaAdminOperatorSupplier kafkaAdminSupplier, PlatformFeaturesAvailability pfa, Kafka kafkaAssembly, KafkaCluster kafkaCluster, ClusterCa clusterCa, ClientsCa clientsCa) {
+            super(reconciliation, kafkaAssembly, null, kafkaCluster, clusterCa, clientsCa, config, supplier, kafkaAdminSupplier, pfa, vertx);
         }
 
         @Override

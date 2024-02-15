@@ -45,6 +45,7 @@ import io.strimzi.operator.cluster.operator.assembly.KafkaAssemblyOperator;
 import io.strimzi.operator.cluster.operator.assembly.KafkaClusterCreator;
 import io.strimzi.operator.cluster.operator.assembly.KafkaReconciler;
 import io.strimzi.operator.cluster.operator.assembly.StrimziPodSetController;
+import io.strimzi.operator.cluster.operator.resource.KafkaAdminOperatorSupplier;
 import io.strimzi.operator.cluster.operator.resource.ResourceOperatorSupplier;
 import io.strimzi.operator.common.AdminClientProvider;
 import io.strimzi.operator.common.Reconciliation;
@@ -134,6 +135,7 @@ public class KubernetesRestartEventsMockTest {
     private final String appName = "app.kubernetes.io/name";
 
     private ResourceOperatorSupplier supplier;
+    private KafkaAdminOperatorSupplier kafkaAdminSupplier;
     private Reconciliation reconciliation;
     private MockKube2 mockKube;
     private StrimziPodSetController podSetController;
@@ -166,12 +168,11 @@ public class KubernetesRestartEventsMockTest {
 
         supplier = new ResourceOperatorSupplier(vertx,
                 client,
-                ResourceUtils.zookeeperLeaderFinder(vertx, client),
-                ResourceUtils.adminClientProvider(),
-                ResourceUtils.zookeeperScalerProvider(),
                 ResourceUtils.metricsProvider(),
                 PFA,
                 60_000);
+
+        kafkaAdminSupplier = new KafkaAdminOperatorSupplier(ResourceUtils.adminClientProvider(), null, null);
 
         podSetController = new StrimziPodSetController(NAMESPACE, Labels.EMPTY, supplier.kafkaOperator, supplier.connectOperator, supplier.mirrorMaker2Operator, supplier.strimziPodSetOperator, supplier.podOperations, supplier.metricsProvider, Integer.parseInt(ClusterOperatorConfig.POD_SET_CONTROLLER_WORK_QUEUE_SIZE.defaultValue()));
         podSetController.start();
@@ -220,6 +221,7 @@ public class KubernetesRestartEventsMockTest {
                 clientsCa,
                 clusterOperatorConfig,
                 supplier,
+                kafkaAdminSupplier,
                 PFA,
                 vertx
         );
@@ -269,6 +271,7 @@ public class KubernetesRestartEventsMockTest {
                 clientsCa,
                 clusterOperatorConfig,
                 supplier,
+                kafkaAdminSupplier,
                 PFA,
                 vertx);
 
@@ -301,6 +304,7 @@ public class KubernetesRestartEventsMockTest {
                 clientsCa,
                 clusterOperatorConfig,
                 supplier,
+                kafkaAdminSupplier,
                 PFA,
                 vertx);
 
@@ -333,6 +337,7 @@ public class KubernetesRestartEventsMockTest {
                 clientsCa,
                 clusterOperatorConfig,
                 supplier,
+                kafkaAdminSupplier,
                 PFA,
                 vertx);
 
@@ -378,8 +383,8 @@ public class KubernetesRestartEventsMockTest {
     @Test
     void testEventEmittedWhenConfigChangeRequiresRestart(Vertx vertx, VertxTestContext context) {
         // Modify mocked configs call to return a new property to trigger a reconfiguration reconciliation that requires a restart
-        Admin adminClient = withChangedBrokerConf(ResourceUtils.adminClientProvider().createAdminClient(null, null, null, null));
-        ResourceOperatorSupplier supplierWithModifiedAdmin = supplierWithAdmin(vertx, () -> adminClient);
+        Admin adminClient = withChangedBrokerConf(ResourceUtils.adminClientProvider().createAdminClient(null));
+        KafkaAdminOperatorSupplier supplierWithModifiedAdmin = supplierWithAdmin(() -> adminClient);
 
         KafkaCluster kafkaCluster = KafkaClusterCreator.createKafkaCluster(reconciliation,
                 KAFKA,
@@ -397,6 +402,7 @@ public class KubernetesRestartEventsMockTest {
                 clusterCa,
                 clientsCa,
                 clusterOperatorConfig,
+                supplier,
                 supplierWithModifiedAdmin,
                 PFA,
                 vertx);
@@ -437,7 +443,7 @@ public class KubernetesRestartEventsMockTest {
     @Test
     void testEventEmittedWhenPodIsUnresponsive(Vertx vertx, VertxTestContext context) {
         // Simulate not being able to initiate an initial admin client connection broker at all
-        ResourceOperatorSupplier supplierWithModifiedAdmin = supplierWithAdmin(vertx, () -> {
+        KafkaAdminOperatorSupplier supplierWithModifiedAdmin = supplierWithAdmin(() -> {
             throw new ConfigException("");
         });
 
@@ -457,6 +463,7 @@ public class KubernetesRestartEventsMockTest {
                 clusterCa,
                 clientsCa,
                 clusterOperatorConfig,
+                supplier,
                 supplierWithModifiedAdmin,
                 PFA,
                 vertx);
@@ -521,6 +528,7 @@ public class KubernetesRestartEventsMockTest {
                 clientsCa,
                 clusterOperatorConfig,
                 supplier,
+                kafkaAdminSupplier,
                 PFA,
                 vertx);
         reconciler.reconcile(ks, Clock.systemUTC()).onComplete(verifyEventPublished(KAFKA_CERTIFICATES_CHANGED, context));
@@ -564,31 +572,25 @@ public class KubernetesRestartEventsMockTest {
                 clientsCa,
                 clusterOperatorConfig,
                 supplier,
+                kafkaAdminSupplier,
                 PFA,
                 vertx);
     }
 
-    private ResourceOperatorSupplier supplierWithAdmin(Vertx vertx, Supplier<Admin> adminClientSupplier) {
+    private KafkaAdminOperatorSupplier supplierWithAdmin(Supplier<Admin> adminClientSupplier) {
         AdminClientProvider adminClientProvider = new AdminClientProvider() {
             @Override
-            public Admin createAdminClient(String bootstrapHostnames, Secret clusterCaCertSecret, Secret keyCertSecret, String keyCertName) {
+            public Admin createAdminClient(String bootstrapHostnames) {
                 return adminClientSupplier.get();
             }
 
             @Override
-            public Admin createAdminClient(String bootstrapHostnames, Secret clusterCaCertSecret, Secret keyCertSecret, String keyCertName, Properties config) {
+            public Admin createAdminClient(String bootstrapHostnames, Properties config) {
                 return adminClientSupplier.get();
             }
         };
 
-        return new ResourceOperatorSupplier(vertx,
-                client,
-                ResourceUtils.zookeeperLeaderFinder(vertx, client),
-                adminClientProvider,
-                ResourceUtils.zookeeperScalerProvider(),
-                ResourceUtils.metricsProvider(),
-                PFA,
-                60_000);
+        return new KafkaAdminOperatorSupplier(adminClientProvider, null, null);
     }
 
     private Admin withChangedBrokerConf(Admin preMockedAdminClient) {

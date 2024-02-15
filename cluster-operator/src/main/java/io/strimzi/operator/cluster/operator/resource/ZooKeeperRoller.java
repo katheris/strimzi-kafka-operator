@@ -5,7 +5,6 @@
 package io.strimzi.operator.cluster.operator.resource;
 
 import io.fabric8.kubernetes.api.model.Pod;
-import io.fabric8.kubernetes.api.model.Secret;
 import io.strimzi.api.kafka.model.kafka.KafkaResources;
 import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.ReconciliationLogger;
@@ -55,12 +54,10 @@ public class ZooKeeperRoller {
      * @param selectorLabels    The selector labels to find the pods
      * @param podRestart        Function that returns a list is reasons why the given pod needs to be restarted, or an
      *                          empty list if the pod does not need to be restarted.
-     * @param clusterCaSecret   Secret with cluster CA certificates
-     * @param coKeySecret       Secret with the Cluster operator certificates
      *
      * @return A future that completes when any necessary rolling has been completed.
      */
-    public Future<Void> maybeRollingUpdate(Reconciliation reconciliation, int replicas, Labels selectorLabels, Function<Pod, List<String>> podRestart, Secret clusterCaSecret, Secret coKeySecret) {
+    public Future<Void> maybeRollingUpdate(Reconciliation reconciliation, int replicas, Labels selectorLabels, Function<Pod, List<String>> podRestart) {
         String namespace = reconciliation.namespace();
 
         // We prepare the list of expected Pods. This is needed as we need to account for pods which might be missing.
@@ -104,7 +101,7 @@ public class ZooKeeperRoller {
                 }).compose(clusterRollContext -> {
                     if (clusterRollContext != null)  {
                         Promise<Void> promise = Promise.promise();
-                        Future<String> leaderFuture = leaderFinder.findZookeeperLeader(reconciliation, clusterRollContext.podNames(), clusterCaSecret, coKeySecret);
+                        Future<String> leaderFuture = leaderFinder.findZookeeperLeader(reconciliation, clusterRollContext.podNames());
 
                         leaderFuture.compose(leader -> {
                             LOGGER.debugCr(reconciliation, "Zookeeper leader is " + (ZookeeperLeaderFinder.UNKNOWN_LEADER.equals(leader) ? "unknown" : "pod " + leader));

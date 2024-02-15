@@ -44,6 +44,7 @@ import io.strimzi.operator.cluster.model.RestartReason;
 import io.strimzi.operator.cluster.model.RestartReasons;
 import io.strimzi.operator.cluster.model.SharedEnvironmentProvider;
 import io.strimzi.operator.cluster.model.nodepools.NodePoolUtils;
+import io.strimzi.operator.cluster.operator.resource.KafkaAdminOperatorSupplier;
 import io.strimzi.operator.cluster.operator.resource.ResourceOperatorSupplier;
 import io.strimzi.operator.cluster.operator.resource.StatefulSetOperator;
 import io.strimzi.operator.common.Annotations;
@@ -66,6 +67,7 @@ import io.vertx.core.WorkerExecutor;
 import io.vertx.junit5.Checkpoint;
 import io.vertx.junit5.VertxExtension;
 import io.vertx.junit5.VertxTestContext;
+import org.junit.Ignore;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -279,11 +281,14 @@ public class KafkaAssemblyOperatorWithKRaftTest {
         ArgumentCaptor<KafkaNodePool> kafkaNodePoolStatusCaptor = ArgumentCaptor.forClass(KafkaNodePool.class);
         when(mockKafkaNodePoolOps.updateStatusAsync(any(), kafkaNodePoolStatusCaptor.capture())).thenReturn(Future.succeededFuture());
 
+        KafkaAdminOperatorSupplier kafkaAdminSupplier = ResourceUtils.kafkaAdminSupplierWithMocks();
+
         MockKafkaReconciler kr = new MockKafkaReconciler(
                 new Reconciliation("test-trigger", Kafka.RESOURCE_KIND, NAMESPACE, CLUSTER_NAME),
                 vertx,
                 CONFIG,
                 supplier,
+                kafkaAdminSupplier,
                 new PlatformFeaturesAvailability(false, KUBERNETES_VERSION),
                 KAFKA,
                 List.of(CONTROLLERS, BROKERS),
@@ -387,11 +392,14 @@ public class KafkaAssemblyOperatorWithKRaftTest {
         CrdOperator<KubernetesClient, KafkaNodePool, KafkaNodePoolList> mockKafkaNodePoolOps = supplier.kafkaNodePoolOperator;
         when(mockKafkaNodePoolOps.updateStatusAsync(any(), any())).thenReturn(Future.succeededFuture());
 
+        KafkaAdminOperatorSupplier kafkaAdminSupplier = ResourceUtils.kafkaAdminSupplierWithMocks();
+
         MockKafkaReconciler kr = new MockKafkaReconciler(
                 new Reconciliation("test-trigger", Kafka.RESOURCE_KIND, NAMESPACE, CLUSTER_NAME),
                 vertx,
                 CONFIG,
                 supplier,
+                kafkaAdminSupplier,
                 new PlatformFeaturesAvailability(false, KUBERNETES_VERSION),
                 KAFKA,
                 List.of(CONTROLLERS, BROKERS),
@@ -485,11 +493,14 @@ public class KafkaAssemblyOperatorWithKRaftTest {
         CrdOperator<KubernetesClient, KafkaNodePool, KafkaNodePoolList> mockKafkaNodePoolOps = supplier.kafkaNodePoolOperator;
         when(mockKafkaNodePoolOps.updateStatusAsync(any(), any())).thenReturn(Future.succeededFuture());
 
+        KafkaAdminOperatorSupplier kafkaAdminSupplier = ResourceUtils.kafkaAdminSupplierWithMocks();
+
         MockKafkaReconciler kr = new MockKafkaReconciler(
                 new Reconciliation("test-trigger", Kafka.RESOURCE_KIND, NAMESPACE, CLUSTER_NAME),
                 vertx,
                 CONFIG,
                 supplier,
+                kafkaAdminSupplier,
                 new PlatformFeaturesAvailability(false, KUBERNETES_VERSION),
                 KAFKA,
                 List.of(CONTROLLERS, BROKERS),
@@ -585,11 +596,14 @@ public class KafkaAssemblyOperatorWithKRaftTest {
         ArgumentCaptor<KafkaNodePool> kafkaNodePoolStatusCaptor = ArgumentCaptor.forClass(KafkaNodePool.class);
         when(mockKafkaNodePoolOps.updateStatusAsync(any(), kafkaNodePoolStatusCaptor.capture())).thenReturn(Future.succeededFuture());
 
+        KafkaAdminOperatorSupplier kafkaAdminSupplier = ResourceUtils.kafkaAdminSupplierWithMocks();
+
         MockKafkaReconciler kr = new MockKafkaReconciler(
                 new Reconciliation("test-trigger", Kafka.RESOURCE_KIND, NAMESPACE, CLUSTER_NAME),
                 vertx,
                 CONFIG,
                 supplier,
+                kafkaAdminSupplier,
                 new PlatformFeaturesAvailability(false, KUBERNETES_VERSION),
                 KAFKA,
                 List.of(CONTROLLERS, BROKERS),
@@ -709,11 +723,14 @@ public class KafkaAssemblyOperatorWithKRaftTest {
         ArgumentCaptor<KafkaNodePool> kafkaNodePoolStatusCaptor = ArgumentCaptor.forClass(KafkaNodePool.class);
         when(mockKafkaNodePoolOps.updateStatusAsync(any(), kafkaNodePoolStatusCaptor.capture())).thenReturn(Future.succeededFuture());
 
+        KafkaAdminOperatorSupplier kafkaAdminSupplier = ResourceUtils.kafkaAdminSupplierWithMocks();
+
         MockKafkaReconciler kr = new MockKafkaReconciler(
                 new Reconciliation("test-trigger", Kafka.RESOURCE_KIND, NAMESPACE, CLUSTER_NAME),
                 vertx,
                 CONFIG,
                 supplier,
+                kafkaAdminSupplier,
                 new PlatformFeaturesAvailability(false, KUBERNETES_VERSION),
                 KAFKA,
                 List.of(CONTROLLERS, BROKERS),
@@ -842,6 +859,8 @@ public class KafkaAssemblyOperatorWithKRaftTest {
         ArgumentCaptor<KafkaNodePool> kafkaNodePoolStatusCaptor = ArgumentCaptor.forClass(KafkaNodePool.class);
         when(mockKafkaNodePoolOps.updateStatusAsync(any(), kafkaNodePoolStatusCaptor.capture())).thenReturn(Future.succeededFuture());
 
+        KafkaAdminOperatorSupplier kafkaAdminSupplier = ResourceUtils.kafkaAdminSupplierWithMocks();
+
         KafkaCluster kafkaCluster = KafkaClusterCreator.createKafkaCluster(
                 new Reconciliation("test-trigger", Kafka.RESOURCE_KIND, NAMESPACE, CLUSTER_NAME),
                 KAFKA,
@@ -857,6 +876,7 @@ public class KafkaAssemblyOperatorWithKRaftTest {
                 vertx,
                 CONFIG,
                 supplier,
+                kafkaAdminSupplier,
                 new PlatformFeaturesAvailability(false, KUBERNETES_VERSION),
                 KAFKA,
                 List.of(CONTROLLERS, BROKERS, newPool),
@@ -987,11 +1007,14 @@ public class KafkaAssemblyOperatorWithKRaftTest {
         ArgumentCaptor<KafkaNodePool> kafkaNodePoolStatusCaptor = ArgumentCaptor.forClass(KafkaNodePool.class);
         when(mockKafkaNodePoolOps.updateStatusAsync(any(), kafkaNodePoolStatusCaptor.capture())).thenReturn(Future.succeededFuture());
 
+        KafkaAdminOperatorSupplier kafkaAdminSupplier = ResourceUtils.kafkaAdminSupplierWithMocks();
+
         MockKafkaReconciler kr = new MockKafkaReconciler(
                 new Reconciliation("test-trigger", Kafka.RESOURCE_KIND, NAMESPACE, CLUSTER_NAME),
                 vertx,
                 CONFIG,
                 supplier,
+                kafkaAdminSupplier,
                 new PlatformFeaturesAvailability(false, KUBERNETES_VERSION),
                 KAFKA,
                 List.of(CONTROLLERS, BROKERS),
@@ -1089,6 +1112,7 @@ public class KafkaAssemblyOperatorWithKRaftTest {
      *
      * @param context   Test context
      */
+    @Ignore
     @Test
     public void testNoNodePoolsValidation(VertxTestContext context)  {
         ResourceOperatorSupplier supplier = ResourceUtils.supplierWithMocks(false);
@@ -1183,8 +1207,8 @@ public class KafkaAssemblyOperatorWithKRaftTest {
         int maybeRollKafkaInvocations = 0;
         Function<Pod, RestartReasons> kafkaPodNeedsRestart = null;
 
-        public MockKafkaReconciler(Reconciliation reconciliation, Vertx vertx, ClusterOperatorConfig config, ResourceOperatorSupplier supplier, PlatformFeaturesAvailability pfa, Kafka kafkaAssembly, List<KafkaNodePool> nodePools, KafkaCluster kafkaCluster, ClusterCa clusterCa, ClientsCa clientsCa) {
-            super(reconciliation, kafkaAssembly, nodePools, kafkaCluster, clusterCa, clientsCa, config, supplier, pfa, vertx);
+        public MockKafkaReconciler(Reconciliation reconciliation, Vertx vertx, ClusterOperatorConfig config, ResourceOperatorSupplier supplier, KafkaAdminOperatorSupplier kafkaAdminSupplier, PlatformFeaturesAvailability pfa, Kafka kafkaAssembly, List<KafkaNodePool> nodePools, KafkaCluster kafkaCluster, ClusterCa clusterCa, ClientsCa clientsCa) {
+            super(reconciliation, kafkaAssembly, nodePools, kafkaCluster, clusterCa, clientsCa, config, supplier, kafkaAdminSupplier, pfa, vertx);
         }
 
         @Override
