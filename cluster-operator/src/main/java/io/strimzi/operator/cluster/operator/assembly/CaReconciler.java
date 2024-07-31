@@ -14,11 +14,13 @@ import io.strimzi.api.kafka.model.kafka.KafkaResources;
 import io.strimzi.api.kafka.model.kafka.cruisecontrol.CruiseControlResources;
 import io.strimzi.api.kafka.model.kafka.exporter.KafkaExporterResources;
 import io.strimzi.api.kafka.model.podset.StrimziPodSet;
+import io.strimzi.certs.CertAndKey;
 import io.strimzi.certs.CertManager;
 import io.strimzi.operator.cluster.ClusterOperatorConfig;
 import io.strimzi.operator.cluster.model.AbstractModel;
 import io.strimzi.operator.cluster.model.CertUtils;
 import io.strimzi.operator.cluster.model.ClusterCa;
+import io.strimzi.operator.cluster.model.KafkaCluster;
 import io.strimzi.operator.cluster.model.ModelUtils;
 import io.strimzi.operator.cluster.model.NodeRef;
 import io.strimzi.operator.cluster.model.RestartReason;
@@ -52,6 +54,7 @@ import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 
+import java.io.IOException;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -59,6 +62,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
+
+import static java.util.Collections.emptyMap;
 
 /**
  * Class used for reconciliation of Cluster and Client CAs. This class contains both the steps of the CA reconciliation
@@ -91,6 +96,7 @@ public class CaReconciler {
     private final Labels clusterOperatorSecretLabels;
     private final Map<String, String> clusterCaCertLabels;
     private final Map<String, String> clusterCaCertAnnotations;
+    private final KafkaCluster kafkaCluster;
 
     // Fields used to store state during the reconciliation
     private ClusterCa clusterCa;
@@ -118,7 +124,8 @@ public class CaReconciler {
             ResourceOperatorSupplier supplier,
             Vertx vertx,
             CertManager certManager,
-            PasswordGenerator passwordGenerator
+            PasswordGenerator passwordGenerator,
+            KafkaCluster kafkaCluster
     ) {
         this.reconciliation = reconciliation;
         this.vertx = vertx;
@@ -153,6 +160,7 @@ public class CaReconciler {
         this.clusterOperatorSecretLabels = Labels.generateDefaultLabels(kafkaCr, Labels.APPLICATION_NAME, Labels.APPLICATION_NAME, AbstractModel.STRIMZI_CLUSTER_OPERATOR_NAME);
         this.clusterCaCertLabels = clusterCaCertLabels(kafkaCr);
         this.clusterCaCertAnnotations = clusterCaCertAnnotations(kafkaCr);
+        this.kafkaCluster = kafkaCluster;
     }
 
     /**
@@ -208,6 +216,7 @@ public class CaReconciler {
                 .compose(i -> reconcileClusterOperatorSecret(clock))
                 .compose(i -> rollingUpdateForNewCaKey())
                 .compose(i -> maybeRemoveOldClusterCaCertificates())
+                .compose(i -> reconcileCertificateSecrets(clock))
                 .map(i -> new CaReconciliationResult(clusterCa, clientsCa));
     }
 
@@ -223,10 +232,10 @@ public class CaReconciler {
      */
     @SuppressWarnings({"checkstyle:CyclomaticComplexity", "checkstyle:NPathComplexity"})
     Future<Void> reconcileCas(Clock clock) {
-        String clusterCaCertName = AbstractModel.clusterCaCertSecretName(reconciliation.name());
-        String clusterCaKeyName = AbstractModel.clusterCaKeySecretName(reconciliation.name());
-        String clientsCaCertName = KafkaResources.clientsCaCertificateSecretName(reconciliation.name());
-        String clientsCaKeyName = KafkaResources.clientsCaKeySecretName(reconciliation.name());
+        String clusterCaCertName = AbstractModel.clusterCaCertSecretName(reconciliation.name()); //my-cluster-cluster-ca-cert
+        String clusterCaKeyName = AbstractModel.clusterCaKeySecretName(reconciliation.name());   //my-cluster-cluster-ca
+        String clientsCaCertName = KafkaResources.clientsCaCertificateSecretName(reconciliation.name()); //my-cluster-clients-ca-cert
+        String clientsCaKeyName = KafkaResources.clientsCaKeySecretName(reconciliation.name());          //my-cluster-clients-ca
 
         return secretOperator.listAsync(reconciliation.namespace(), Labels.EMPTY.withStrimziKind(reconciliation.kind()).withStrimziCluster(reconciliation.name()))
                 .compose(clusterSecrets -> vertx.executeBlocking(() -> {
@@ -246,11 +255,12 @@ public class CaReconciler {
                             clientsCaCertSecret = secret;
                         } else if (secretName.equals(clientsCaKeyName)) {
                             clientsCaKeySecret = secret;
-                        } else if (secretName.equals(KafkaResources.kafkaSecretName(reconciliation.name()))) {
+                        } else if (secretName.equals(KafkaResources.kafkaSecretName(reconciliation.name()))) { //my-cluster-kafka-brokers
                             brokersSecret = secret;
                         }
                     }
 
+                    //check ca.generateCertificateAuthority config
                     // When we are not supposed to generate the CA, but it does not exist, we should just throw an error
                     checkCustomCaSecret(clusterCaConfig, clusterCaCertSecret, clusterCaKeySecret, "Cluster CA");
 
@@ -258,7 +268,9 @@ public class CaReconciler {
                             clusterCaKeySecret,
                             ModelUtils.getCertificateValidity(clusterCaConfig),
                             ModelUtils.getRenewalDays(clusterCaConfig),
+                            //Why is generateCa true when clusterCaConfig is null?
                             clusterCaConfig == null || clusterCaConfig.isGenerateCertificateAuthority(), clusterCaConfig != null ? clusterCaConfig.getCertificateExpirationPolicy() : null);
+                    // set variables with specific secrets
                     clusterCa.initCaSecrets(clusterSecrets);
                     clusterCa.createRenewOrReplace(
                             reconciliation.namespace(), reconciliation.name(), caLabels,
@@ -608,6 +620,33 @@ public class CaReconciler {
             return Future.succeededFuture();
         }
     }
+
+    // ZooKeeper, Kafka, EntityOperator, CC, KafkaExporter
+    Future<Void> reconcileCertificateSecrets(Clock clock) {
+
+        return Future.succeededFuture();
+    }
+
+    //TODO: would need to pass in preconstructed ZKCluster, doable since it is created right at the beginning anyway
+//    Future<Void> reconcileZooKeeperCertificate(Clock clock) {
+//        return secretOperator.getAsync(reconciliation.namespace(), KafkaResources.zookeeperSecretName(reconciliation.name()))
+//                .compose(oldSecret -> {
+//                    return secretOperator
+//                            .reconcile(reconciliation, reconciliation.namespace(), KafkaResources.zookeeperSecretName(reconciliation.name()),
+//                                    zk.generateCertificatesSecret(clusterCa, Util.isMaintenanceTimeWindowsSatisfied(reconciliation, maintenanceWindows, clock.instant())));
+//                }).mapEmpty();
+//    }
+
+    Future<Void> reconcileKafkaCertificates(Clock clock) {
+        return secretOperator.getAsync(reconciliation.namespace(), KafkaResources.kafkaSecretName(reconciliation.name()))
+                .compose(oldSecret -> {
+                    Secret secret = kafkaCluster.generateCertificatesSecret(clusterCa, clientsCa, Set.of(), Map.of(), Util.isMaintenanceTimeWindowsSatisfied(reconciliation, maintenanceWindows, clock.instant()));
+                    return secretOperator
+                            .reconcile(reconciliation, reconciliation.namespace(), KafkaResources.kafkaSecretName(reconciliation.name()), secret);
+                }).mapEmpty();
+    }
+
+
 
     /**
      * Helper class to pass both Cluster and Clients CA as a result of the reconciliation

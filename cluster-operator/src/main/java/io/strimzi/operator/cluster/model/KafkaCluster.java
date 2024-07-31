@@ -62,6 +62,8 @@ import io.strimzi.api.kafka.model.kafka.listener.KafkaListenerAuthenticationCust
 import io.strimzi.api.kafka.model.kafka.listener.KafkaListenerAuthenticationOAuth;
 import io.strimzi.api.kafka.model.kafka.listener.KafkaListenerType;
 import io.strimzi.api.kafka.model.kafka.tieredstorage.TieredStorage;
+import io.strimzi.api.kafka.model.nodepool.KafkaNodePool;
+import io.strimzi.api.kafka.model.nodepool.KafkaNodePoolList;
 import io.strimzi.api.kafka.model.nodepool.KafkaNodePoolStatus;
 import io.strimzi.api.kafka.model.podset.StrimziPodSet;
 import io.strimzi.certs.CertAndKey;
@@ -1925,5 +1927,9 @@ public class KafkaCluster extends AbstractModel implements SupportsMetrics, Supp
         } else {
             return labels.strimziSelectorLabels();
         }
+    }
+
+    public List<KafkaNodePool> nodePools() {
+        return this.nodePools();
     }
 }

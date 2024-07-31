@@ -253,8 +253,11 @@ public class KafkaAssemblyOperator extends AbstractAssemblyOperator<KubernetesCl
         // inter broker protocol and log message format via the version change component
         reconcileState.initialStatus()
                 // Preparation steps => prepare cluster descriptions, handle CA creation or changes
-                .compose(state -> state.reconcileCas(clock))
                 .compose(state -> state.versionChange(kafkaMetadataConfigState.isKRaft()))
+                .compose(state -> state.prepareKafkaCluster())
+
+                // Reconciler certificates
+                .compose(state -> state.reconcileCas(clock))
 
                 // Run reconciliations of the different components
                 .compose(state -> kafkaMetadataConfigState.isKRaft() ? Future.succeededFuture(state) : state.reconcileZooKeeper(clock))
@@ -294,6 +297,9 @@ public class KafkaAssemblyOperator extends AbstractAssemblyOperator<KubernetesCl
         private Set<NodeRef> kafkaBrokerNodes;
         private Map<String, Storage> kafkaBrokerStorage;
         private Map<String, ResourceRequirements> kafkaBrokerResources;
+
+        private KafkaCluster kafkaCluster;
+        private List<KafkaNodePool> nodePools;
 
         /* test */ KafkaStatus kafkaStatus = new KafkaStatus();
 
@@ -627,7 +633,7 @@ public class KafkaAssemblyOperator extends AbstractAssemblyOperator<KubernetesCl
          *
          * @return  Future with Kafka reconciler
          */
-        Future<KafkaReconciler> kafkaReconciler()   {
+        Future<ReconciliationState> prepareKafkaCluster() {
             Labels kafkaSelectorLabels = Labels.EMPTY
                     .withStrimziKind(reconciliation.kind())
                     .withStrimziCluster(reconciliation.name())
@@ -648,7 +654,7 @@ public class KafkaAssemblyOperator extends AbstractAssemblyOperator<KubernetesCl
                     .compose(res -> {
                         StatefulSet sts = res.resultAt(0);
                         List<StrimziPodSet> podSets = res.resultAt(1);
-                        List<KafkaNodePool> nodePools = res.resultAt(2);
+                        nodePools = res.resultAt(2);
 
                         if (ReconcilerUtils.nodePoolsEnabled(kafkaAssembly)
                                 && (nodePools == null || nodePools.isEmpty())) {
@@ -681,8 +687,8 @@ public class KafkaAssemblyOperator extends AbstractAssemblyOperator<KubernetesCl
                                     kafkaBrokerNodes = kafkaCluster.brokerNodes();
                                     kafkaBrokerStorage = kafkaCluster.getStorageByPoolName();
                                     kafkaBrokerResources = kafkaCluster.getBrokerResourceRequirementsByPoolName();
-
-                                    return Future.succeededFuture(kafkaReconciler(nodePools, kafkaCluster));
+                                    this.kafkaCluster = kafkaCluster;
+                                    return Future.succeededFuture(this);
                                 });
                     });
         }
@@ -696,8 +702,8 @@ public class KafkaAssemblyOperator extends AbstractAssemblyOperator<KubernetesCl
          * @return      Future with Reconciliation State
          */
         Future<ReconciliationState> reconcileKafka(Clock clock)    {
-            return kafkaReconciler()
-                    .compose(reconciler -> reconciler.reconcile(kafkaStatus, clock))
+            return kafkaReconciler(this.nodePools, this.kafkaCluster)
+                    .reconcile(kafkaStatus, clock)
                     .map(this);
         }
 

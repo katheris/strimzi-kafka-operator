@@ -160,6 +160,7 @@ public abstract class AbstractModel {
         return componentName + "-" + podId;
     }
 
+    //TODO do we need these?
     /**
      * @param cluster The cluster name
      * @return The name of the Cluster CA certificate secret.

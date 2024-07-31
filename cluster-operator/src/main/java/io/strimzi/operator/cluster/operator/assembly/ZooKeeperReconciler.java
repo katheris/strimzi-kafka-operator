@@ -49,6 +49,7 @@ import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 
+import java.io.IOException;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -62,6 +63,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static io.strimzi.operator.common.Annotations.ANNO_STRIMZI_SERVER_CERT_HASH;
+import static java.util.Collections.emptyMap;
 import static java.util.Collections.singletonList;
 
 /**

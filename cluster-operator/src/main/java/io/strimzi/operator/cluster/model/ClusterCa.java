@@ -149,6 +149,7 @@ public class ClusterCa extends Ca {
         return kafkaExporterSecret;
     }
 
+    //TODO can we change this to make a single generic function and keep the logic of what subject names are needed in the component
     protected Map<String, CertAndKey> generateCcCerts(String namespace, String kafkaName, boolean isMaintenanceTimeWindowsSatisfied) throws IOException {
         DnsNameGenerator ccDnsGenerator = DnsNameGenerator.of(namespace, CruiseControlResources.serviceName(kafkaName));
 
@@ -175,7 +176,7 @@ public class ClusterCa extends Ca {
             isMaintenanceTimeWindowsSatisfied);
     }
 
-    protected Map<String, CertAndKey> generateZkCerts(
+    public Map<String, CertAndKey> generateZkCerts(
             String namespace,
             String crName,
             Set<NodeRef> nodes,
