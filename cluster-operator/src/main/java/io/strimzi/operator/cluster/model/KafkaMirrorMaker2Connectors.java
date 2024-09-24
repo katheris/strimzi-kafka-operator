@@ -73,7 +73,7 @@ public class KafkaMirrorMaker2Connectors {
      */
     private KafkaMirrorMaker2Connectors(Reconciliation reconciliation, KafkaMirrorMaker2 kafkaMirrorMaker2) {
         this.reconciliation = reconciliation;
-        this.clusters = kafkaMirrorMaker2.getSpec().getClusters().stream().collect(Collectors.toMap(KafkaMirrorMaker2ClusterSpec::getAlias, Function.identity()));
+        this.clusters = kafkaMirrorMaker2.getSpec().getClustersMap();
         this.mirrors = kafkaMirrorMaker2.getSpec().getMirrors();
         this.tracing = kafkaMirrorMaker2.getSpec().getTracing();
         this.rackAwarenessEnabled = kafkaMirrorMaker2.getSpec().getRack() != null;
@@ -99,7 +99,7 @@ public class KafkaMirrorMaker2Connectors {
             if (kafkaMirrorMaker2.getSpec().getClusters() == null || kafkaMirrorMaker2.getSpec().getMirrors() == null)  {
                 throw new InvalidResourceException(".spec.clusters and .spec.mirrors sections are required in KafkaMirrorMaker2 resource");
             } else {
-                Set<String> existingClusterAliases = kafkaMirrorMaker2.getSpec().getClusters().stream().map(KafkaMirrorMaker2ClusterSpec::getAlias).collect(Collectors.toSet());
+                Set<String> existingClusterAliases = kafkaMirrorMaker2.getSpec().getClustersMap().keySet();
                 Set<String> errorMessages = new HashSet<>();
                 String connectCluster = kafkaMirrorMaker2.getSpec().getConnectCluster();
 

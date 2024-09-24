@@ -2632,6 +2632,9 @@ spec:
                       - name
                     description: Makes data from a Secret or ConfigMap available in the Kafka Connect pods as volumes.
                 description: Pass data from Secrets or ConfigMaps to the Kafka Connect pods and use them to configure connectors.
+              clustersMap:
+                x-kubernetes-preserve-unknown-fields: true
+                type: object
             required:
             - connectCluster
             description: The specification of the Kafka MirrorMaker 2 cluster.

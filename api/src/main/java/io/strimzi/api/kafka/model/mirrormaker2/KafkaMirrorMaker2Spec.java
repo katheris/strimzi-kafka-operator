@@ -14,7 +14,11 @@ import io.sundr.builder.annotations.Buildable;
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Buildable(
         editableEnabled = false,
@@ -29,17 +33,27 @@ import java.util.List;
 @EqualsAndHashCode(callSuper = true, doNotUseGetters = true)
 @ToString(callSuper = true)
 public class KafkaMirrorMaker2Spec extends AbstractKafkaConnectSpec {
-    private List<KafkaMirrorMaker2ClusterSpec> clusters;
+    private Map<String, KafkaMirrorMaker2ClusterSpec> clusters;
     private String connectCluster;
     private List<KafkaMirrorMaker2MirrorSpec> mirrors;
 
     @Description("Kafka clusters for mirroring.")
     public List<KafkaMirrorMaker2ClusterSpec> getClusters() {
-        return clusters;
+        return new ArrayList<>(clusters.values());
     }
 
     public void setClusters(List<KafkaMirrorMaker2ClusterSpec> clusters) {
-        this.clusters = clusters;
+        this.clusters = clusters
+                .stream()
+                .collect(Collectors.toMap(KafkaMirrorMaker2ClusterSpec::getAlias, Function.identity()));
+    }
+
+    public Map<String, KafkaMirrorMaker2ClusterSpec> getClustersMap() {
+        return this.clusters;
+    }
+
+    public KafkaMirrorMaker2ClusterSpec getClusterWithAlias(String alias) {
+        return clusters.get(alias);
     }
 
     @Description("The cluster alias used for Kafka Connect. " +

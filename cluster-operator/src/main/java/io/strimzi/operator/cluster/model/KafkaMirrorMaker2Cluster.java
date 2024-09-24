@@ -32,6 +32,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Optional;
 import java.util.function.Supplier;
 
 /**
@@ -106,15 +107,12 @@ public class KafkaMirrorMaker2Cluster extends KafkaConnectCluster {
 
         result.image = versions.kafkaMirrorMaker2Version(spec.getImage(), spec.getVersion());
 
-        List<KafkaMirrorMaker2ClusterSpec> clustersList = ModelUtils.asListOrEmptyList(spec.getClusters());
-        result.setClusters(clustersList);
+        result.setClusters(ModelUtils.asListOrEmptyList(spec.getClusters()));
 
         KafkaMirrorMaker2ClusterSpec connectCluster = new KafkaMirrorMaker2ClusterSpecBuilder().build();
         String connectClusterAlias = spec.getConnectCluster();        
         if (connectClusterAlias != null) {
-            connectCluster = clustersList.stream()
-                    .filter(clustersListItem -> spec.getConnectCluster().equals(clustersListItem.getAlias()))
-                    .findFirst()
+            connectCluster = Optional.ofNullable(spec.getClusterWithAlias(connectClusterAlias))
                     .orElseThrow(() -> new InvalidResourceException("connectCluster with alias " + connectClusterAlias + " cannot be found in the list of clusters at spec.clusters"));
         }        
         result.configuration = new KafkaMirrorMaker2Configuration(reconciliation, connectCluster.getConfig().entrySet());
