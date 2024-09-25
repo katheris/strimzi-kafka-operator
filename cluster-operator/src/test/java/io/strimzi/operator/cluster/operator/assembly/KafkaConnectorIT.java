@@ -167,8 +167,8 @@ public class KafkaConnectorIT {
         ) { };
 
         Checkpoint async = context.checkpoint();
-        operator.reconcileConnectorAndHandleResult(new Reconciliation("test", "KafkaConnect", namespace, "bogus"),
-                "localhost", connectClient, true, connectorName,
+        operator.createOrUpdateConnector(new Reconciliation("test", "KafkaConnect", namespace, "bogus"),
+                "localhost", connectClient, connectorName,
                 connector)
             .onComplete(context.succeeding(v -> assertConnectorIsRunning(context, client, namespace, connectorName)))
             .compose(v -> {
@@ -178,8 +178,8 @@ public class KafkaConnectorIT {
                         .inNamespace(namespace)
                         .resource(createKafkaConnector(namespace, connectorName, false, config))
                         .patch();
-                return operator.reconcileConnectorAndHandleResult(new Reconciliation("test", "KafkaConnect", namespace, "bogus"),
-                        "localhost", connectClient, true, connectorName, connector);
+                return operator.createOrUpdateConnector(new Reconciliation("test", "KafkaConnect", namespace, "bogus"),
+                        "localhost", connectClient, connectorName, connector);
             })
             .onComplete(context.succeeding(v -> context.verify(() -> {
                 assertConnectorIsRunning(context, client, namespace, connectorName);
@@ -237,9 +237,8 @@ public class KafkaConnectorIT {
                 connectCluster.getPort(2)
         ) { };
 
-        operator.reconcileConnectorAndHandleResult(new Reconciliation("test", "KafkaConnect", namespace, "bogus"),
-                        "localhost", connectClient, true, connectorName,
-                        connector)
+        operator.createOrUpdateConnector(new Reconciliation("test", "KafkaConnect", namespace, "bogus"),
+                        "localhost", connectClient, connectorName, connector)
                 .onComplete(context.succeeding(v -> {
                     assertConnectorIsNotReady(context, client, namespace, connectorName);
                     context.completeNow();
@@ -287,17 +286,16 @@ public class KafkaConnectorIT {
                 connectCluster.getPort(2)
         ) { };
 
-        operator.reconcileConnectorAndHandleResult(new Reconciliation("test", "KafkaConnect", namespace, "bogus"),
-                        "localhost", connectClient, true, connectorName,
-                        connector)
+        operator.createOrUpdateConnector(new Reconciliation("test", "KafkaConnect", namespace, "bogus"),
+                        "localhost", connectClient, connectorName, connector)
                 .compose(v -> {
                     // Sometimes task status doesn't appear on first reconcile if tasks haven't started yet
                     if (taskStatusIsPresent(client, namespace, connectorName)) {
                         return Future.succeededFuture();
                     } else {
                         Promise<Void> promise = Promise.promise();
-                        vertx.setTimer(2000, id -> operator.reconcileConnectorAndHandleResult(new Reconciliation("test", "KafkaConnect", namespace, "bogus"),
-                                        "localhost", connectClient, true, connectorName, connector)
+                        vertx.setTimer(2000, id -> operator.createOrUpdateConnector(new Reconciliation("test", "KafkaConnect", namespace, "bogus"),
+                                        "localhost", connectClient, connectorName, connector)
                                 .onComplete(result -> promise.complete(result.result())));
                         return promise.future();
                     }
@@ -348,8 +346,8 @@ public class KafkaConnectorIT {
             connectCluster.getPort(2)
         ) { };
 
-        operator.reconcileConnectorAndHandleResult(new Reconciliation("test", "KafkaConnect", namespace, "bogus"),
-                "localhost", connectClient, true, connectorName,
+        operator.createOrUpdateConnector(new Reconciliation("test", "KafkaConnect", namespace, "bogus"),
+                "localhost", connectClient, connectorName,
                 connector)
             .onComplete(context.succeeding(v -> {
                 assertConnectorIsAutoRestarted(context, client, namespace, connectorName);
@@ -398,8 +396,8 @@ public class KafkaConnectorIT {
             connectCluster.getPort(2)
         ) { };
 
-        operator.reconcileConnectorAndHandleResult(new Reconciliation("test", "KafkaConnect", namespace, "bogus"),
-                "localhost", connectClient, true, connectorName,
+        operator.createOrUpdateConnector(new Reconciliation("test", "KafkaConnect", namespace, "bogus"),
+                "localhost", connectClient, connectorName,
                 connector)
             .compose(v -> {
                 // Sometimes task status doesn't appear on first reconcile if tasks haven't started yet
@@ -407,8 +405,8 @@ public class KafkaConnectorIT {
                     return Future.succeededFuture();
                 } else {
                     Promise<Void> promise = Promise.promise();
-                    vertx.setTimer(3000, id -> operator.reconcileConnectorAndHandleResult(new Reconciliation("test", "KafkaConnect", namespace, "bogus"),
-                            "localhost", connectClient, true, connectorName, connector)
+                    vertx.setTimer(3000, id -> operator.createOrUpdateConnector(new Reconciliation("test", "KafkaConnect", namespace, "bogus"),
+                            "localhost", connectClient, connectorName, connector)
                         .onComplete(result -> promise.complete(result.result())));
                     return promise.future();
                 }
