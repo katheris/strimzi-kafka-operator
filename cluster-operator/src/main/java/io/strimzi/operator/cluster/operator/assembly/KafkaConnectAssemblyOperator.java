@@ -437,20 +437,15 @@ public class KafkaConnectAssemblyOperator extends AbstractConnectOperator<Kubern
 
     private Future<Void> deleteConnector(Reconciliation reconciliation, String host, KafkaConnectApi apiClient, String connectorName) {
 
-        metrics().connectorsReconciliationsCounter(reconciliation.namespace()).increment();
-        Timer.Sample connectorsReconciliationsTimerSample = Timer.start(metrics().metricsProvider().meterRegistry());
+        Timer.Sample connectorsReconciliationsTimerSample = startTimerSample(reconciliation);
 
         LOGGER.infoCr(reconciliation, "deleting connector: {}", connectorName);
         return apiClient.delete(reconciliation, host, port, connectorName)
-                .onSuccess(v -> {
-                    metrics().connectorsSuccessfulReconciliationsCounter(reconciliation.namespace()).increment();
-                    connectorsReconciliationsTimerSample.stop(metrics().connectorsReconciliationsTimer(reconciliation.namespace()));
-                })
+                .onSuccess(v -> stopTimerSample(reconciliation, connectorsReconciliationsTimerSample, true))
                 .recover(throwable -> {
                     // The reconciliation failed on connector deletion, so there is nowhere for status to be set => we complete the reconciliation and return
                     LOGGER.warnCr(reconciliation, "Error reconciling connector {}", connectorName, throwable);
-                    metrics().connectorsFailedReconciliationsCounter(reconciliation.namespace()).increment();
-                    connectorsReconciliationsTimerSample.stop(metrics().connectorsReconciliationsTimer(reconciliation.namespace()));
+                    stopTimerSample(reconciliation, connectorsReconciliationsTimerSample, false);
 
                     // We suppress the error to not fail Connect reconciliation just because of a failing connector
                     return Future.succeededFuture();
@@ -462,14 +457,12 @@ public class KafkaConnectAssemblyOperator extends AbstractConnectOperator<Kubern
         Objects.requireNonNull(connector);
         Promise<Void> reconciliationResult = Promise.promise();
 
-        metrics().connectorsReconciliationsCounter(reconciliation.namespace()).increment();
-        Timer.Sample connectorsReconciliationsTimerSample = Timer.start(metrics().metricsProvider().meterRegistry());
+        Timer.Sample connectorsReconciliationsTimerSample = startTimerSample(reconciliation);
 
         if (Annotations.isReconciliationPausedWithAnnotation(connector)) {
             return maybeUpdateConnectorStatus(reconciliation, connector, null, null)
                     .compose(i -> {
-                        connectorsReconciliationsTimerSample.stop(metrics().connectorsReconciliationsTimer(reconciliation.namespace()));
-                        metrics().connectorsSuccessfulReconciliationsCounter(reconciliation.namespace()).increment();
+                        stopTimerSample(reconciliation, connectorsReconciliationsTimerSample, true);
                         return Future.succeededFuture();
                     });
         }
@@ -479,8 +472,7 @@ public class KafkaConnectAssemblyOperator extends AbstractConnectOperator<Kubern
         if (connector.getSpec() == null) {
             maybeUpdateConnectorStatus(reconciliation, connector, null, new InvalidResourceException("spec property is required"))
                     .onComplete(statusResult -> {
-                        connectorsReconciliationsTimerSample.stop(metrics().connectorsReconciliationsTimer(reconciliation.namespace()));
-                        metrics().connectorsFailedReconciliationsCounter(reconciliation.namespace()).increment();
+                        stopTimerSample(reconciliation, connectorsReconciliationsTimerSample, false);
 
                         // We suppress the error to not fail Connect reconciliation just because of a failing connector
                         reconciliationResult.complete();
@@ -490,14 +482,12 @@ public class KafkaConnectAssemblyOperator extends AbstractConnectOperator<Kubern
         maybeCreateOrUpdateConnector(reconciliation, host, apiClient, connectorName, connector.getSpec(), connector)
                 .onComplete(result -> maybeUpdateConnectorStatus(reconciliation, connector, result.result(), result.cause())
                         .onComplete(statusResult -> {
-                            connectorsReconciliationsTimerSample.stop(metrics().connectorsReconciliationsTimer(reconciliation.namespace()));
-
                             if (result.succeeded() && statusResult.succeeded()) {
-                                metrics().connectorsSuccessfulReconciliationsCounter(reconciliation.namespace()).increment();
+                                stopTimerSample(reconciliation, connectorsReconciliationsTimerSample, true);
                                 reconciliationResult.complete();
                             } else {
                                 // Reconciliation failed if either reconciliation or status update failed
-                                metrics().connectorsFailedReconciliationsCounter(reconciliation.namespace()).increment();
+                                stopTimerSample(reconciliation, connectorsReconciliationsTimerSample, false);
 
                                 // We suppress the error to not fail Connect reconciliation just because of a failing connector
                                 reconciliationResult.complete();
@@ -505,6 +495,20 @@ public class KafkaConnectAssemblyOperator extends AbstractConnectOperator<Kubern
                         }));
 
         return reconciliationResult.future();
+    }
+
+    private Timer.Sample startTimerSample(Reconciliation reconciliation) {
+        metrics().connectorsReconciliationsCounter(reconciliation.namespace()).increment();
+        return Timer.start(metrics().metricsProvider().meterRegistry());
+    }
+
+    private void stopTimerSample(Reconciliation reconciliation, Timer.Sample timerSample, boolean succeeded) {
+        timerSample.stop(metrics().connectorsReconciliationsTimer(reconciliation.namespace()));
+        if (succeeded) {
+            metrics().connectorsSuccessfulReconciliationsCounter(reconciliation.namespace()).increment();
+        } else {
+            metrics().connectorsFailedReconciliationsCounter(reconciliation.namespace()).increment();
+        }
     }
 
     /**
