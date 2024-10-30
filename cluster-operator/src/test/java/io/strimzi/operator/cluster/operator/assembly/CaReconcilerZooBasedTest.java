@@ -45,14 +45,16 @@ import org.mockito.ArgumentCaptor;
 
 import java.time.Clock;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.hasSize;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
@@ -193,28 +195,26 @@ public class CaReconcilerZooBasedTest {
                 Map.of(Ca.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, "0", Ca.ANNO_STRIMZI_IO_CLUSTER_CA_KEY_GENERATION, "0");
 
         PodOperator mockPodOps = supplier.podOperations;
-        when(mockPodOps.listAsync(any(), any(Labels.class))).thenAnswer(i -> {
-            List<Pod> pods = new ArrayList<>();
-            // adding a terminating Cruise Control pod to test that it's skipped during the key generation check
-            Pod ccPod = podWithNameAndAnnotations("my-kafka-cruise-control", generationAnnotations);
-            ccPod.getMetadata().setDeletionTimestamp("2023-06-08T16:23:18Z");
-            pods.add(ccPod);
-            // adding ZooKeeper and Kafka pods with old CA cert and key generation
-            pods.add(podWithNameAndAnnotations("my-kafka-zookeeper-0", generationAnnotations));
-            pods.add(podWithNameAndAnnotations("my-kafka-zookeeper-1", generationAnnotations));
-            pods.add(podWithNameAndAnnotations("my-kafka-zookeeper-2", generationAnnotations));
-            pods.add(podWithNameAndAnnotations("my-kafka-kafka-0", generationAnnotations));
-            pods.add(podWithNameAndAnnotations("my-kafka-kafka-1", generationAnnotations));
-            pods.add(podWithNameAndAnnotations("my-kafka-kafka-2", generationAnnotations));
-            return Future.succeededFuture(pods);
-        });
+        List<Pod> pods = new ArrayList<>();
+        // adding a terminating Cruise Control pod to test that it's skipped during the key generation check
+        Pod ccPod = podWithNameAndAnnotations("my-kafka-cruise-control", generationAnnotations);
+        ccPod.getMetadata().setDeletionTimestamp("2023-06-08T16:23:18Z");
+        pods.add(ccPod);
+        // adding ZooKeeper and Kafka pods with old CA cert and key generation
+        pods.add(podWithNameAndAnnotations("my-kafka-zookeeper-0", generationAnnotations));
+        pods.add(podWithNameAndAnnotations("my-kafka-zookeeper-1", generationAnnotations));
+        pods.add(podWithNameAndAnnotations("my-kafka-zookeeper-2", generationAnnotations));
+        pods.add(podWithNameAndAnnotations("my-kafka-kafka-0", generationAnnotations));
+        pods.add(podWithNameAndAnnotations("my-kafka-kafka-1", generationAnnotations));
+        pods.add(podWithNameAndAnnotations("my-kafka-kafka-2", generationAnnotations));
+        when(mockPodOps.listAsync(any(), any(Labels.class))).thenAnswer(i -> Future.succeededFuture(pods));
 
         Map<String, Deployment> deps = new HashMap<>();
         deps.put("my-kafka-entity-operator", deploymentWithName("my-kafka-entity-operator"));
         deps.put("my-kafka-cruise-control", deploymentWithName("my-kafka-cruise-control"));
         deps.put("my-kafka-kafka-exporter", deploymentWithName("my-kafka-kafka-exporter"));
         DeploymentOperator depsOperator = supplier.deploymentOperations;
-        when(depsOperator.getAsync(any(), any())).thenAnswer(i -> Future.succeededFuture(deps.get(i.getArgument(1))));
+        when(depsOperator.getAsync(any(), any())).thenAnswer(i -> Future.succeededFuture(deps.get(i.getArgument(1, String.class))));
 
         Checkpoint async = context.checkpoint();
 
@@ -225,7 +225,10 @@ public class CaReconcilerZooBasedTest {
                 .onComplete(context.succeeding(c -> context.verify(() -> {
                     assertThat(mockCaReconciler.isClusterCaNeedFullTrust, is(true));
                     assertThat(mockCaReconciler.zkPodRestartReasons.contains(RestartReason.CLUSTER_CA_CERT_KEY_REPLACED), is(true));
-                    assertThat(mockCaReconciler.kPodRollReasons.contains(RestartReason.CLUSTER_CA_CERT_KEY_REPLACED), is(true));
+                    pods.forEach(pod -> {
+                        assertThat(mockCaReconciler.kPodRollReasons.get(pod.getMetadata().getName()).getReasons(), hasSize(1));
+                        assertThat(mockCaReconciler.kPodRollReasons.get(pod.getMetadata().getName()).contains(RestartReason.CLUSTER_CA_CERT_KEY_REPLACED), is(true));
+                    });
                     assertThat(mockCaReconciler.deploymentRollReason.size() == 3, is(true));
                     for (String reason: mockCaReconciler.deploymentRollReason) {
                         assertThat(reason.equals(RestartReason.CLUSTER_CA_CERT_KEY_REPLACED.getDefaultNote()), is(true));
@@ -237,7 +240,7 @@ public class CaReconcilerZooBasedTest {
     static class MockCaReconciler extends CaReconciler {
 
         RestartReasons zkPodRestartReasons;
-        RestartReasons kPodRollReasons;
+        Map<String, RestartReasons> kPodRollReasons;
         List<String> deploymentRollReason = new ArrayList<>();
 
         public MockCaReconciler(Reconciliation reconciliation, Kafka kafkaCr, ClusterOperatorConfig config, ResourceOperatorSupplier supplier, Vertx vertx, CertManager certManager, PasswordGenerator passwordGenerator) {
@@ -270,8 +273,10 @@ public class CaReconcilerZooBasedTest {
         }
 
         @Override
-        Future<Void> rollKafka(Set<NodeRef> nodes, RestartReasons podRollReasons, TlsPemIdentity coTlsPemIdentity) {
-            this.kPodRollReasons = podRollReasons;
+        Future<Void> rollKafka(Set<NodeRef> nodes, TlsPemIdentity coTlsPemIdentity, Function<Pod, RestartReasons> podNeedsRestart) {
+            podOperator.listAsync(NAMESPACE, Labels.EMPTY)
+                    .onSuccess(pods -> kPodRollReasons = pods.stream().collect(Collectors.toMap(pod -> pod.getMetadata().getName(), podNeedsRestart)))
+                    .mapEmpty();
             return Future.succeededFuture();
         }
 
@@ -290,10 +295,6 @@ public class CaReconcilerZooBasedTest {
         Future<Void> maybeRemoveOldClusterCaCertificates() {
             return Future.succeededFuture();
         }
-    }
-
-    public static Pod podWithName(String name) {
-        return podWithNameAndAnnotations(name, Collections.emptyMap());
     }
 
     public static Pod podWithNameAndAnnotations(String name, Map<String, String> annotations) {

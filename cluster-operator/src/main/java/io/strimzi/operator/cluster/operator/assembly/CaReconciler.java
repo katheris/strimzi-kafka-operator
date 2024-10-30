@@ -76,7 +76,7 @@ public class CaReconciler {
     /* test */ final DeploymentOperator deploymentOperator;
     private final StrimziPodSetOperator strimziPodSetOperator;
     private final SecretOperator secretOperator;
-    private final PodOperator podOperator;
+    /* test */ final PodOperator podOperator;
     private final AdminClientProvider adminClientProvider;
     private final KafkaAgentClientProvider kafkaAgentClientProvider;
     private final ZookeeperLeaderFinder zookeeperLeaderFinder;
@@ -383,7 +383,7 @@ public class CaReconciler {
         RestartReasons podRollReasons = RestartReasons.empty();
 
         // cluster CA needs to be fully trusted
-        if (isClusterCaNeedFullTrust) {
+        if (clusterCa.keyReplaced() || isClusterCaNeedFullTrust) {
             podRollReasons.add(RestartReason.CLUSTER_CA_CERT_KEY_REPLACED);
         }
 
@@ -396,7 +396,7 @@ public class CaReconciler {
             return getZooKeeperReplicas()
                     .compose(replicas -> maybeRollZookeeper(replicas, podRollReasons, coTlsPemIdentity))
                     .compose(i -> patchCaKeyGenerationAndReturnNodes())
-                    .compose(nodes -> rollKafka(nodes, podRollReasons, coTlsPemIdentity))
+                    .compose(nodes -> rollKafka(nodes, coTlsPemIdentity, shouldRollPodForChangedCaKey(reconciliation, podRollReasons, clusterCa.caKeyGeneration())))
                     .compose(i -> maybeRollDeploymentIfExists(KafkaResources.entityOperatorDeploymentName(reconciliation.name()), podRollReasons))
                     .compose(i -> maybeRollDeploymentIfExists(KafkaExporterResources.componentName(reconciliation.name()), podRollReasons))
                     .compose(i -> maybeRollDeploymentIfExists(CruiseControlResources.componentName(reconciliation.name()), podRollReasons));
@@ -556,7 +556,7 @@ public class CaReconciler {
         
     }
 
-    /* test */ Future<Void> rollKafka(Set<NodeRef> nodes, RestartReasons podRollReasons, TlsPemIdentity coTlsPemIdentity) {
+    /* test */ Future<Void> rollKafka(Set<NodeRef> nodes, TlsPemIdentity coTlsPemIdentity, Function<Pod, RestartReasons> podNeedsRestart) {
         return new KafkaRoller(
                 reconciliation,
                 vertx,
@@ -573,26 +573,7 @@ public class CaReconciler {
                 null,
                 false,
                 eventPublisher
-        ).rollingRestart(shouldRollPodForChangedCaKey(reconciliation, podRollReasons, clusterCa.caKeyGeneration()));
-    }
-
-    /* test */ static Function<Pod, RestartReasons> shouldRollPodForChangedCaKey(Reconciliation reconciliation, RestartReasons podRollReasons, int clusterCaKeyGeneration) {
-        return pod -> {
-            RestartReasons reasonsToReturn = RestartReasons.empty();
-            for (RestartReason restartReason : podRollReasons.getReasons()) {
-                if (restartReason == RestartReason.CLUSTER_CA_CERT_KEY_REPLACED) {
-                    int podClusterCaKeyGeneration = Annotations.intAnnotation(pod, Ca.ANNO_STRIMZI_IO_CLUSTER_CA_KEY_GENERATION, clusterCaKeyGeneration);
-                    if (clusterCaKeyGeneration == podClusterCaKeyGeneration) {
-                        LOGGER.debugCr(reconciliation, "Not rolling Pod {} since the Cluster CA cert key generation is correct.", pod.getMetadata().getName());
-                    } else {
-                        reasonsToReturn.add(restartReason);
-                    }
-                } else {
-                    reasonsToReturn.add(restartReason);
-                }
-            }
-            return reasonsToReturn;
-        };
+        ).rollingRestart(podNeedsRestart);
     }
 
     // Entity Operator, Kafka Exporter, and Cruise Control are only rolled when the cluster CA cert key is replaced
@@ -643,6 +624,38 @@ public class CaReconciler {
         } else {
             return Future.succeededFuture();
         }
+    }
+
+    /**
+     * Returns a Function for KafkaRoller to use to determine whether to roll a pod. If the restart reason is CLUSTER_CA_CERT_KEY_REPLACED
+     * only roll the pods whose Cluster CA key annotation is still out of date. This prevents Strimzi re-rolling up-to-date
+     * pods in the case where something went wrong in the reconciliation the first time the pods were rolled.
+     *
+     * @param reconciliation            Reconciliation marker
+     * @param podRollReasons            List of reasons to restart the pods
+     * @param clusterCaKeyGeneration    Latest Cluster CA key generation to compare against
+     * @return Function that when called will indicate whether a pod should be rolled
+     */
+    static Function<Pod, RestartReasons> shouldRollPodForChangedCaKey(Reconciliation reconciliation, RestartReasons podRollReasons, int clusterCaKeyGeneration) {
+        return pod -> {
+            RestartReasons reasonsToReturn = RestartReasons.empty();
+            for (RestartReason restartReason : podRollReasons.getReasons()) {
+                if (restartReason == RestartReason.CLUSTER_CA_CERT_KEY_REPLACED) {
+                    int podClusterCaKeyGeneration = Annotations.intAnnotation(pod, Ca.ANNO_STRIMZI_IO_CLUSTER_CA_KEY_GENERATION, clusterCaKeyGeneration);
+                    if (clusterCaKeyGeneration == podClusterCaKeyGeneration) {
+                        LOGGER.debugCr(reconciliation, "Not rolling Pod {} since the Cluster CA cert key generation is correct.", pod.getMetadata().getName());
+                    } else {
+                        reasonsToReturn.add(restartReason);
+                    }
+                } else {
+                    reasonsToReturn.add(restartReason);
+                }
+            }
+            if (!reasonsToReturn.getReasons().isEmpty()) {
+                LOGGER.debugCr(reconciliation, "Rolling Pod {} due to {}", pod.getMetadata().getName(), reasonsToReturn.getReasons());
+            }
+            return reasonsToReturn;
+        };
     }
 
     /**
