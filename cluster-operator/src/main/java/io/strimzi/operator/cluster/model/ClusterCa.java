@@ -4,6 +4,7 @@
  */
 package io.strimzi.operator.cluster.model;
 
+import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.strimzi.api.kafka.model.common.CertificateAuthority;
 import io.strimzi.api.kafka.model.common.CertificateExpirationPolicy;
@@ -13,6 +14,7 @@ import io.strimzi.certs.CertAndKey;
 import io.strimzi.certs.CertManager;
 import io.strimzi.certs.IpAndDnsValidation;
 import io.strimzi.certs.Subject;
+import io.strimzi.operator.common.Annotations;
 import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.Util;
 import io.strimzi.operator.common.model.Ca;
@@ -91,6 +93,26 @@ public class ClusterCa extends Ca {
     @Override
     public String toString() {
         return "cluster-ca";
+    }
+
+    public Map.Entry<String, String> issuedByAnnotation() {
+        return caCertGenerationFullAnnotation();
+    }
+
+    public boolean issuedCurrentPodServerCertificates(Pod pod) {
+        int clusterCaCertGeneration = certGeneration();
+        int podClusterCaCertGeneration = Annotations.intAnnotation(pod, Ca.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, clusterCaCertGeneration);
+        LOGGER.debugCr(reconciliation, "Pod {} is presenting certs issued by cluster CA cert generation {}, compared to the current CA cert generation {}",
+                pod.getMetadata().getName(), podClusterCaCertGeneration, clusterCaCertGeneration);
+        return clusterCaCertGeneration != podClusterCaCertGeneration;
+    }
+
+    public boolean isTrustedByPod(Pod pod) {
+        int clusterCaKeyGeneration = keyGeneration();
+        int podClusterCaKeyGeneration = Annotations.intAnnotation(pod, Ca.ANNO_STRIMZI_IO_CLUSTER_CA_KEY_GENERATION, clusterCaKeyGeneration);
+        LOGGER.debugCr(reconciliation, "Pod {} trusts cluster CA key generation {}, compared to the current CA key generation {}",
+                pod.getMetadata().getName(), podClusterCaKeyGeneration, clusterCaKeyGeneration);
+        return clusterCaKeyGeneration != podClusterCaKeyGeneration;
     }
 
     /**

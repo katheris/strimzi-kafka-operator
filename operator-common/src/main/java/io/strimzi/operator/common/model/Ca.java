@@ -803,7 +803,7 @@ public abstract class Ca {
     /**
      * @return the generation of the current CA certificate
      */
-    public int certGeneration() {
+    protected int certGeneration() {
         if (caCertSecret != null) {
             if (!Annotations.hasAnnotation(caCertSecret, ANNO_STRIMZI_IO_CA_CERT_GENERATION)) {
                 LOGGER.warnOp("Secret {}/{} is missing generation annotation {}",
@@ -817,14 +817,14 @@ public abstract class Ca {
     /**
      * @return the generation of the current CA certificate as an annotation
      */
-    public Map.Entry<String, String> caCertGenerationFullAnnotation() {
+    protected Map.Entry<String, String> caCertGenerationFullAnnotation() {
         return Map.entry(caCertGenerationAnnotation(), String.valueOf(certGeneration()));
     }
 
     /**
      * @return the generation of the current CA key
      */
-    public int keyGeneration() {
+    protected int keyGeneration() {
         if (caKeySecret != null) {
             if (!Annotations.hasAnnotation(caKeySecret, ANNO_STRIMZI_IO_CA_KEY_GENERATION)) {
                 LOGGER.warnOp("Secret {}/{} is missing generation annotation {}",

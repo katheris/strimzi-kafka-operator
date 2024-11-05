@@ -432,37 +432,24 @@ public class CaReconciler {
                         return Future.succeededFuture();
                     }
 
-                    int clusterCaCertGeneration = clusterCa.certGeneration();
-                    int clusterCaKeyGeneration = clusterCa.keyGeneration();
-
-                    LOGGER.debugCr(reconciliation, "Current cluster CA cert generation {}", clusterCaCertGeneration);
-                    LOGGER.debugCr(reconciliation, "Current cluster CA key generation {}", clusterCaKeyGeneration);
-
-
                     for (Pod pod : pods) {
                         // with "RollingUpdate" strategy on Deployment(s) (i.e. the Cruise Control one),
                         // while the Deployment is reported to be ready, the old pod is still alive but terminating
                         // this condition is for skipping "Terminating" pods for checks on the CA key and old certificates
                         if (pod.getMetadata().getDeletionTimestamp() == null) {
-                            int podClusterCaCertGeneration = Annotations.intAnnotation(pod, Ca.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, clusterCaCertGeneration);
-                            LOGGER.debugCr(reconciliation, "Pod {} has cluster CA cert generation {}", pod.getMetadata().getName(), podClusterCaCertGeneration);
-
-                            int podClusterCaKeyGeneration = Annotations.intAnnotation(pod, Ca.ANNO_STRIMZI_IO_CLUSTER_CA_KEY_GENERATION, clusterCaKeyGeneration);
-                            LOGGER.debugCr(reconciliation, "Pod {} has cluster CA key generation {} compared to the Secret CA key generation {}",
-                                    pod.getMetadata().getName(), podClusterCaKeyGeneration, clusterCaKeyGeneration);
 
                             // only if all Kafka related components pods are updated to the new cluster CA cert generation,
                             // there is the possibility that we should remove the older cluster CA from the Secret and stores
-                            if (clusterCaCertGeneration != podClusterCaCertGeneration) {
+                            if (!clusterCa.issuedCurrentPodServerCertificates(pod)) {
                                 this.isClusterCaFullyUsed = false;
                             }
 
-                            if (clusterCaKeyGeneration != podClusterCaKeyGeneration) {
+                            if (!clusterCa.isTrustedByPod(pod)) {
                                 this.isClusterCaNeedFullTrust = true;
                             }
 
                         } else {
-                            LOGGER.debugCr(reconciliation, "Skipping CA key generation check on pod {}, it's terminating", pod.getMetadata().getName());
+                            LOGGER.debugCr(reconciliation, "Skipping CA trust and issued server certificates check on pod {}, it's terminating", pod.getMetadata().getName());
                         }
 
                         if (isClusterCaNeedFullTrust) {

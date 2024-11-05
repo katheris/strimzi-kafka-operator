@@ -453,7 +453,7 @@ public class ZookeeperCluster extends AbstractModel implements SupportsMetrics, 
         }
 
         return ModelUtils.createSecret(KafkaResources.zookeeperSecretName(cluster), namespace, labels, ownerReference,
-                CertUtils.buildSecretData(certs), Map.ofEntries(clusterCa.caCertGenerationFullAnnotation()), emptyMap());
+                CertUtils.buildSecretData(certs), Map.ofEntries(clusterCa.issuedByAnnotation()), emptyMap());
     }
 
     /* test */ Container createContainer(ImagePullPolicy imagePullPolicy) {

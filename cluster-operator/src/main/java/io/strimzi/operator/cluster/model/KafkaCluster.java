@@ -1233,8 +1233,8 @@ public class KafkaCluster extends AbstractModel implements SupportsMetrics, Supp
         return ModelUtils.createSecret(KafkaResources.kafkaSecretName(cluster), namespace, labels, ownerReference,
                 CertUtils.buildSecretData(brokerCerts),
                 Map.ofEntries(
-                        clusterCa.caCertGenerationFullAnnotation(),
-                        clientsCa.caCertGenerationFullAnnotation()
+                        clusterCa.issuedByAnnotation(),
+                        clientsCa.generationAnnotationForTracking()
                 ),
                 emptyMap());
     }

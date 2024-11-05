@@ -9,6 +9,8 @@ import io.strimzi.api.kafka.model.common.CertificateExpirationPolicy;
 import io.strimzi.certs.CertManager;
 import io.strimzi.operator.common.Reconciliation;
 
+import java.util.Map;
+
 /**
  * Represents the Strimzi Clients CA
  */
@@ -45,5 +47,9 @@ public class ClientsCa extends Ca {
     @Override
     public String toString() {
         return "clients-ca";
+    }
+
+    public Map.Entry<String, String> generationAnnotationForTracking() {
+        return caCertGenerationFullAnnotation();
     }
 }
