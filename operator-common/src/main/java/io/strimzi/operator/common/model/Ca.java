@@ -504,8 +504,6 @@ public abstract class Ca {
      * @param additionalLabels              The additional labels of the {@code Secrets} created.
      * @param additionalAnnotations         The additional annotations of the {@code Secrets} created.
      * @param ownerRef                      The owner of the {@code Secrets} created.
-     * @param existingServerSecrets         List of existing Secrets with certificates signed by this CA. This is used
-     *                                      to compare the CA generation from their annotations with the CA generation.
      * @param maintenanceWindowSatisfied    Flag indicating whether we are in the maintenance window
      */
     public void createRenewOrReplace(
@@ -515,7 +513,6 @@ public abstract class Ca {
             Map<String, String> additionalLabels,
             Map<String, String> additionalAnnotations,
             OwnerReference ownerRef,
-            List<HasMetadata> existingServerSecrets,
             boolean maintenanceWindowSatisfied
     ) {
         X509Certificate currentCert = cert(caCertSecret, CA_CRT);
@@ -527,7 +524,7 @@ public abstract class Ca {
         if (!generateCa) {
             certData = caCertSecret != null ? caCertSecret.getData() : emptyMap();
             keyData = caKeySecret != null ? singletonMap(CA_KEY, caKeySecret.getData().get(CA_KEY)) : emptyMap();
-            renewalType = hasCaCertGenerationChanged(existingServerSecrets) ? RenewalType.REPLACE_KEY : RenewalType.NOOP;
+            renewalType = RenewalType.NOOP; // User is managing CA
             caCertsRemoved = false;
         } else {
             this.renewalType = shouldCreateOrRenew(currentCert, namespace, clusterName, maintenanceWindowSatisfied);

@@ -4,7 +4,6 @@
  */
 package io.strimzi.operator.cluster.operator.assembly;
 
-import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.api.model.OwnerReference;
 import io.fabric8.kubernetes.api.model.OwnerReferenceBuilder;
 import io.fabric8.kubernetes.api.model.Pod;
@@ -207,7 +206,7 @@ public class CaReconciler {
         return reconcileCas(clock)
                 .compose(i -> verifyClusterCaFullyTrustedAndUsed())
                 .compose(i -> reconcileClusterOperatorSecret(clock))
-                .compose(i -> rollingUpdateForNewCaKey())
+                .compose(i -> maybeRollingUpdateForNewCaKey())
                 .compose(i -> maybeRemoveOldClusterCaCertificates())
                 .map(i -> new CaReconciliationResult(clusterCa, clientsCa));
     }
@@ -235,8 +234,6 @@ public class CaReconciler {
                     Secret clusterCaKeySecret = null;
                     Secret clientsCaCertSecret = null;
                     Secret clientsCaKeySecret = null;
-                    List<HasMetadata> clusterCaSecrets = new ArrayList<>();
-                    List<HasMetadata> clientsCaSecrets = new ArrayList<>();
 
                     for (Secret secret : clusterSecrets) {
                         String secretName = secret.getMetadata().getName();
@@ -248,13 +245,6 @@ public class CaReconciler {
                             clientsCaCertSecret = secret;
                         } else if (secretName.equals(clientsCaKeyName)) {
                             clientsCaKeySecret = secret;
-                        } else if (secretName.equals(KafkaResources.kafkaSecretName(reconciliation.name()))) {
-                            clusterCaSecrets.add(secret);
-                            clientsCaSecrets.add(secret);
-                        } else if (secretName.equals(KafkaResources.clusterOperatorCertsSecretName(reconciliation.name()))) {
-                            // The CO certificate is excluded as it is renewed in a separate cycle
-                        } else {
-                            clusterCaSecrets.add(secret);
                         }
                     }
 
@@ -270,7 +260,6 @@ public class CaReconciler {
                             reconciliation.namespace(), reconciliation.name(), caLabels,
                             clusterCaCertLabels, clusterCaCertAnnotations,
                             clusterCaConfig != null && !clusterCaConfig.isGenerateSecretOwnerReference() ? null : ownerRef,
-                            clusterCaSecrets,
                             Util.isMaintenanceTimeWindowsSatisfied(reconciliation, maintenanceWindows, clock.instant()));
 
                     // When we are not supposed to generate the CA, but it does not exist, we should just throw an error
@@ -287,7 +276,6 @@ public class CaReconciler {
                     clientsCa.createRenewOrReplace(reconciliation.namespace(), reconciliation.name(),
                             caLabels, Map.of(), Map.of(),
                             clientsCaConfig != null && !clientsCaConfig.isGenerateSecretOwnerReference() ? null : ownerRef,
-                            clientsCaSecrets,
                             Util.isMaintenanceTimeWindowsSatisfied(reconciliation, maintenanceWindows, clock.instant()));
 
                     return null;
@@ -374,13 +362,18 @@ public class CaReconciler {
     }
 
     /**
-     * Perform a rolling update of the cluster so that CA certificates get added to their truststores, or expired CA
-     * certificates get removed from their truststores. Note this is only necessary when the Cluster CA certificate has changed
-     * due to a new CA key. It is not necessary when the CA certificate is renewed while retaining the existing key.
+     * Maybe perform a rolling update of the cluster to update the CA certificates in component truststores.
+     * This is only necessary when the Cluster CA certificate has changed due to a new CA key.
+     * It is not necessary when the CA certificate is renewed while retaining the existing key.
+     *
+     * If Strimzi did not replace the CA key during the current reconciliation, {@code isClusterCaNeedFullTrust} is used to:
+     *      * continue from a previous CA key replacement which didn't end successfully (i.e. CO stopped)
+     *      * track key replacements when the user is managing the CA
+     *
+     * @return Future which completes when this step is done, either by rolling the cluster or by deciding
+     *         that no rolling is needed.
      */
-    Future<Void> rollingUpdateForNewCaKey() {
-        // cluster CA needs to be fully trusted
-        // it is coming from a cluster CA key replacement which didn't end successfully (i.e. CO stopped) and we need to continue from there
+    Future<Void> maybeRollingUpdateForNewCaKey() {
         if (clusterCa.keyReplaced() || isClusterCaNeedFullTrust) {
             String restartReason = RestartReason.CLUSTER_CA_CERT_KEY_REPLACED.getDefaultNote();
             TlsPemIdentity coTlsPemIdentity = new TlsPemIdentity(new PemTrustSet(clusterCa.caCertSecret()), PemAuthIdentity.clusterOperator(coSecret));
