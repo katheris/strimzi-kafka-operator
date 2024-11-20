@@ -4,6 +4,7 @@
  */
 package io.strimzi.operator.cluster.model;
 
+import io.fabric8.certmanager.api.model.v1.Certificate;
 import io.fabric8.kubernetes.api.model.Affinity;
 import io.fabric8.kubernetes.api.model.AffinityBuilder;
 import io.fabric8.kubernetes.api.model.ConfigMap;
@@ -40,6 +41,7 @@ import io.fabric8.openshift.api.model.Route;
 import io.fabric8.openshift.api.model.RouteBuilder;
 import io.strimzi.api.kafka.model.common.CertAndKeySecretSource;
 import io.strimzi.api.kafka.model.common.Condition;
+import io.strimzi.api.kafka.model.common.IssuerRef;
 import io.strimzi.api.kafka.model.common.Rack;
 import io.strimzi.api.kafka.model.common.template.ContainerTemplate;
 import io.strimzi.api.kafka.model.common.template.ExternalTrafficPolicy;
@@ -1224,7 +1226,7 @@ public class KafkaCluster extends AbstractModel implements SupportsMetrics, Supp
         Map<String, CertAndKey> brokerCerts;
 
         try {
-            brokerCerts = clusterCa.generateBrokerCerts(namespace, cluster, existingSecret, nodes, externalBootstrapDnsName, externalDnsNames, isMaintenanceTimeWindowsSatisfied);
+            brokerCerts = clusterCa.generateBrokerCerts(existingSecret, nodes, CertUtils.kafkaNodesSubjectFn(namespace, cluster, externalBootstrapDnsName, externalDnsNames), isMaintenanceTimeWindowsSatisfied);
         } catch (IOException e) {
             LOGGER.warnCr(reconciliation, "Error while generating certificates", e);
             throw new RuntimeException("Failed to prepare Kafka certificates", e);
@@ -1237,6 +1239,28 @@ public class KafkaCluster extends AbstractModel implements SupportsMetrics, Supp
                         clientsCa.caCertGenerationFullAnnotation()
                 ),
                 emptyMap());
+    }
+
+    /**
+     * Generates the cert-manager.io/v1 Certificate resources for the brokers
+     *
+     * @param clusterCa                 The CA for cluster certificates
+     * @param externalBootstrapDnsName  Map with bootstrap DNS names which should be added to the certificate
+     * @param externalDnsNames          Map with broker DNS names  which should be added to the certificate
+     *
+     * @return List of Kubernetes Certificate resources
+     */
+    public List<Certificate> generateBrokersCertificateResources(ClusterCa clusterCa, Set<String> externalBootstrapDnsName, Map<Integer, Set<String>> externalDnsNames) {
+        Set<NodeRef> nodes = nodes();
+        Function<NodeRef, io.strimzi.certs.Subject> subjectFn = CertUtils.kafkaNodesSubjectFn(namespace, cluster, externalBootstrapDnsName, externalDnsNames);
+        return nodes
+                .stream()
+                .map(node -> ModelUtils.createCertificate(
+                        KafkaResources.kafkaSecretName(cluster), namespace, labels, ownerReference,
+                        KafkaResources.kafkaSecretName(cluster), emptyMap(),
+                        clusterCa.duration(), clusterCa.renewBefore(),
+                        subjectFn.apply(node), new IssuerRef())
+                ).toList();
     }
 
     /**

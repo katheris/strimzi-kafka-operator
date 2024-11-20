@@ -9,6 +9,7 @@ import io.fabric8.kubernetes.api.model.OwnerReference;
 import io.fabric8.kubernetes.api.model.OwnerReferenceBuilder;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.SecretBuilder;
+import io.strimzi.api.kafka.model.common.CertificateAuthorityBuilder;
 import io.strimzi.api.kafka.model.user.KafkaUser;
 import io.strimzi.api.kafka.model.user.KafkaUserAuthentication;
 import io.strimzi.api.kafka.model.user.KafkaUserAuthorizationSimple;
@@ -233,10 +234,11 @@ public class KafkaUserModel {
                 clientsCaCertSecret,
                 clientsCaCertSecret.getMetadata().getName(),
                 clientsCaKeySecret,
-                validityDays,
-                renewalDays,
-                false,
-                null);
+                new CertificateAuthorityBuilder()
+                        .withValidityDays(validityDays)
+                        .withRenewalDays(renewalDays)
+                        .withGenerateCertificateAuthority(false)
+                        .build());
         this.caCert = clientsCa.currentCaCertBase64();
 
         if (userSecret != null) {

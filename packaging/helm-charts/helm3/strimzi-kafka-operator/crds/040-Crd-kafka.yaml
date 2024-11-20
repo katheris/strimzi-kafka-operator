@@ -4983,6 +4983,35 @@ spec:
                         - renew-certificate
                         - replace-key
                       description: How should CA certificate expiration be handled when `generateCertificateAuthority=true`. The default is for a new CA certificate to be generated reusing the existing private key.
+                    certificateIssuer:
+                      type: object
+                      properties:
+                        issuerRef:
+                          type: object
+                          properties:
+                            name:
+                              type: string
+                              description: The name of issuer. Required.
+                            kind:
+                              type: string
+                              description: The kind of the issuer. Must be either `Issuer` or `ClusterIssuer`. Required.
+                            group:
+                              type: string
+                              description: The group of the issuer. Defaults to `cert-manager.io`.
+                          required:
+                            - name
+                            - kind
+                          description: The reference to the issuer. Required.
+                        type:
+                          type: string
+                          enum:
+                            - internal
+                            - cert-manager.io
+                          description: The type of issuer. The available types are `internal` and `cert-manager.io`. Required.
+                      required:
+                        - issuerRef
+                        - type
+                      description: Configuration of issuer for TLS certificates. This is optional and defaults to the internal Strimzi issuer if not specified.
                   description: Configuration of the cluster certificate authority.
                 clientsCa:
                   type: object
@@ -5007,6 +5036,35 @@ spec:
                         - renew-certificate
                         - replace-key
                       description: How should CA certificate expiration be handled when `generateCertificateAuthority=true`. The default is for a new CA certificate to be generated reusing the existing private key.
+                    certificateIssuer:
+                      type: object
+                      properties:
+                        issuerRef:
+                          type: object
+                          properties:
+                            name:
+                              type: string
+                              description: The name of issuer. Required.
+                            kind:
+                              type: string
+                              description: The kind of the issuer. Must be either `Issuer` or `ClusterIssuer`. Required.
+                            group:
+                              type: string
+                              description: The group of the issuer. Defaults to `cert-manager.io`.
+                          required:
+                            - name
+                            - kind
+                          description: The reference to the issuer. Required.
+                        type:
+                          type: string
+                          enum:
+                            - internal
+                            - cert-manager.io
+                          description: The type of issuer. The available types are `internal` and `cert-manager.io`. Required.
+                      required:
+                        - issuerRef
+                        - type
+                      description: Configuration of issuer for TLS certificates. This is optional and defaults to the internal Strimzi issuer if not specified.
                   description: Configuration of the clients certificate authority.
                 cruiseControl:
                   type: object

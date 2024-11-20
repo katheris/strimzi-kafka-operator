@@ -6,7 +6,7 @@ package io.strimzi.operator.cluster.model;
 
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.SecretBuilder;
-import io.strimzi.api.kafka.model.common.CertificateExpirationPolicy;
+import io.strimzi.api.kafka.model.common.CertificateAuthorityBuilder;
 import io.strimzi.certs.CertAndKey;
 import io.strimzi.certs.CertManager;
 import io.strimzi.certs.Subject;
@@ -45,7 +45,7 @@ public class ClusterCaRenewalTest {
 
     @ParallelTest
     public void renewalOfCertificatesWithNullSecret() throws IOException {
-        ClusterCa mockedCa = new MockedClusterCa(Reconciliation.DUMMY_RECONCILIATION, null, null, null, null, null, 2, 1, true, null);
+        ClusterCa mockedCa = new MockedClusterCa(Reconciliation.DUMMY_RECONCILIATION, null, null, null, null, null);
 
         boolean isMaintenanceTimeWindowsSatisfied = true;
 
@@ -74,7 +74,7 @@ public class ClusterCaRenewalTest {
 
     @ParallelTest
     public void renewalOfCertificatesWithCaRenewal() throws IOException {
-        MockedClusterCa mockedCa = new MockedClusterCa(Reconciliation.DUMMY_RECONCILIATION, null, null, null, null, null, 2, 1, true, null);
+        MockedClusterCa mockedCa = new MockedClusterCa(Reconciliation.DUMMY_RECONCILIATION, null, null, null, null, null);
         mockedCa.setCertRenewed(true);
 
         Map<String, String> initialCerts = new HashMap<>();
@@ -114,7 +114,7 @@ public class ClusterCaRenewalTest {
 
     @ParallelTest
     public void renewalOfCertificatesWithBrokenCaRenewal() throws IOException {
-        MockedClusterCa mockedCa = new MockedClusterCa(Reconciliation.DUMMY_RECONCILIATION, null, null, null, null, null, 2, 1, true, null);
+        MockedClusterCa mockedCa = new MockedClusterCa(Reconciliation.DUMMY_RECONCILIATION, null, null, null, null, null);
         mockedCa.setCaGeneration(2);
 
         Map<String, String> initialCerts = new HashMap<>();
@@ -154,7 +154,7 @@ public class ClusterCaRenewalTest {
 
     @ParallelTest
     public void renewalOfCertificatesDelayedRenewalInWindow() throws IOException {
-        MockedClusterCa mockedCa = new MockedClusterCa(Reconciliation.DUMMY_RECONCILIATION, null, null, null, null, null, 2, 1, true, null);
+        MockedClusterCa mockedCa = new MockedClusterCa(Reconciliation.DUMMY_RECONCILIATION, null, null, null, null, null);
         mockedCa.setCertExpiring(true);
 
         Map<String, String> initialCerts = new HashMap<>();
@@ -194,7 +194,7 @@ public class ClusterCaRenewalTest {
 
     @ParallelTest
     public void renewalOfCertificatesDelayedRenewalOutsideWindow() throws IOException {
-        MockedClusterCa mockedCa = new MockedClusterCa(Reconciliation.DUMMY_RECONCILIATION, null, null, null, null, null, 2, 1, true, null);
+        MockedClusterCa mockedCa = new MockedClusterCa(Reconciliation.DUMMY_RECONCILIATION, null, null, null, null, null);
         mockedCa.setCertExpiring(true);
 
         Map<String, String> initialCerts = new HashMap<>();
@@ -228,7 +228,7 @@ public class ClusterCaRenewalTest {
 
     @ParallelTest
     public void renewalOfCertificatesWithNewNodesOutsideWindow() throws IOException {
-        MockedClusterCa mockedCa = new MockedClusterCa(Reconciliation.DUMMY_RECONCILIATION, null, null, null, null, null, 2, 1, true, null);
+        MockedClusterCa mockedCa = new MockedClusterCa(Reconciliation.DUMMY_RECONCILIATION, null, null, null, null, null);
         mockedCa.setCertExpiring(true);
 
         Map<String, String> initialCerts = new HashMap<>();
@@ -260,7 +260,7 @@ public class ClusterCaRenewalTest {
 
     @ParallelTest
     public void noRenewal() throws IOException {
-        MockedClusterCa mockedCa = new MockedClusterCa(Reconciliation.DUMMY_RECONCILIATION, null, null, null, null, null, 2, 1, true, null);
+        MockedClusterCa mockedCa = new MockedClusterCa(Reconciliation.DUMMY_RECONCILIATION, null, null, null, null, null);
 
         Map<String, String> initialCerts = new HashMap<>();
         initialCerts.put("pod0.crt", Base64.getEncoder().encodeToString("old-cert".getBytes()));
@@ -291,7 +291,7 @@ public class ClusterCaRenewalTest {
 
     @ParallelTest
     public void noRenewalWithScaleUp() throws IOException {
-        MockedClusterCa mockedCa = new MockedClusterCa(Reconciliation.DUMMY_RECONCILIATION, null, null, null, null, null, 2, 1, true, null);
+        MockedClusterCa mockedCa = new MockedClusterCa(Reconciliation.DUMMY_RECONCILIATION, null, null, null, null, null);
 
         Map<String, String> initialCerts = new HashMap<>();
         initialCerts.put("pod0.crt", Base64.getEncoder().encodeToString("old-cert".getBytes()));
@@ -318,7 +318,7 @@ public class ClusterCaRenewalTest {
 
     @ParallelTest
     public void noRenewalWithScaleUpInTheMiddle() throws IOException {
-        MockedClusterCa mockedCa = new MockedClusterCa(Reconciliation.DUMMY_RECONCILIATION, null, null, null, null, null, 2, 1, true, null);
+        MockedClusterCa mockedCa = new MockedClusterCa(Reconciliation.DUMMY_RECONCILIATION, null, null, null, null, null);
 
         Map<String, String> initialCerts = new HashMap<>();
         initialCerts.put("pod0.crt", Base64.getEncoder().encodeToString("old-cert".getBytes()));
@@ -347,7 +347,7 @@ public class ClusterCaRenewalTest {
 
     @ParallelTest
     public void noRenewalScaleDown() throws IOException {
-        MockedClusterCa mockedCa = new MockedClusterCa(Reconciliation.DUMMY_RECONCILIATION, null, null, null, null, null, 2, 1, true, null);
+        MockedClusterCa mockedCa = new MockedClusterCa(Reconciliation.DUMMY_RECONCILIATION, null, null, null, null, null);
 
         Map<String, String> initialCerts = new HashMap<>();
         initialCerts.put("pod0.crt", Base64.getEncoder().encodeToString("old-cert".getBytes()));
@@ -376,7 +376,7 @@ public class ClusterCaRenewalTest {
 
     @ParallelTest
     public void changedSubject() throws IOException {
-        MockedClusterCa mockedCa = new MockedClusterCa(Reconciliation.DUMMY_RECONCILIATION, null, null, null, null, null, 2, 1, true, null);
+        MockedClusterCa mockedCa = new MockedClusterCa(Reconciliation.DUMMY_RECONCILIATION, null, null, null, null, null);
         mockedCa.setCertExpiring(true);
 
         Map<String, String> initialCerts = new HashMap<>();
@@ -429,8 +429,12 @@ public class ClusterCaRenewalTest {
         private boolean isCertExpiring;
         private int caGeneration = 0;
 
-        public MockedClusterCa(Reconciliation reconciliation, CertManager certManager, PasswordGenerator passwordGenerator, String commonName, Secret caCertSecret, Secret caKeySecret, int validityDays, int renewalDays, boolean generateCa, CertificateExpirationPolicy policy) {
-            super(reconciliation, certManager, passwordGenerator, commonName, caCertSecret, caKeySecret, validityDays, renewalDays, generateCa, policy);
+        public MockedClusterCa(Reconciliation reconciliation, CertManager certManager, PasswordGenerator passwordGenerator, String commonName, Secret caCertSecret, Secret caKeySecret) {
+            super(reconciliation, certManager, passwordGenerator, commonName, caCertSecret, caKeySecret, new CertificateAuthorityBuilder()
+                    .withValidityDays(2)
+                    .withRenewalDays(1)
+                    .withGenerateCertificateAuthority(true)
+                    .build());
         }
 
         @Override

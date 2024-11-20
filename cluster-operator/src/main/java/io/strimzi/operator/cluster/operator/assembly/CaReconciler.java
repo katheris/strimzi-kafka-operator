@@ -19,7 +19,6 @@ import io.strimzi.operator.cluster.ClusterOperatorConfig;
 import io.strimzi.operator.cluster.model.AbstractModel;
 import io.strimzi.operator.cluster.model.CertUtils;
 import io.strimzi.operator.cluster.model.ClusterCa;
-import io.strimzi.operator.cluster.model.ModelUtils;
 import io.strimzi.operator.cluster.model.NodeRef;
 import io.strimzi.operator.cluster.model.RestartReason;
 import io.strimzi.operator.cluster.model.RestartReasons;
@@ -252,11 +251,9 @@ public class CaReconciler {
                     // When we are not supposed to generate the CA, but it does not exist, we should just throw an error
                     checkCustomCaSecret(clusterCaConfig, clusterCaCertSecret, clusterCaKeySecret, "Cluster CA");
 
-                    clusterCa = new ClusterCa(reconciliation, certManager, passwordGenerator, reconciliation.name(), clusterCaCertSecret,
-                            clusterCaKeySecret,
-                            ModelUtils.getCertificateValidity(clusterCaConfig),
-                            ModelUtils.getRenewalDays(clusterCaConfig),
-                            clusterCaConfig == null || clusterCaConfig.isGenerateCertificateAuthority(), clusterCaConfig != null ? clusterCaConfig.getCertificateExpirationPolicy() : null);
+                    clusterCa = new ClusterCa(reconciliation, certManager, passwordGenerator, reconciliation.name(),
+                            clusterCaCertSecret, clusterCaKeySecret,
+                            clusterCaConfig);
                     clusterCa.createRenewOrReplace(
                             reconciliation.namespace(), reconciliation.name(), caLabels,
                             clusterCaCertLabels, clusterCaCertAnnotations,
@@ -270,10 +267,7 @@ public class CaReconciler {
                             passwordGenerator, clientsCaCertName,
                             clientsCaCertSecret, clientsCaKeyName,
                             clientsCaKeySecret,
-                            ModelUtils.getCertificateValidity(clientsCaConfig),
-                            ModelUtils.getRenewalDays(clientsCaConfig),
-                            clientsCaConfig == null || clientsCaConfig.isGenerateCertificateAuthority(),
-                            clientsCaConfig != null ? clientsCaConfig.getCertificateExpirationPolicy() : null);
+                            clientsCaConfig);
                     clientsCa.createRenewOrReplace(reconciliation.namespace(), reconciliation.name(),
                             caLabels, Map.of(), Map.of(),
                             clientsCaConfig != null && !clientsCaConfig.isGenerateSecretOwnerReference() ? null : ownerRef,

@@ -6,12 +6,11 @@ package io.strimzi.operator.cluster.model;
 
 import io.fabric8.kubernetes.api.model.Secret;
 import io.strimzi.api.kafka.model.common.CertificateAuthority;
-import io.strimzi.api.kafka.model.common.CertificateExpirationPolicy;
+import io.strimzi.api.kafka.model.common.CertificateAuthorityBuilder;
 import io.strimzi.api.kafka.model.kafka.KafkaResources;
 import io.strimzi.api.kafka.model.kafka.cruisecontrol.CruiseControlResources;
 import io.strimzi.certs.CertAndKey;
 import io.strimzi.certs.CertManager;
-import io.strimzi.certs.IpAndDnsValidation;
 import io.strimzi.certs.Subject;
 import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.Util;
@@ -54,7 +53,11 @@ public class ClusterCa extends Ca {
      * @param caKeySecret           Name of the CA private key secret
      */
     public ClusterCa(Reconciliation reconciliation, CertManager certManager, PasswordGenerator passwordGenerator, String clusterName, Secret caCertSecret, Secret caKeySecret) {
-        this(reconciliation, certManager, passwordGenerator, clusterName, caCertSecret, caKeySecret, CertificateAuthority.DEFAULT_CERTS_VALIDITY_DAYS, CertificateAuthority.DEFAULT_CERTS_RENEWAL_DAYS, true, null);
+        this(reconciliation, certManager, passwordGenerator, clusterName, caCertSecret, caKeySecret, new CertificateAuthorityBuilder()
+                .withValidityDays(CertificateAuthority.DEFAULT_CERTS_VALIDITY_DAYS)
+                .withRenewalDays(CertificateAuthority.DEFAULT_CERTS_RENEWAL_DAYS)
+                .withGenerateCertificateAuthority(true)
+                .build());
     }
 
     /**
@@ -66,26 +69,21 @@ public class ClusterCa extends Ca {
      * @param clusterName           Name of the Kafka cluster
      * @param clusterCaCert         Secret with the public key
      * @param clusterCaKey          Secret with the private key
-     * @param validityDays          Validity days
-     * @param renewalDays           Renewal days (how many days before expiration should the CA be renewed)
-     * @param generateCa            Flag indicating if Strimzi CA should be generated or custom CA is used
-     * @param policy                Renewal policy
+     * @param caConfig              Configuration for the certificate authority
      */
     public ClusterCa(Reconciliation reconciliation, CertManager certManager,
                      PasswordGenerator passwordGenerator,
                      String clusterName,
                      Secret clusterCaCert,
                      Secret clusterCaKey,
-                     int validityDays,
-                     int renewalDays,
-                     boolean generateCa,
-                     CertificateExpirationPolicy policy) {
+                     CertificateAuthority caConfig) {
         super(reconciliation, certManager, passwordGenerator,
                 "cluster-ca",
                 AbstractModel.clusterCaCertSecretName(clusterName),
                 clusterCaCert,
                 AbstractModel.clusterCaKeySecretName(clusterName),
-                clusterCaKey, validityDays, renewalDays, generateCa, policy);
+                clusterCaKey,
+                caConfig);
     }
 
     @Override
@@ -192,12 +190,9 @@ public class ClusterCa extends Ca {
      * Prepares the Kafka broker certificates. It either reuses the existing certificates, renews them or generates new
      * certificates if needed.
      *
-     * @param namespace                             Namespace of the Kafka cluster
-     * @param clusterName                           Name of the Kafka cluster
      * @param existingSecret                        Existing Secret with the existing certificates (or null if it does not exist yet)
      * @param nodes                                 Nodes that are part of the Kafka cluster
-     * @param externalBootstrapAddresses            List of external bootstrap addresses (used for certificate SANs)
-     * @param externalAddresses                     Map with external listener addresses for the different nodes (used for certificate SANs)
+     * @param subjectFn                     Map with external listener addresses for the different nodes (used for certificate SANs)
      * @param isMaintenanceTimeWindowsSatisfied     Flag indicating whether we can do maintenance tasks or not
      *
      * @return  Map with CertAndKey objects containing the public and private keys for the different brokers
@@ -205,52 +200,11 @@ public class ClusterCa extends Ca {
      * @throws IOException  IOException is thrown when it is raised while working with the certificates
      */
     protected Map<String, CertAndKey> generateBrokerCerts(
-            String namespace,
-            String clusterName,
             Secret existingSecret,
             Set<NodeRef> nodes,
-            Set<String> externalBootstrapAddresses,
-            Map<Integer, Set<String>> externalAddresses,
+            Function<NodeRef, Subject> subjectFn,
             boolean isMaintenanceTimeWindowsSatisfied
     ) throws IOException {
-        Function<NodeRef, Subject> subjectFn = node -> {
-            Subject.Builder subject = new Subject.Builder()
-                    .withOrganizationName("io.strimzi")
-                    .withCommonName(KafkaResources.kafkaComponentName(clusterName));
-
-            subject.addDnsNames(ModelUtils.generateAllServiceDnsNames(namespace, KafkaResources.bootstrapServiceName(clusterName)));
-            subject.addDnsNames(ModelUtils.generateAllServiceDnsNames(namespace, KafkaResources.brokersServiceName(clusterName)));
-
-            subject.addDnsName(DnsNameGenerator.podDnsName(namespace, KafkaResources.brokersServiceName(clusterName), node.podName()));
-            subject.addDnsName(DnsNameGenerator.podDnsNameWithoutClusterDomain(namespace, KafkaResources.brokersServiceName(clusterName), node.podName()));
-
-            // Controller-only nodes do not have the SANs for external listeners.
-            // That helps us to avoid unnecessary rolling updates when the SANs change
-            if (node.broker())    {
-                if (externalBootstrapAddresses != null) {
-                    for (String dnsName : externalBootstrapAddresses) {
-                        if (IpAndDnsValidation.isValidIpAddress(dnsName)) {
-                            subject.addIpAddress(dnsName);
-                        } else {
-                            subject.addDnsName(dnsName);
-                        }
-                    }
-                }
-
-                if (externalAddresses.get(node.nodeId()) != null) {
-                    for (String dnsName : externalAddresses.get(node.nodeId())) {
-                        if (IpAndDnsValidation.isValidIpAddress(dnsName)) {
-                            subject.addIpAddress(dnsName);
-                        } else {
-                            subject.addDnsName(dnsName);
-                        }
-                    }
-                }
-            }
-
-            return subject.build();
-        };
-
         LOGGER.debugCr(reconciliation, "{}: Reconciling kafka broker certificates", this);
 
         return maybeCopyOrGenerateCerts(

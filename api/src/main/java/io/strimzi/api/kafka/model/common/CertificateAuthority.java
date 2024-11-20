@@ -24,7 +24,7 @@ import java.util.Map;
 )
 @JsonInclude(JsonInclude.Include.NON_DEFAULT)
 @JsonPropertyOrder({ "generateCertificateAuthority", "generateSecretOwnerReference", "validityDays",
-    "renewalDays", "certificateExpirationPolicy" })
+    "renewalDays", "certificateExpirationPolicy", "certificateIssuer" })
 @EqualsAndHashCode
 @ToString
 public class CertificateAuthority implements UnknownPropertyPreserving {
@@ -36,6 +36,7 @@ public class CertificateAuthority implements UnknownPropertyPreserving {
     private boolean generateSecretOwnerReference = true;
     private int renewalDays;
     private CertificateExpirationPolicy certificateExpirationPolicy;
+    private CertificateIssuer certificateIssuer;
     private Map<String, Object> additionalProperties;
 
     @Description("The number of days generated certificates should be valid for. The default is 365.")
@@ -98,6 +99,16 @@ public class CertificateAuthority implements UnknownPropertyPreserving {
 
     public void setCertificateExpirationPolicy(CertificateExpirationPolicy certificateExpirationPolicy) {
         this.certificateExpirationPolicy = certificateExpirationPolicy;
+    }
+
+    @Description("Configuration of issuer for TLS certificates. " +
+            "This is optional and defaults to the internal Strimzi issuer if not specified.")
+    public CertificateIssuer getCertificateIssuer() {
+        return certificateIssuer;
+    }
+
+    public void setCertificateIssuer(CertificateIssuer certificateIssuer) {
+        this.certificateIssuer = certificateIssuer;
     }
 
     @Override

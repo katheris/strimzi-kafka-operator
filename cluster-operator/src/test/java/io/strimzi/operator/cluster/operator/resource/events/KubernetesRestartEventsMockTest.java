@@ -699,11 +699,7 @@ public class KubernetesRestartEventsMockTest {
                 KafkaResources.clientsCaCertificateSecretName(CLUSTER_NAME),
                 createInitialCaCertSecret(namespace, CLUSTER_NAME, clusterCaCertSecretName(CLUSTER_NAME), MockCertManager.clusterCaCert(), MockCertManager.clusterCaCertStore(), "123456"),
                 KafkaResources.clientsCaKeySecretName(CLUSTER_NAME),
-                createInitialCaKeySecret(namespace, CLUSTER_NAME, clusterCaKeySecretName(CLUSTER_NAME), MockCertManager.clusterCaKey()),
-                365,
-                30,
-                true,
-                null
+                createInitialCaKeySecret(namespace, CLUSTER_NAME, clusterCaKeySecretName(CLUSTER_NAME), MockCertManager.clusterCaKey())
         );
     }
 

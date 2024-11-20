@@ -9,7 +9,10 @@ import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.Volume;
 import io.fabric8.kubernetes.api.model.VolumeMount;
 import io.strimzi.api.kafka.model.common.CertSecretSource;
+import io.strimzi.api.kafka.model.kafka.KafkaResources;
 import io.strimzi.certs.CertAndKey;
+import io.strimzi.certs.IpAndDnsValidation;
+import io.strimzi.certs.Subject;
 import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.ReconciliationLogger;
 import io.strimzi.operator.common.Util;
@@ -24,6 +27,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.function.Function;
 
 import static java.util.Collections.emptyMap;
 
@@ -314,5 +319,54 @@ public class CertUtils {
         } else {
             return null;
         }
+    }
+
+    /**
+     * Generate Kafka nodes Subject function
+     *
+     * @param namespace                     Namespace of the Kafka cluster
+     * @param clusterName                   Name of the Kafka cluster
+     * @param externalBootstrapAddresses    Map with bootstrap DNS names which should be added to the certificate
+     * @param externalAddresses             Map with broker DNS names  which should be added to the certificate
+     * @return function to get the Subject for a particular Kafka node
+     */
+    public static Function<NodeRef, Subject> kafkaNodesSubjectFn(String namespace, String clusterName, Set<String> externalBootstrapAddresses, Map<Integer, Set<String>> externalAddresses) {
+        return node -> {
+            io.strimzi.certs.Subject.Builder subject = new io.strimzi.certs.Subject.Builder()
+                    .withOrganizationName("io.strimzi")
+                    .withCommonName(KafkaResources.kafkaComponentName(clusterName));
+
+            subject.addDnsNames(ModelUtils.generateAllServiceDnsNames(namespace, KafkaResources.bootstrapServiceName(clusterName)));
+            subject.addDnsNames(ModelUtils.generateAllServiceDnsNames(namespace, KafkaResources.brokersServiceName(clusterName)));
+
+            subject.addDnsName(DnsNameGenerator.podDnsName(namespace, KafkaResources.brokersServiceName(clusterName), node.podName()));
+            subject.addDnsName(DnsNameGenerator.podDnsNameWithoutClusterDomain(namespace, KafkaResources.brokersServiceName(clusterName), node.podName()));
+
+            // Controller-only nodes do not have the SANs for external listeners.
+            // That helps us to avoid unnecessary rolling updates when the SANs change
+            if (node.broker())    {
+                if (externalBootstrapAddresses != null) {
+                    for (String dnsName : externalBootstrapAddresses) {
+                        if (IpAndDnsValidation.isValidIpAddress(dnsName)) {
+                            subject.addIpAddress(dnsName);
+                        } else {
+                            subject.addDnsName(dnsName);
+                        }
+                    }
+                }
+
+                if (externalAddresses.get(node.nodeId()) != null) {
+                    for (String dnsName : externalAddresses.get(node.nodeId())) {
+                        if (IpAndDnsValidation.isValidIpAddress(dnsName)) {
+                            subject.addIpAddress(dnsName);
+                        } else {
+                            subject.addDnsName(dnsName);
+                        }
+                    }
+                }
+            }
+
+            return subject.build();
+        };
     }
 }

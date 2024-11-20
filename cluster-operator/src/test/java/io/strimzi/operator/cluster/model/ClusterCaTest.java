@@ -6,6 +6,7 @@ package io.strimzi.operator.cluster.model;
 
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.SecretBuilder;
+import io.strimzi.api.kafka.model.common.CertificateAuthorityBuilder;
 import io.strimzi.api.kafka.model.common.CertificateExpirationPolicy;
 import io.strimzi.certs.OpenSslCertManager;
 import io.strimzi.operator.common.Annotations;
@@ -149,7 +150,12 @@ public class ClusterCaTest {
                 .withData(clusterCaKeyData)
                 .build();
 
-        ClusterCa clusterCa = new ClusterCa(Reconciliation.DUMMY_RECONCILIATION, new OpenSslCertManager(), new PasswordGenerator(10, "a", "a"), cluster, clusterCaCert, clusterCaKey, 0, 0, false, CertificateExpirationPolicy.RENEW_CERTIFICATE);
+        ClusterCa clusterCa = new ClusterCa(Reconciliation.DUMMY_RECONCILIATION, new OpenSslCertManager(), new PasswordGenerator(10, "a", "a"), cluster, clusterCaCert, clusterCaKey, new CertificateAuthorityBuilder()
+                .withValidityDays(0)
+                .withRenewalDays(0)
+                .withGenerateCertificateAuthority(false)
+                .withCertificateExpirationPolicy(CertificateExpirationPolicy.RENEW_CERTIFICATE)
+                .build());
 
         // simulate a renewal with new private key ...
         clusterCaKeyData.put(Ca.CA_KEY, Base64.getEncoder().encodeToString("new-dummy-key".getBytes()));

@@ -67,11 +67,7 @@ public class KafkaReconcilerStatusZooBasedTest {
             KafkaResources.clientsCaCertificateSecretName(CLUSTER_NAME),
             ResourceUtils.createInitialCaCertSecret(NAMESPACE, CLUSTER_NAME, AbstractModel.clusterCaCertSecretName(CLUSTER_NAME), MockCertManager.clusterCaCert(), MockCertManager.clusterCaCertStore(), "123456"),
             KafkaResources.clientsCaKeySecretName(CLUSTER_NAME),
-            ResourceUtils.createInitialCaKeySecret(NAMESPACE, CLUSTER_NAME, AbstractModel.clusterCaKeySecretName(CLUSTER_NAME), MockCertManager.clusterCaKey()),
-            365,
-            30,
-            true,
-            null
+            ResourceUtils.createInitialCaKeySecret(NAMESPACE, CLUSTER_NAME, AbstractModel.clusterCaKeySecretName(CLUSTER_NAME), MockCertManager.clusterCaKey())
     );
     private final static Kafka KAFKA = new KafkaBuilder()
                 .withNewMetadata()

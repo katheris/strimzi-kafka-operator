@@ -59,6 +59,7 @@ We also control imports only in production classes and not in tests. This is con
         <allow pkg="io.fabric8.zjsonpatch" />
         <allow pkg="io.fabric8.openshift.api.model" />
         <allow pkg="io.fabric8.kubernetes.api.model" />
+        <allow pkg="io.fabric8.certmanager" />
         <allow pkg="io.vertx.core.json" />
         <allow class="edu.umd.cs.findbugs.annotations.SuppressFBWarnings" />
 

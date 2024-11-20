@@ -6,8 +6,11 @@ package io.strimzi.operator.cluster.model;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.fabric8.certmanager.api.model.v1.Certificate;
+import io.fabric8.certmanager.api.model.v1.CertificateBuilder;
 import io.fabric8.kubernetes.api.model.Affinity;
 import io.fabric8.kubernetes.api.model.AffinityBuilder;
+import io.fabric8.kubernetes.api.model.Duration;
 import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.api.model.NodeSelectorRequirement;
 import io.fabric8.kubernetes.api.model.NodeSelectorRequirementBuilder;
@@ -19,8 +22,9 @@ import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.ResourceRequirements;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.SecretBuilder;
-import io.strimzi.api.kafka.model.common.CertificateAuthority;
+import io.strimzi.api.kafka.model.common.IssuerRef;
 import io.strimzi.api.kafka.model.kafka.Storage;
+import io.strimzi.certs.Subject;
 import io.strimzi.operator.common.ReconciliationLogger;
 import io.strimzi.operator.common.Util;
 import io.strimzi.operator.common.model.InvalidResourceException;
@@ -43,38 +47,6 @@ public class ModelUtils {
     private ModelUtils() {}
 
     protected static final ReconciliationLogger LOGGER = ReconciliationLogger.create(ModelUtils.class.getName());
-
-    /**
-     * Extract certificate validity days from cluster CA configuration
-     *
-     * @param certificateAuthority The CA configuration.
-     * @return The cert validity.
-     */
-    public static int getCertificateValidity(CertificateAuthority certificateAuthority) {
-        int validity = CertificateAuthority.DEFAULT_CERTS_VALIDITY_DAYS;
-        if (certificateAuthority != null
-                && certificateAuthority.getValidityDays() > 0) {
-            validity = certificateAuthority.getValidityDays();
-        }
-        return validity;
-    }
-
-    /**
-     * Extract certificate renewal days from cluster CA configuration
-     *
-     * @param certificateAuthority The CA configuration.
-     * @return The renewal days.
-     */
-    public static int getRenewalDays(CertificateAuthority certificateAuthority) {
-        int renewalDays = CertificateAuthority.DEFAULT_CERTS_RENEWAL_DAYS;
-
-        if (certificateAuthority != null
-                && certificateAuthority.getRenewalDays() > 0) {
-            renewalDays = certificateAuthority.getRenewalDays();
-        }
-
-        return renewalDays;
-    }
 
     /**
      * Generate labels used by entity-operators to find the resources related to given cluster
@@ -126,6 +98,57 @@ public class ModelUtils {
                     .withData(data)
                     .build();
         }
+    }
+
+    /**
+     * Creates Certificate
+     *
+     * @param name              Name of the Certificate
+     * @param namespace         Namespace of the Certificate
+     * @param labels            Labels
+     * @param ownerReference    Owner reference
+     * @param secretName        Name of the Secret to put the certificate in
+     * @param customLabels      Custom Labels
+     * @param duration          Duration for the certificate
+     * @param renewBefore       Renew before value for the certificate
+     * @param subject           Subject for the certificate
+     * @param issuerRef         IssuerRef for the Certificate
+     *
+     * @return Created Kubernetes Certificate
+     */
+    public static Certificate createCertificate(String name, String namespace, Labels labels, OwnerReference ownerReference,
+                                                String secretName, Map<String, String> customLabels,
+                                                Duration duration, Duration renewBefore,
+                                                Subject subject, IssuerRef issuerRef) {
+        return  new CertificateBuilder()
+                .withNewMetadata()
+                    .withName(name)
+                    .withOwnerReferences(ownerReference)
+                    .withNamespace(namespace)
+                    .withLabels(Util.mergeLabelsOrAnnotations(labels.toMap(), customLabels))
+                .endMetadata()
+                .withNewSpec()
+                    .withSecretName(secretName)
+                    .withNewSecretTemplate()
+                        .withLabels(Util.mergeLabelsOrAnnotations(labels.toMap(), customLabels))
+                    .endSecretTemplate()
+                    .withDuration(duration)
+                    .withRenewBefore(renewBefore)
+                    .withIsCA(false)
+                    .withNewSubject()
+                        .withOrganizations(subject.organizationName())
+                    .endSubject()
+                    .withCommonName(subject.commonName())
+                    .withDnsNames(subject.dnsNames().stream().toList())
+                    .withIpAddresses(subject.ipAddresses().stream().toList())
+                    .withNewIssuerRef()
+                        .withName(issuerRef.getName())
+                        .withKind(issuerRef.getKind())
+                        .withGroup(issuerRef.getGroup())
+                    .endIssuerRef()
+                    .endSpec()
+                .build();
+
     }
 
     /**

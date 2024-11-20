@@ -124,6 +124,7 @@
         <fabric8.openshift-client.version>6.13.4</fabric8.openshift-client.version>
         <fabric8.kubernetes-model.version>6.13.4</fabric8.kubernetes-model.version>
         <fabric8.zjsonpatch.version>0.3.0</fabric8.zjsonpatch.version>
+        <fabric8.certmanager-model-v1>6.13.4</fabric8.certmanager-model-v1>
         <fasterxml.jackson-core.version>2.16.2</fasterxml.jackson-core.version>
         <fasterxml.jackson-databind.version>2.16.2</fasterxml.jackson-databind.version>
         <fasterxml.jackson-dataformat.version>2.16.2</fasterxml.jackson-dataformat.version>
@@ -400,6 +401,11 @@
                 <groupId>io.fabric8</groupId>
                 <artifactId>openshift-model-operatorhub</artifactId>
                 <version>${fabric8.openshift-client.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.fabric8</groupId>
+                <artifactId>certmanager-model-v1</artifactId>
+                <version>${fabric8.certmanager-model-v1}</version>
             </dependency>
             <dependency>
                 <groupId>org.apache.logging.log4j</groupId>
