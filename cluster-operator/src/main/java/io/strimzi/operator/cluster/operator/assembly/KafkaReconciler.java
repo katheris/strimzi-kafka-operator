@@ -762,8 +762,9 @@ public class KafkaReconciler {
                                     for (NodeRef node : kafka.nodes()) {
                                         kafkaServerCertificateHash.put(
                                                 node.nodeId(),
-                                                CertUtils.getCertificateThumbprint(patchResult.resource(),
-                                                        Ca.SecretEntry.CRT.asKey(node.podName())
+                                                CertUtils.getCertificateThumbprint("Secret/" + KafkaResources.kafkaSecretName(reconciliation.name()),
+                                                        patchResult.resource().getData(),
+                                                        Ca.CertEntry.CRT.asKey(node.podName())
                                                 ));
                                     }
                                 }

@@ -18,7 +18,7 @@ import io.strimzi.api.kafka.model.kafka.cruisecontrol.CruiseControlSpecBuilder;
 import io.strimzi.api.kafka.model.kafka.listener.GenericKafkaListenerBuilder;
 import io.strimzi.api.kafka.model.kafka.listener.KafkaListenerType;
 import io.strimzi.operator.cluster.ResourceUtils;
-import io.strimzi.operator.cluster.model.AbstractModel;
+import io.strimzi.operator.cluster.TestUtils;
 import io.strimzi.operator.cluster.model.ClusterCa;
 import io.strimzi.operator.cluster.operator.resource.ResourceOperatorSupplier;
 import io.strimzi.operator.cluster.operator.resource.kubernetes.ConfigMapOperator;
@@ -83,8 +83,8 @@ public class EntityOperatorReconcilerTest {
             new MockCertManager(),
             new PasswordGenerator(10, "a", "a"),
             NAME,
-            ResourceUtils.createInitialCaCertSecret(NAMESPACE, NAME, AbstractModel.clusterCaCertSecretName(NAME), MockCertManager.clusterCaCert(), MockCertManager.clusterCaCertStore(), "123456"),
-            ResourceUtils.createInitialCaKeySecret(NAMESPACE, NAME, AbstractModel.clusterCaKeySecretName(NAME), MockCertManager.clusterCaKey())
+            TestUtils.createInitialCaCertAndGeneration(MockCertManager.clusterCaCert(), MockCertManager.clusterCaCertStore(), "123456"),
+            TestUtils.createInitialCaKeyAndGeneration(MockCertManager.clusterCaKey())
     );
 
     @Test

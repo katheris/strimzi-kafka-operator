@@ -17,7 +17,7 @@ import io.strimzi.operator.cluster.ClusterOperatorConfig;
 import io.strimzi.operator.cluster.KafkaVersionTestUtils;
 import io.strimzi.operator.cluster.PlatformFeaturesAvailability;
 import io.strimzi.operator.cluster.ResourceUtils;
-import io.strimzi.operator.cluster.model.AbstractModel;
+import io.strimzi.operator.cluster.TestUtils;
 import io.strimzi.operator.cluster.model.ClusterCa;
 import io.strimzi.operator.cluster.model.KafkaVersion;
 import io.strimzi.operator.cluster.model.KafkaVersionChange;
@@ -90,8 +90,8 @@ public class ZookeeperReconcilerKRaftMigrationTest {
             CERT_MANAGER,
             PASSWORD_GENERATOR,
             CLUSTER_NAME,
-            ResourceUtils.createInitialCaCertSecret(NAMESPACE, CLUSTER_NAME, AbstractModel.clusterCaCertSecretName(CLUSTER_NAME), MockCertManager.clusterCaCert(), MockCertManager.clusterCaCertStore(), "123456"),
-            ResourceUtils.createInitialCaKeySecret(NAMESPACE, CLUSTER_NAME, AbstractModel.clusterCaKeySecretName(CLUSTER_NAME), MockCertManager.clusterCaKey())
+            TestUtils.createInitialCaCertAndGeneration(MockCertManager.clusterCaCert(), MockCertManager.clusterCaCertStore(), "123456"),
+            TestUtils.createInitialCaKeyAndGeneration(MockCertManager.clusterCaKey())
     );
 
     @BeforeAll

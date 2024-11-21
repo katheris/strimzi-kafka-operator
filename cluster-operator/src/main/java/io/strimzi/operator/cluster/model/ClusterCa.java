@@ -4,7 +4,6 @@
  */
 package io.strimzi.operator.cluster.model;
 
-import io.fabric8.kubernetes.api.model.Secret;
 import io.strimzi.api.kafka.model.common.CertificateAuthority;
 import io.strimzi.api.kafka.model.common.CertificateExpirationPolicy;
 import io.strimzi.api.kafka.model.kafka.KafkaResources;
@@ -14,8 +13,8 @@ import io.strimzi.certs.CertManager;
 import io.strimzi.certs.IpAndDnsValidation;
 import io.strimzi.certs.Subject;
 import io.strimzi.operator.common.Reconciliation;
-import io.strimzi.operator.common.Util;
 import io.strimzi.operator.common.model.Ca;
+import io.strimzi.operator.common.model.CertAndGeneration;
 import io.strimzi.operator.common.model.PasswordGenerator;
 
 import java.io.File;
@@ -28,6 +27,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.regex.Pattern;
@@ -50,11 +50,11 @@ public class ClusterCa extends Ca {
      * @param certManager           Certificate manager instance
      * @param passwordGenerator     Password generator instance
      * @param clusterName           Name of the Kafka cluster
-     * @param caCertSecret          Name of the CA public key secret
-     * @param caKeySecret           Name of the CA private key secret
+     * @param clusterCaCert         CA public cert and related generation
+     * @param clusterCaKey          CA private key and related generation
      */
-    public ClusterCa(Reconciliation reconciliation, CertManager certManager, PasswordGenerator passwordGenerator, String clusterName, Secret caCertSecret, Secret caKeySecret) {
-        this(reconciliation, certManager, passwordGenerator, clusterName, caCertSecret, caKeySecret, CertificateAuthority.DEFAULT_CERTS_VALIDITY_DAYS, CertificateAuthority.DEFAULT_CERTS_RENEWAL_DAYS, true, null);
+    public ClusterCa(Reconciliation reconciliation, CertManager certManager, PasswordGenerator passwordGenerator, String clusterName, CertAndGeneration clusterCaCert, CertAndGeneration clusterCaKey) {
+        this(reconciliation, certManager, passwordGenerator, clusterName, clusterCaCert, clusterCaKey, CertificateAuthority.DEFAULT_CERTS_VALIDITY_DAYS, CertificateAuthority.DEFAULT_CERTS_RENEWAL_DAYS, true, null);
     }
 
     /**
@@ -64,8 +64,8 @@ public class ClusterCa extends Ca {
      * @param certManager           Certificate manager instance
      * @param passwordGenerator     Password generator instance
      * @param clusterName           Name of the Kafka cluster
-     * @param clusterCaCert         Secret with the public key
-     * @param clusterCaKey          Secret with the private key
+     * @param clusterCaCert         CA public cert and related generation
+     * @param clusterCaKey          CA private key and related generation
      * @param validityDays          Validity days
      * @param renewalDays           Renewal days (how many days before expiration should the CA be renewed)
      * @param generateCa            Flag indicating if Strimzi CA should be generated or custom CA is used
@@ -74,8 +74,8 @@ public class ClusterCa extends Ca {
     public ClusterCa(Reconciliation reconciliation, CertManager certManager,
                      PasswordGenerator passwordGenerator,
                      String clusterName,
-                     Secret clusterCaCert,
-                     Secret clusterCaKey,
+                     CertAndGeneration clusterCaCert,
+                     CertAndGeneration clusterCaKey,
                      int validityDays,
                      int renewalDays,
                      boolean generateCa,
@@ -104,7 +104,7 @@ public class ClusterCa extends Ca {
      *
      * @param namespace                             Namespace of the Kafka cluster
      * @param clusterName                           Name of the Kafka cluster
-     * @param existingSecret                        Existing Secret with the existing certificates (or null if it does not exist yet)
+     * @param existingCertificates                  Existing certificates (or null if they do not exist yet)
      * @param isMaintenanceTimeWindowsSatisfied     Flag indicating whether we can do maintenance tasks or not
      *
      * @return  Map with CertAndKey object containing the public and private key
@@ -114,8 +114,10 @@ public class ClusterCa extends Ca {
     protected Map<String, CertAndKey> generateCcCerts(
             String namespace,
             String clusterName,
-            Secret existingSecret,
-            boolean isMaintenanceTimeWindowsSatisfied
+            Map<String, CertAndKey> existingCertificates,
+            Set<NodeRef> nodes,
+            boolean isMaintenanceTimeWindowsSatisfied,
+            boolean forceRenew
     ) throws IOException {
         DnsNameGenerator ccDnsGenerator = DnsNameGenerator.of(namespace, CruiseControlResources.serviceName(clusterName));
 
@@ -136,10 +138,11 @@ public class ClusterCa extends Ca {
         LOGGER.debugCr(reconciliation, "{}: Reconciling Cruise Control certificates", this);
         return maybeCopyOrGenerateCerts(
             reconciliation,
-            Set.of(new NodeRef(CruiseControl.COMPONENT_TYPE, 0, null, false, false)),
+            nodes,
             subjectFn,
-            existingSecret,
-            isMaintenanceTimeWindowsSatisfied);
+            existingCertificates,
+            isMaintenanceTimeWindowsSatisfied,
+            forceRenew);
     }
 
     /**
@@ -148,7 +151,7 @@ public class ClusterCa extends Ca {
      *
      * @param namespace                             Namespace of the Kafka cluster
      * @param clusterName                           Name of the Kafka cluster
-     * @param existingSecret                        Existing Secret with the existing certificates (or null if it does not exist yet)
+     * @param existingCertificates                  Existing certificates (or null if they do not exist yet)
      * @param nodes                                 Nodes that are part of the ZooKeeper cluster
      * @param isMaintenanceTimeWindowsSatisfied     Flag indicating whether we can do maintenance tasks or not
      *
@@ -159,9 +162,10 @@ public class ClusterCa extends Ca {
     protected Map<String, CertAndKey> generateZkCerts(
             String namespace,
             String clusterName,
-            Secret existingSecret,
+            Map<String, CertAndKey> existingCertificates,
             Set<NodeRef> nodes,
-            boolean isMaintenanceTimeWindowsSatisfied
+            boolean isMaintenanceTimeWindowsSatisfied,
+            boolean forceRenew
     ) throws IOException {
         DnsNameGenerator zkDnsGenerator = DnsNameGenerator.of(namespace, KafkaResources.zookeeperServiceName(clusterName));
         DnsNameGenerator zkHeadlessDnsGenerator = DnsNameGenerator.of(namespace, KafkaResources.zookeeperHeadlessServiceName(clusterName));
@@ -189,8 +193,9 @@ public class ClusterCa extends Ca {
             reconciliation,
             nodes,
             subjectFn,
-            existingSecret,
-            isMaintenanceTimeWindowsSatisfied);
+            existingCertificates,
+            isMaintenanceTimeWindowsSatisfied,
+            forceRenew);
     }
 
     /**
@@ -199,7 +204,7 @@ public class ClusterCa extends Ca {
      *
      * @param namespace                             Namespace of the Kafka cluster
      * @param clusterName                           Name of the Kafka cluster
-     * @param existingSecret                        Existing Secret with the existing certificates (or null if it does not exist yet)
+     * @param existingCertificates                  Existing certificates (or null if they do not exist yet)
      * @param nodes                                 Nodes that are part of the Kafka cluster
      * @param externalBootstrapAddresses            List of external bootstrap addresses (used for certificate SANs)
      * @param externalAddresses                     Map with external listener addresses for the different nodes (used for certificate SANs)
@@ -212,11 +217,12 @@ public class ClusterCa extends Ca {
     protected Map<String, CertAndKey> generateBrokerCerts(
             String namespace,
             String clusterName,
-            Secret existingSecret,
+            Map<String, CertAndKey> existingCertificates,
             Set<NodeRef> nodes,
             Set<String> externalBootstrapAddresses,
             Map<Integer, Set<String>> externalAddresses,
-            boolean isMaintenanceTimeWindowsSatisfied
+            boolean isMaintenanceTimeWindowsSatisfied,
+            boolean forceRenew
     ) throws IOException {
         Function<NodeRef, Subject> subjectFn = node -> {
             Subject.Builder subject = new Subject.Builder()
@@ -262,8 +268,9 @@ public class ClusterCa extends Ca {
             reconciliation,
             nodes,
             subjectFn,
-            existingSecret,
-            isMaintenanceTimeWindowsSatisfied);
+            existingCertificates,
+            isMaintenanceTimeWindowsSatisfied,
+            forceRenew);
     }
 
     @Override
@@ -272,16 +279,16 @@ public class ClusterCa extends Ca {
     }
 
     /**
-     * Copy already existing certificates from provided Secret based on number of effective replicas
+     * Copy already existing certificates based on number of effective replicas
      * and maybe generate new ones for new replicas (i.e. scale-up).
      *
      * @param reconciliation                        Reconciliation marker
      * @param nodes                                 List of nodes for which the certificates should be generated
      * @param subjectFn                             Function to generate certificate subject for given node / pod
-     * @param secret                                Secret with certificates
+     * @param existingCertificates                  Map with existing certificates
      * @param isMaintenanceTimeWindowsSatisfied     Flag indicating if we are inside a maintenance window or not
      *
-     * @return  Returns map with node certificates which can be used to create or update the certificate secret
+     * @return  Returns map with node certificates which can be used to create or update the certificate resources
      *
      * @throws IOException  Throws IOException when working with files fails
      */
@@ -289,10 +296,11 @@ public class ClusterCa extends Ca {
             Reconciliation reconciliation,
             Set<NodeRef> nodes,
             Function<NodeRef, Subject> subjectFn,
-            Secret secret,
-            boolean isMaintenanceTimeWindowsSatisfied
+            Map<String, CertAndKey> existingCertificates,
+            boolean isMaintenanceTimeWindowsSatisfied,
+            boolean forceRenewal
     ) throws IOException {
-        // Maps for storing the certificates => will be used in the new or updated secret. This map is filled in this method and returned at the end.
+        // Maps for storing the certificates => This map is filled in this method and returned at the end.
         Map<String, CertAndKey> certs = new HashMap<>();
 
         // Temp files used when we need to generate new certificates
@@ -304,17 +312,16 @@ public class ClusterCa extends Ca {
         for (NodeRef node : nodes)  {
             String podName = node.podName();
             Subject subject = subjectFn.apply(node);
+            CertAndKey certAndKey = Optional.ofNullable(existingCertificates)
+                    .map(existing -> existing.get(podName))
+                    .orElse(null);
 
             if (!this.certRenewed() // No CA renewal is happening
-                    && secret != null && secret.getData() != null // Secret exists and has some data
-                    && secretEntryExists(secret, podName, SecretEntry.CRT) // The secret has the public key for this pod
-                    && secretEntryExists(secret, podName, SecretEntry.KEY) // The secret has the private key for this pod
-                    && !hasCaCertGenerationChanged(secret) // The generation on the Secret is the same as the CA has
+                    && certAndKey != null
+                    && !forceRenewal
             )   {
                 // A certificate for this node already exists, so we will try to reuse it
                 LOGGER.debugCr(reconciliation, "Certificate for node {} already exists", node);
-
-                CertAndKey certAndKey = asCertAndKey(secret.getData(), podName);
 
                 List<String> reasons = new ArrayList<>(2);
 
@@ -322,7 +329,7 @@ public class ClusterCa extends Ca {
                     reasons.add("DNS names changed");
                 }
 
-                if (isExpiring(secret, podName + ".crt") && isMaintenanceTimeWindowsSatisfied)  {
+                if (isExpiring(certAndKey.cert()) && isMaintenanceTimeWindowsSatisfied)  {
                     reasons.add("certificate is expiring");
                 }
 
@@ -353,28 +360,6 @@ public class ClusterCa extends Ca {
         delete(reconciliation, brokerKeyStoreFile);
 
         return certs;
-    }
-
-    /**
-     * Return given secret for pod as a CertAndKey object
-     *
-     * @param certificateData   The Map with the certificate data from the Kubernetes Secret(s)
-     * @param podName           Name of the pod
-     *
-     * @return  CertAndKey instance
-     */
-    private static CertAndKey asCertAndKey(Map<String, String> certificateData, String podName) {
-        String keyData = certificateData.get(SecretEntry.KEY.asKey(podName));
-        if (keyData == null) {
-            throw new RuntimeException("Certificate for node " + podName + " is missing the private key");
-        }
-
-        String certData = certificateData.get(SecretEntry.CRT.asKey(podName));
-        if (certData == null) {
-            throw new RuntimeException("Certificate for node " + podName + " is missing the public key");
-        }
-
-        return new CertAndKey(Util.decodeBytesFromBase64(keyData), Util.decodeBytesFromBase64(certData));
     }
 
     /**
@@ -427,26 +412,13 @@ public class ClusterCa extends Ca {
     }
 
     /**
-     * Checks whether a given key exists in the Secret
-     *
-     * @param secret    Kubernetes Secret containing desired entry
-     * @param podName   Name of the pod which secret entry is looked for
-     * @param entry     The SecretEntry type
-     *
-     * @return  True if the Secret contains a key based on the pod name and entry type. False otherwise.
-     */
-    private static boolean secretEntryExists(Secret secret, String podName, SecretEntry entry) {
-        return secret.getData().containsKey(entry.asKey(podName));
-    }
-
-    /**
      * Remove old certificates that are stored in the CA Secret matching the "ca-YYYY-MM-DDTHH-MM-SSZ.crt" naming pattern.
      * NOTE: mostly used when a CA certificate is renewed by replacing the key
      */
     public void maybeDeleteOldCerts() {
         // the operator doesn't have to touch Secret provided by the user with his own custom CA certificate
         if (this.generateCa) {
-            this.caCertsRemoved = removeCerts(this.caCertSecret.getData(), entry -> OLD_CA_CERT_PATTERN.matcher(entry.getKey()).matches()) > 0;
+            this.caCertsRemoved = removeCerts(this.caCertData, entry -> OLD_CA_CERT_PATTERN.matcher(entry.getKey()).matches()) > 0;
             if (this.caCertsRemoved) {
                 LOGGER.infoCr(reconciliation, "{}: Old CA certificates removed", this);
             }

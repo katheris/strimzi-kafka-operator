@@ -9,9 +9,16 @@ import io.fabric8.kubernetes.api.model.ConfigMapBuilder;
 import io.fabric8.kubernetes.api.model.ConfigMapKeySelectorBuilder;
 import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.EnvVar;
+import io.fabric8.kubernetes.api.model.Secret;
 import io.strimzi.api.kafka.model.common.metrics.JmxPrometheusExporterMetrics;
 import io.strimzi.api.kafka.model.common.metrics.JmxPrometheusExporterMetricsBuilder;
+import io.strimzi.operator.common.Util;
+import io.strimzi.operator.common.model.Ca;
+import io.strimzi.operator.common.model.CertAndGeneration;
 
+import java.security.cert.CertificateException;
+import java.security.cert.X509Certificate;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -53,5 +60,39 @@ public class TestUtils {
                 Collectors.toMap(EnvVar::getName, EnvVar::getValue,
                         // On duplicates, last-in wins
                         (u, v) -> v));
+    }
+
+    /**
+     * Extracts X509 certificate from a Kubernetes Secret
+     *
+     * @param secret    Kubernetes Secret with the certificate
+     * @param key       Key under which the certificate is stored in the Secret
+     *
+     * @return  An X509Certificate instance with the certificate
+     */
+    public static X509Certificate cert(Secret secret, String key)  {
+        if (secret == null || secret.getData() == null || secret.getData().get(key) == null) {
+            return null;
+        }
+        byte[] bytes = Util.decodeBytesFromBase64(secret.getData().get(key));
+        try {
+            return Ca.x509Certificate(bytes);
+        } catch (CertificateException e) {
+            throw new RuntimeException("Failed to decode certificate in data." + key.replace(".", "\\.") + " of Secret " + secret.getMetadata().getName(), e);
+        }
+    }
+
+    public static CertAndGeneration createInitialCaCertAndGeneration(String caCert, String caStore, String caStorePassword) {
+        Map<String, String> certData = new HashMap<>();
+        certData.put("ca.crt", caCert);
+        certData.put("ca.p12", caStore);
+        certData.put("ca.password", caStorePassword);
+        return new CertAndGeneration(certData, 0);
+    }
+
+    public static CertAndGeneration createInitialCaKeyAndGeneration(String caKey) {
+        Map<String, String> keyData = new HashMap<>();
+        keyData.put("ca.key", caKey);
+        return new CertAndGeneration(keyData, 0);
     }
 }

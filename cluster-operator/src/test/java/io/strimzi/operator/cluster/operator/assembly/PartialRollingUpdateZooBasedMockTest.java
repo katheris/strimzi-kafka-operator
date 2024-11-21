@@ -234,7 +234,7 @@ public class PartialRollingUpdateZooBasedMockTest {
         for (int brokerId = 0; brokerId < cluster.getSpec().getKafka().getReplicas(); brokerId++) {
             var pod = client.pods().inNamespace(namespace).withName(KafkaResources.kafkaPodName(CLUSTER_NAME, brokerId)).get();
             var podCertHash = pod.getMetadata().getAnnotations().get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH);
-            var expectedCertHash = CertUtils.getCertificateThumbprint(brokersSecret, Ca.SecretEntry.CRT.asKey(pod.getMetadata().getName()));
+            var expectedCertHash = CertUtils.getCertificateThumbprint(pod.getMetadata().getName(), brokersSecret.getData(), Ca.CertEntry.CRT.asKey(pod.getMetadata().getName()));
 
             assertThat("Pod " + brokerId + " had unexpected revision", podCertHash, is(expectedCertHash));
         }
@@ -250,7 +250,7 @@ public class PartialRollingUpdateZooBasedMockTest {
                 final var finalBrokerId = brokerId;
                 var pod = client.pods().inNamespace(namespace).withName(KafkaResources.kafkaPodName(CLUSTER_NAME, brokerId)).get();
                 var podCertHash = pod.getMetadata().getAnnotations().get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH);
-                var expectedCertHash = CertUtils.getCertificateThumbprint(brokersSecret, Ca.SecretEntry.CRT.asKey(pod.getMetadata().getName()));
+                var expectedCertHash = CertUtils.getCertificateThumbprint(pod.getMetadata().getName(), brokersSecret.getData(), Ca.CertEntry.CRT.asKey(pod.getMetadata().getName()));
 
                 context.verify(() -> assertThat("Pod " + finalBrokerId + " had unexpected revision", podCertHash, is(expectedCertHash)));
             }
@@ -298,7 +298,7 @@ public class PartialRollingUpdateZooBasedMockTest {
         for (int zkIndex = 0; zkIndex < cluster.getSpec().getZookeeper().getReplicas(); zkIndex++) {
             var pod = client.pods().inNamespace(namespace).withName(KafkaResources.zookeeperPodName(CLUSTER_NAME, zkIndex)).get();
             var podCertHash = pod.getMetadata().getAnnotations().get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH);
-            var expectedCertHash = CertUtils.getCertificateThumbprint(zkSecret, Ca.SecretEntry.CRT.asKey(pod.getMetadata().getName()));
+            var expectedCertHash = CertUtils.getCertificateThumbprint(pod.getMetadata().getName(), zkSecret.getData(), Ca.CertEntry.CRT.asKey(pod.getMetadata().getName()));
 
             assertThat("Pod " + zkIndex + " had unexpected revision", podCertHash, is(expectedCertHash));
         }
@@ -314,7 +314,7 @@ public class PartialRollingUpdateZooBasedMockTest {
                 final var finalZkIndex = zkIndex;
                 var pod = client.pods().inNamespace(namespace).withName(KafkaResources.zookeeperPodName(CLUSTER_NAME, zkIndex)).get();
                 var podCertHash = pod.getMetadata().getAnnotations().get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH);
-                var expectedCertHash = CertUtils.getCertificateThumbprint(zkSecret, Ca.SecretEntry.CRT.asKey(pod.getMetadata().getName()));
+                var expectedCertHash = CertUtils.getCertificateThumbprint(pod.getMetadata().getName(), zkSecret.getData(), Ca.CertEntry.CRT.asKey(pod.getMetadata().getName()));
 
                 context.verify(() -> assertThat("Pod " + finalZkIndex + " had unexpected revision", podCertHash, is(expectedCertHash)));
             }

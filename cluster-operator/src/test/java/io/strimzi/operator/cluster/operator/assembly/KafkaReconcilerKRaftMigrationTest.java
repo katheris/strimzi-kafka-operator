@@ -21,7 +21,7 @@ import io.strimzi.operator.cluster.ClusterOperatorConfig;
 import io.strimzi.operator.cluster.KafkaVersionTestUtils;
 import io.strimzi.operator.cluster.PlatformFeaturesAvailability;
 import io.strimzi.operator.cluster.ResourceUtils;
-import io.strimzi.operator.cluster.model.AbstractModel;
+import io.strimzi.operator.cluster.TestUtils;
 import io.strimzi.operator.cluster.model.ClusterCa;
 import io.strimzi.operator.cluster.model.KafkaCluster;
 import io.strimzi.operator.cluster.model.KafkaVersion;
@@ -128,8 +128,8 @@ public class KafkaReconcilerKRaftMigrationTest {
             CERT_MANAGER,
             PASSWORD_GENERATOR,
             CLUSTER_NAME,
-            ResourceUtils.createInitialCaCertSecret(NAMESPACE, CLUSTER_NAME, AbstractModel.clusterCaCertSecretName(CLUSTER_NAME), MockCertManager.clusterCaCert(), MockCertManager.clusterCaCertStore(), "123456"),
-            ResourceUtils.createInitialCaKeySecret(NAMESPACE, CLUSTER_NAME, AbstractModel.clusterCaKeySecretName(CLUSTER_NAME), MockCertManager.clusterCaKey())
+            TestUtils.createInitialCaCertAndGeneration(MockCertManager.clusterCaCert(), MockCertManager.clusterCaCertStore(), "123456"),
+            TestUtils.createInitialCaKeyAndGeneration(MockCertManager.clusterCaKey())
     );
 
     private final static ClientsCa CLIENTS_CA = new ClientsCa(
@@ -137,9 +137,9 @@ public class KafkaReconcilerKRaftMigrationTest {
             new OpenSslCertManager(),
             PASSWORD_GENERATOR,
             KafkaResources.clientsCaCertificateSecretName(CLUSTER_NAME),
-            ResourceUtils.createInitialCaCertSecret(NAMESPACE, CLUSTER_NAME, AbstractModel.clusterCaCertSecretName(CLUSTER_NAME), MockCertManager.clusterCaCert(), MockCertManager.clusterCaCertStore(), "123456"),
+            TestUtils.createInitialCaCertAndGeneration(MockCertManager.clusterCaCert(), MockCertManager.clusterCaCertStore(), "123456"),
             KafkaResources.clientsCaKeySecretName(CLUSTER_NAME),
-            ResourceUtils.createInitialCaKeySecret(NAMESPACE, CLUSTER_NAME, AbstractModel.clusterCaKeySecretName(CLUSTER_NAME), MockCertManager.clusterCaKey()),
+            TestUtils.createInitialCaKeyAndGeneration(MockCertManager.clusterCaKey()),
             365,
             30,
             true,
@@ -324,7 +324,6 @@ public class KafkaReconcilerKRaftMigrationTest {
     }
 
     static class MockKafkaReconciler extends KafkaReconciler {
-        private static int count = 0;
 
         public MockKafkaReconciler(Reconciliation reconciliation, Kafka kafkaCr, List<KafkaNodePool> nodePools, ResourceOperatorSupplier supplier, KafkaVersionChange versionChange, KafkaMetadataStateManager kafkaMetadataStateManager) {
             super(reconciliation, kafkaCr, nodePools, createKafkaCluster(reconciliation, supplier, kafkaCr, nodePools, versionChange, kafkaMetadataStateManager), CLUSTER_CA, CLIENTS_CA, CO_CONFIG, supplier, PFA, vertx, kafkaMetadataStateManager);
