@@ -47,7 +47,6 @@ import io.strimzi.operator.cluster.model.jmx.JmxModel;
 import io.strimzi.operator.cluster.model.metrics.MetricsModel;
 import io.strimzi.operator.common.Annotations;
 import io.strimzi.operator.common.Reconciliation;
-import io.strimzi.operator.common.model.Ca;
 import io.strimzi.operator.common.model.InvalidResourceException;
 import io.strimzi.operator.common.model.Labels;
 import io.strimzi.operator.common.model.PasswordGenerator;
@@ -69,7 +68,6 @@ import java.util.Set;
 import static io.strimzi.operator.cluster.model.jmx.JmxModel.JMX_PORT;
 import static io.strimzi.operator.cluster.model.jmx.JmxModel.JMX_PORT_NAME;
 import static java.util.Arrays.asList;
-import static java.util.Collections.emptyMap;
 import static java.util.Collections.singletonMap;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.is;
@@ -149,7 +147,7 @@ public class ZookeeperClusterTest {
 
     private Secret generateCertificatesSecret() {
         ClusterCa clusterCa = new ClusterCa(Reconciliation.DUMMY_RECONCILIATION, new OpenSslCertManager(), new PasswordGenerator(10, "a", "a"), CLUSTER, null, null);
-        clusterCa.createRenewOrReplace(NAMESPACE, emptyMap(), emptyMap(), emptyMap(), null, true);
+        clusterCa.createRenewOrReplace(true, false, false);
 
         return ZC.generateCertificatesSecret(clusterCa, null, true);
     }
@@ -409,7 +407,7 @@ public class ZookeeperClusterTest {
                 "foo-zookeeper-0.crt",  "foo-zookeeper-0.key",
                 "foo-zookeeper-1.crt", "foo-zookeeper-1.key",
                 "foo-zookeeper-2.crt", "foo-zookeeper-2.key")));
-        X509Certificate cert = Ca.cert(secret, "foo-zookeeper-0.crt");
+        X509Certificate cert = io.strimzi.operator.cluster.TestUtils.cert(secret, "foo-zookeeper-0.crt");
         assertThat(cert.getSubjectX500Principal().getName(), is("CN=foo-zookeeper,O=io.strimzi"));
         assertThat(new HashSet<Object>(cert.getSubjectAlternativeNames()), is(Set.of(
                 asList(2, "foo-zookeeper-0"),

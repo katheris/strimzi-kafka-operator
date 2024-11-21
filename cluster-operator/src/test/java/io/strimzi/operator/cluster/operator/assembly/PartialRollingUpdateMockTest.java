@@ -266,7 +266,7 @@ public class PartialRollingUpdateMockTest {
 
         for (Pod pod : initialPods) {
             String podCertHash = pod.getMetadata().getAnnotations().get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH);
-            String expectedCertHash = CertUtils.getCertificateThumbprint(brokersSecret, Ca.SecretEntry.CRT.asKey(pod.getMetadata().getName()));
+            String expectedCertHash = CertUtils.getCertificateThumbprint(pod.getMetadata().getName(), brokersSecret.getData(), Ca.CertEntry.CRT.asKey(pod.getMetadata().getName()));
             context.verify(() -> assertThat(podCertHash, is(expectedCertHash)));
         }
 
@@ -282,7 +282,7 @@ public class PartialRollingUpdateMockTest {
 
                     for (Pod pod : initialPods) {
                         String podCertHash = pod.getMetadata().getAnnotations().get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH);
-                        String expectedCertHash = CertUtils.getCertificateThumbprint(brokersSecret, Ca.SecretEntry.CRT.asKey(pod.getMetadata().getName()));
+                        String expectedCertHash = CertUtils.getCertificateThumbprint(pod.getMetadata().getName(), brokersSecret.getData(), Ca.CertEntry.CRT.asKey(pod.getMetadata().getName()));
                         assertThat(podCertHash, is(expectedCertHash));
                     }
 

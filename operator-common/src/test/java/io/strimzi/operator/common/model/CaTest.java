@@ -4,7 +4,6 @@
  */
 package io.strimzi.operator.common.model;
 
-import io.fabric8.kubernetes.api.model.Secret;
 import io.strimzi.api.kafka.model.common.CertificateAuthority;
 import io.strimzi.certs.CertManager;
 import io.strimzi.certs.OpenSslCertManager;
@@ -19,7 +18,6 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
 
-import static java.util.Collections.emptyMap;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -39,7 +37,7 @@ class CaTest {
          * @param caCertSecret      Kubernetes Secret where the CA public key will be stored
          * @param caKeySecret       Kubernetes Secret where the CA private key will be stored
          */
-        public MockCa(Reconciliation reconciliation, CertManager certManager, PasswordGenerator passwordGenerator, Secret caCertSecret, Secret caKeySecret) {
+        public MockCa(Reconciliation reconciliation, CertManager certManager, PasswordGenerator passwordGenerator, CertAndGeneration caCertSecret, CertAndGeneration caKeySecret) {
             super(reconciliation, certManager, passwordGenerator, "mock", "mock-ca-secret", caCertSecret, "mock-key-secret", caKeySecret, CertificateAuthority.DEFAULT_CERTS_VALIDITY_DAYS, CertificateAuthority.DEFAULT_CERTS_RENEWAL_DAYS, true, null);
         }
 
@@ -68,7 +66,7 @@ class CaTest {
     @Test
     @DisplayName("Should return certificate expiration date as epoch when certificate is present")
     void shouldReturnCertificateExpirationDateEpoch() {
-        ca.createRenewOrReplace("mock", emptyMap(), emptyMap(), emptyMap(), null, true);
+        ca.createRenewOrReplace(true, false, false);
 
         Instant inOneYear = Clock.offset(now, oneYear).instant();
         long expectedEpoch = inOneYear.truncatedTo(ChronoUnit.SECONDS).toEpochMilli();

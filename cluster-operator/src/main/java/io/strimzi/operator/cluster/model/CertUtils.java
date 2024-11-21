@@ -6,14 +6,17 @@ package io.strimzi.operator.cluster.model;
 
 import io.fabric8.kubernetes.api.model.OwnerReference;
 import io.fabric8.kubernetes.api.model.Secret;
+import io.fabric8.kubernetes.api.model.SecretBuilder;
 import io.fabric8.kubernetes.api.model.Volume;
 import io.fabric8.kubernetes.api.model.VolumeMount;
 import io.strimzi.api.kafka.model.common.CertSecretSource;
 import io.strimzi.certs.CertAndKey;
+import io.strimzi.operator.common.Annotations;
 import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.ReconciliationLogger;
 import io.strimzi.operator.common.Util;
 import io.strimzi.operator.common.model.Ca;
+import io.strimzi.operator.common.model.CertAndGeneration;
 import io.strimzi.operator.common.model.InvalidResourceException;
 import io.strimzi.operator.common.model.Labels;
 
@@ -24,9 +27,14 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
+import static io.strimzi.operator.common.model.Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION;
+import static io.strimzi.operator.common.model.Ca.ANNO_STRIMZI_IO_CA_KEY_GENERATION;
+import static java.util.Collections.emptyList;
 import static java.util.Collections.emptyMap;
+import static java.util.Collections.singletonList;
 
 /**
  * Certificate utility methods
@@ -37,29 +45,111 @@ public class CertUtils {
     /**
      * Generates a short SHA1-hash (a hash stub) of the certificate which is used to track when the certificate changes and rolling update needs to be triggered.
      *
-     * @param certSecret    Secrets with the certificate
-     * @param key           Key under which the certificate is stored in the Secret
+     * @param resourceName  Name of the resource the certificate is being stored in
+     * @param certData      Map with the certificate
+     * @param key           Key under which the certificate is stored in the Map
      * @return              Hash stub of the certificate
      */
-    public static String getCertificateShortThumbprint(Secret certSecret, String key) {
-        var thumbprint = getCertificateThumbprint(certSecret, key);
+    public static String getCertificateShortThumbprint(String resourceName, Map<String, String> certData, String key) {
+        var thumbprint = getCertificateThumbprint(resourceName, certData, key);
         return thumbprint == null ? null : thumbprint.substring(0, Util.HASH_STUB_LENGTH);
     }
 
     /**
      * Generates the full SHA1-hash of the server certificate which is used to track when the certificate changes and rolling update needs to be triggered.
      *
-     * @param certSecret    Secrets with the certificate
-     * @param key           Key under which the certificate is stored in the Secret
+     * @param resourceName  Name of the resource the certificate is being stored in
+     * @param certData      Map with the certificate
+     * @param key           Key under which the certificate is stored in the Map
      * @return              SHA1-Hash of the certificate or null if certSecret contains no valid X509Certificate
      */
-    public static String getCertificateThumbprint(Secret certSecret, String key) {
+    public static String getCertificateThumbprint(String resourceName, Map<String, String> certData, String key) {
         try {
-            var cert = Ca.cert(certSecret, key);
+            var cert = Ca.cert(resourceName, certData, key);
             return cert == null ? null : String.format("%040x", new BigInteger(1, Util.sha1Digest(cert.getEncoded())));
         } catch (CertificateEncodingException e) {
-            throw new RuntimeException("Failed to get certificate thumbprint of " + key + " from Secret " + certSecret.getMetadata().getName(), e);
+            throw new RuntimeException("Failed to get certificate thumbprint of " + key + " from Secret " + resourceName, e);
         }
+    }
+
+    /**
+     * Create a Kubernetes secret containing the provided secret data section
+     *
+     * @param namespace Namespace
+     * @param caKeySecretName Secret name
+     * @param existingCaKeySecret The existing CA key secret, or null if not present
+     * @param labels Labels to add to the Secret
+     * @param ownerReference owner of the Secret
+     * @return the Secret
+     */
+    public static Secret createCaKeySecret(Ca ca, String namespace, String caKeySecretName, Secret existingCaKeySecret,
+                                           Map<String, String> labels, OwnerReference ownerReference) {
+        Map<String, String> keyAnnotations = new HashMap<>(2);
+        keyAnnotations.put(ANNO_STRIMZI_IO_CA_KEY_GENERATION, String.valueOf(ca.caKeyGeneration()));
+
+        if (ca.replacementOrRenewalPostponed()
+                && existingCaKeySecret != null
+                && Annotations.hasAnnotation(existingCaKeySecret, Annotations.ANNO_STRIMZI_IO_FORCE_REPLACE)) {
+            keyAnnotations.put(Annotations.ANNO_STRIMZI_IO_FORCE_REPLACE, Annotations.stringAnnotation(existingCaKeySecret, Annotations.ANNO_STRIMZI_IO_FORCE_REPLACE, "false"));
+        }
+
+        return createCaSecret(namespace, caKeySecretName, ca.caKeyData(), labels,
+                keyAnnotations, ownerReference);
+    }
+
+    /**
+     * Create a Kubernetes secret containing the provided secret data section
+     *
+     * @param namespace Namespace
+     * @param caCertSecretName Secret name
+     * @param existingCaCertSecret The existing CA cert secret, or null if not present
+     * @param labels Labels to add to the Secret
+     * @param additionalLabels The additional annotations to add to the Secret
+     * @param additionalAnnotations annotations to add to the Secret
+     * @param ownerReference owner of the Secret
+     * @return the Secret
+     */
+    public static Secret createCaCertSecret(Ca ca, String namespace, String caCertSecretName, Secret existingCaCertSecret,
+                                            Map<String, String> labels, Map<String, String> additionalLabels,
+                                            Map<String, String> additionalAnnotations, OwnerReference ownerReference) {
+        Map<String, String> certAnnotations = new HashMap<>(2);
+        certAnnotations.put(ANNO_STRIMZI_IO_CA_CERT_GENERATION, String.valueOf(ca.caCertGeneration()));
+
+        if (ca.replacementOrRenewalPostponed()
+                && existingCaCertSecret != null
+                && Annotations.hasAnnotation(existingCaCertSecret, Annotations.ANNO_STRIMZI_IO_FORCE_RENEW))   {
+            certAnnotations.put(Annotations.ANNO_STRIMZI_IO_FORCE_RENEW, Annotations.stringAnnotation(existingCaCertSecret, Annotations.ANNO_STRIMZI_IO_FORCE_RENEW, "false"));
+        }
+
+        return createCaSecret(namespace, caCertSecretName, ca.caCertData(), Util.mergeLabelsOrAnnotations(labels, additionalLabels),
+                Util.mergeLabelsOrAnnotations(certAnnotations, additionalAnnotations), ownerReference);
+    }
+
+    /**
+     * Create a Kubernetes secret containing the provided secret data section
+     *
+     * @param namespace Namespace
+     * @param name Secret name
+     * @param data Map with secret data / files
+     * @param labels Labels to add to the Secret
+     * @param annotations annotations to add to the Secret
+     * @param ownerReference owner of the Secret
+     * @return the Secret
+     */
+    public static Secret createCaSecret(String namespace, String name, Map<String, String> data,
+                                         Map<String, String> labels, Map<String, String> annotations, OwnerReference ownerReference) {
+        List<OwnerReference> or = ownerReference != null ? singletonList(ownerReference) : emptyList();
+        return new SecretBuilder()
+                .withNewMetadata()
+                    .withName(name)
+                    .withNamespace(namespace)
+                    .withLabels(labels)
+                    .withAnnotations(annotations)
+                    .withOwnerReferences(or)
+                .endMetadata()
+                    .withType("Opaque")
+                    .withData(data)
+                .build();
     }
 
     /**
@@ -90,7 +180,7 @@ public class CertUtils {
         } else {
             if (clusterCa.keyCreated()
                     || clusterCa.certRenewed()
-                    || (isMaintenanceTimeWindowsSatisfied && clusterCa.isExpiring(secret, Ca.SecretEntry.CRT.asKey(keyCertName)))
+                    || (isMaintenanceTimeWindowsSatisfied && clusterCa.isExpiring(secret, Ca.CertEntry.CRT.asKey(keyCertName)))
                     || clusterCa.hasCaCertGenerationChanged(secret)) {
                 reasons.add("certificate needs to be renewed");
                 shouldBeRegenerated = true;
@@ -126,8 +216,8 @@ public class CertUtils {
     public static Map<String, String> buildSecretData(Map<String, CertAndKey> certificates) {
         Map<String, String> data = new HashMap<>(certificates.size() * 4);
         certificates.forEach((keyCertName, certAndKey) -> {
-            data.put(Ca.SecretEntry.KEY.asKey(keyCertName), certAndKey.keyAsBase64String());
-            data.put(Ca.SecretEntry.CRT.asKey(keyCertName), certAndKey.certAsBase64String());
+            data.put(Ca.CertEntry.KEY.asKey(keyCertName), certAndKey.keyAsBase64String());
+            data.put(Ca.CertEntry.CRT.asKey(keyCertName), certAndKey.certAsBase64String());
         });
         return data;
     }
@@ -148,8 +238,8 @@ public class CertUtils {
      * may have empty key, cert or keystore and null store password.
      */
     public static CertAndKey keyStoreCertAndKey(Secret secret, String keyCertName) {
-        return new CertAndKey(decodeFromSecret(secret, Ca.SecretEntry.KEY.asKey(keyCertName)),
-                decodeFromSecret(secret, Ca.SecretEntry.CRT.asKey(keyCertName)));
+        return new CertAndKey(decodeFromSecret(secret, Ca.CertEntry.KEY.asKey(keyCertName)),
+                decodeFromSecret(secret, Ca.CertEntry.CRT.asKey(keyCertName)));
     }
 
     /**
@@ -334,8 +424,8 @@ public class CertUtils {
 
             for (NodeRef node : nodes) {
                 String podName = node.podName();
-                String keyData = certificateData.get(Ca.SecretEntry.KEY.asKey(podName));
-                String certData = certificateData.get(Ca.SecretEntry.CRT.asKey(podName));
+                String keyData = certificateData.get(Ca.CertEntry.KEY.asKey(podName));
+                String certData = certificateData.get(Ca.CertEntry.CRT.asKey(podName));
                 if (keyData != null && certData != null) {
                     certsAndKeys.put(podName, new CertAndKey(Util.decodeBytesFromBase64(keyData), Util.decodeBytesFromBase64(certData)));
                 }
@@ -343,5 +433,17 @@ public class CertUtils {
 
             return certsAndKeys;
         }
+    }
+
+    /**
+     * Extracts the certificate data and related generation from a Kubernetes Secret as a CertAndGeneration
+     *
+     * @param certSecret            Secret to extract certificate data and generation from
+     * @param generationAnnotation  Annotation where the generation is stored
+     * @return  CertAndGeneration containing the extracted certificate data and related generation
+     */
+    public static CertAndGeneration certAndGeneration(Secret certSecret, String generationAnnotation) {
+        Objects.requireNonNull(certSecret);
+        return new CertAndGeneration(certSecret.getData(), Annotations.intAnnotation(certSecret, generationAnnotation, Ca.INIT_GENERATION));
     }
 }

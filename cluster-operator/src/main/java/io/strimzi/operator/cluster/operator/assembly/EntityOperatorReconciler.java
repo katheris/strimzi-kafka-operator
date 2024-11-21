@@ -372,7 +372,7 @@ public class EntityOperatorReconciler {
                         return secretOperator
                                 .reconcile(reconciliation, reconciliation.namespace(), KafkaResources.entityTopicOperatorSecretName(reconciliation.name()), newSecret)
                                 .compose(i -> {
-                                    toCertificateHash = CertUtils.getCertificateShortThumbprint(newSecret, Ca.SecretEntry.CRT.asKey(EntityOperator.COMPONENT_TYPE));
+                                    toCertificateHash = CertUtils.getCertificateShortThumbprint(KafkaResources.entityTopicOperatorSecretName(reconciliation.name()), newSecret.getData(), Ca.CertEntry.CRT.asKey(EntityOperator.COMPONENT_TYPE));
 
                                     return Future.succeededFuture();
                                 });
@@ -401,7 +401,7 @@ public class EntityOperatorReconciler {
                         return secretOperator
                                 .reconcile(reconciliation, reconciliation.namespace(), KafkaResources.entityUserOperatorSecretName(reconciliation.name()), newSecret)
                                 .compose(i -> {
-                                    uoCertificateHash = CertUtils.getCertificateShortThumbprint(newSecret, Ca.SecretEntry.CRT.asKey(EntityOperator.COMPONENT_TYPE));
+                                    uoCertificateHash = CertUtils.getCertificateShortThumbprint(KafkaResources.entityUserOperatorSecretName(reconciliation.name()), newSecret.getData(), Ca.CertEntry.CRT.asKey(EntityOperator.COMPONENT_TYPE));
 
                                     return Future.succeededFuture();
                                 });

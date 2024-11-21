@@ -222,7 +222,7 @@ public class CruiseControlReconciler {
                         return secretOperator
                                 .reconcile(reconciliation, reconciliation.namespace(), CruiseControlResources.secretName(reconciliation.name()), newSecret)
                                 .compose(i -> {
-                                    certificateHash = CertUtils.getCertificateShortThumbprint(newSecret, Ca.SecretEntry.CRT.asKey(CruiseControl.COMPONENT_TYPE));
+                                    certificateHash = CertUtils.getCertificateShortThumbprint(CruiseControlResources.secretName(reconciliation.name()), newSecret.getData(), Ca.CertEntry.CRT.asKey(CruiseControl.COMPONENT_TYPE));
 
                                     return Future.succeededFuture();
                                 });

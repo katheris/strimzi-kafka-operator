@@ -132,7 +132,7 @@ public class KafkaExporterReconciler {
                         return secretOperator
                                 .reconcile(reconciliation, reconciliation.namespace(), KafkaExporterResources.secretName(reconciliation.name()), newSecret)
                                 .compose(i -> {
-                                    certificateHash = CertUtils.getCertificateShortThumbprint(newSecret, Ca.SecretEntry.CRT.asKey(KafkaExporter.COMPONENT_TYPE));
+                                    certificateHash = CertUtils.getCertificateShortThumbprint(KafkaExporterResources.secretName(reconciliation.name()), newSecret.getData(), Ca.CertEntry.CRT.asKey(KafkaExporter.COMPONENT_TYPE));
 
                                     return Future.succeededFuture();
                                 });

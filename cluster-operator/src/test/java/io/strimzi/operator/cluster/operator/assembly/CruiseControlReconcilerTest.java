@@ -25,7 +25,7 @@ import io.strimzi.api.kafka.model.kafka.listener.GenericKafkaListenerBuilder;
 import io.strimzi.api.kafka.model.kafka.listener.KafkaListenerType;
 import io.strimzi.operator.cluster.KafkaVersionTestUtils;
 import io.strimzi.operator.cluster.ResourceUtils;
-import io.strimzi.operator.cluster.model.AbstractModel;
+import io.strimzi.operator.cluster.TestUtils;
 import io.strimzi.operator.cluster.model.ClusterCa;
 import io.strimzi.operator.cluster.model.CruiseControl;
 import io.strimzi.operator.cluster.model.KafkaVersion;
@@ -203,8 +203,8 @@ public class CruiseControlReconcilerTest {
                 new MockCertManager(),
                 new PasswordGenerator(10, "a", "a"),
                 NAME,
-                ResourceUtils.createInitialCaCertSecret(NAMESPACE, NAME, AbstractModel.clusterCaCertSecretName(NAME), MockCertManager.clusterCaCert(), MockCertManager.clusterCaCertStore(), "123456"),
-                ResourceUtils.createInitialCaKeySecret(NAMESPACE, NAME, AbstractModel.clusterCaKeySecretName(NAME), MockCertManager.clusterCaKey())
+                TestUtils.createInitialCaCertAndGeneration(MockCertManager.clusterCaCert(), MockCertManager.clusterCaCertStore(), "123456"),
+                TestUtils.createInitialCaKeyAndGeneration(MockCertManager.clusterCaKey())
         );
 
         CruiseControlReconciler rcnclr = new CruiseControlReconciler(
@@ -297,8 +297,8 @@ public class CruiseControlReconcilerTest {
                 new MockCertManager(),
                 new PasswordGenerator(10, "a", "a"),
                 NAME,
-                ResourceUtils.createInitialCaCertSecret(NAMESPACE, NAME, AbstractModel.clusterCaCertSecretName(NAME), MockCertManager.clusterCaCert(), MockCertManager.clusterCaCertStore(), "123456"),
-                ResourceUtils.createInitialCaKeySecret(NAMESPACE, NAME, AbstractModel.clusterCaKeySecretName(NAME), MockCertManager.clusterCaKey())
+                TestUtils.createInitialCaCertAndGeneration(MockCertManager.clusterCaCert(), MockCertManager.clusterCaCertStore(), "123456"),
+                TestUtils.createInitialCaKeyAndGeneration(MockCertManager.clusterCaKey())
         );
 
         CruiseControlReconciler rcnclr = new CruiseControlReconciler(

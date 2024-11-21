@@ -4,7 +4,6 @@
  */
 package io.strimzi.operator.cluster.model;
 
-import io.fabric8.kubernetes.api.model.Secret;
 import io.strimzi.api.kafka.model.common.CertificateAuthority;
 import io.strimzi.api.kafka.model.common.CertificateExpirationPolicy;
 import io.strimzi.api.kafka.model.kafka.KafkaResources;
@@ -15,6 +14,7 @@ import io.strimzi.certs.IpAndDnsValidation;
 import io.strimzi.certs.Subject;
 import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.model.Ca;
+import io.strimzi.operator.common.model.CertAndGeneration;
 import io.strimzi.operator.common.model.PasswordGenerator;
 
 import java.io.File;
@@ -50,11 +50,11 @@ public class ClusterCa extends Ca {
      * @param certManager           Certificate manager instance
      * @param passwordGenerator     Password generator instance
      * @param clusterName           Name of the Kafka cluster
-     * @param caCertSecret          Name of the CA public key secret
-     * @param caKeySecret           Name of the CA private key secret
+     * @param clusterCaCert         CA public cert and related generation
+     * @param clusterCaKey          CA private key and related generation
      */
-    public ClusterCa(Reconciliation reconciliation, CertManager certManager, PasswordGenerator passwordGenerator, String clusterName, Secret caCertSecret, Secret caKeySecret) {
-        this(reconciliation, certManager, passwordGenerator, clusterName, caCertSecret, caKeySecret, CertificateAuthority.DEFAULT_CERTS_VALIDITY_DAYS, CertificateAuthority.DEFAULT_CERTS_RENEWAL_DAYS, true, null);
+    public ClusterCa(Reconciliation reconciliation, CertManager certManager, PasswordGenerator passwordGenerator, String clusterName, CertAndGeneration clusterCaCert, CertAndGeneration clusterCaKey) {
+        this(reconciliation, certManager, passwordGenerator, clusterName, clusterCaCert, clusterCaKey, CertificateAuthority.DEFAULT_CERTS_VALIDITY_DAYS, CertificateAuthority.DEFAULT_CERTS_RENEWAL_DAYS, true, null);
     }
 
     /**
@@ -64,8 +64,8 @@ public class ClusterCa extends Ca {
      * @param certManager           Certificate manager instance
      * @param passwordGenerator     Password generator instance
      * @param clusterName           Name of the Kafka cluster
-     * @param clusterCaCert         Secret with the public key
-     * @param clusterCaKey          Secret with the private key
+     * @param clusterCaCert         CA public cert and related generation
+     * @param clusterCaKey          CA private key and related generation
      * @param validityDays          Validity days
      * @param renewalDays           Renewal days (how many days before expiration should the CA be renewed)
      * @param generateCa            Flag indicating if Strimzi CA should be generated or custom CA is used
@@ -74,8 +74,8 @@ public class ClusterCa extends Ca {
     public ClusterCa(Reconciliation reconciliation, CertManager certManager,
                      PasswordGenerator passwordGenerator,
                      String clusterName,
-                     Secret clusterCaCert,
-                     Secret clusterCaKey,
+                     CertAndGeneration clusterCaCert,
+                     CertAndGeneration clusterCaKey,
                      int validityDays,
                      int renewalDays,
                      boolean generateCa,
@@ -283,7 +283,7 @@ public class ClusterCa extends Ca {
     }
 
     /**
-     * Copy already existing certificates from based on number of effective replicas
+     * Copy already existing certificates based on number of effective replicas
      * and maybe generate new ones for new replicas (i.e. scale-up).
      *
      * @param reconciliation                        Reconciliation marker
@@ -423,7 +423,7 @@ public class ClusterCa extends Ca {
     public void maybeDeleteOldCerts() {
         // the operator doesn't have to touch Secret provided by the user with his own custom CA certificate
         if (this.generateCa) {
-            this.caCertsRemoved = removeCerts(this.caCertSecret.getData(), entry -> OLD_CA_CERT_PATTERN.matcher(entry.getKey()).matches()) > 0;
+            this.caCertsRemoved = removeCerts(this.caCertData, entry -> OLD_CA_CERT_PATTERN.matcher(entry.getKey()).matches()) > 0;
             if (this.caCertsRemoved) {
                 LOGGER.infoCr(reconciliation, "{}: Old CA certificates removed", this);
             }

@@ -4,12 +4,12 @@
  */
 package io.strimzi.operator.cluster.model;
 
-import io.fabric8.kubernetes.api.model.Secret;
 import io.strimzi.api.kafka.model.common.CertificateExpirationPolicy;
 import io.strimzi.certs.CertAndKey;
 import io.strimzi.certs.CertManager;
 import io.strimzi.certs.Subject;
 import io.strimzi.operator.common.Reconciliation;
+import io.strimzi.operator.common.model.CertAndGeneration;
 import io.strimzi.operator.common.model.PasswordGenerator;
 import io.strimzi.test.annotations.ParallelSuite;
 import io.strimzi.test.annotations.ParallelTest;
@@ -51,7 +51,7 @@ public class ClusterCaRenewalTest {
                 Reconciliation.DUMMY_RECONCILIATION,
                 NODES,
                 SUBJECT_FN,
-                null,
+                Map.of(),
                 isMaintenanceTimeWindowsSatisfied,
                 false);
 
@@ -375,7 +375,7 @@ public class ClusterCaRenewalTest {
         private boolean isCertRenewed;
         private boolean isCertExpiring;
 
-        public MockedClusterCa(Reconciliation reconciliation, CertManager certManager, PasswordGenerator passwordGenerator, String commonName, Secret caCertSecret, Secret caKeySecret, int validityDays, int renewalDays, boolean generateCa, CertificateExpirationPolicy policy) {
+        public MockedClusterCa(Reconciliation reconciliation, CertManager certManager, PasswordGenerator passwordGenerator, String commonName, CertAndGeneration caCertSecret, CertAndGeneration caKeySecret, int validityDays, int renewalDays, boolean generateCa, CertificateExpirationPolicy policy) {
             super(reconciliation, certManager, passwordGenerator, commonName, caCertSecret, caKeySecret, validityDays, renewalDays, generateCa, policy);
         }
 

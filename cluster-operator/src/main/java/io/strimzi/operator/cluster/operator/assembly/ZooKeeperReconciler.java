@@ -460,8 +460,9 @@ public class ZooKeeperReconciler {
                                         var podName = KafkaResources.zookeeperPodName(reconciliation.name(), podNum);
                                         zkCertificateHash.put(
                                                 podNum,
-                                                CertUtils.getCertificateThumbprint(patchResult.resource(),
-                                                        Ca.SecretEntry.CRT.asKey(podName)
+                                                CertUtils.getCertificateThumbprint("Secret/" + KafkaResources.zookeeperSecretName(reconciliation.name()),
+                                                        patchResult.resource().getData(),
+                                                        Ca.CertEntry.CRT.asKey(podName)
                                                 ));
                                     }
                                 }

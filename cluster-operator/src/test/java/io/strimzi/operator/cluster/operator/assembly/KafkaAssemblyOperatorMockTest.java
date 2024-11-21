@@ -208,7 +208,7 @@ public class KafkaAssemblyOperatorMockTest {
                     assertThat(pod.getMetadata().getAnnotations(), hasEntry(Ca.ANNO_STRIMZI_IO_CLUSTER_CA_KEY_GENERATION, "0"));
                     var brokersSecret = client.secrets().inNamespace(namespace).withName(KafkaResources.kafkaSecretName(CLUSTER_NAME)).get();
                     assertThat(pod.getMetadata().getAnnotations(), hasEntry(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH,
-                            CertUtils.getCertificateThumbprint(brokersSecret, Ca.SecretEntry.CRT.asKey(pod.getMetadata().getName()))
+                            CertUtils.getCertificateThumbprint(pod.getMetadata().getName(), brokersSecret.getData(), Ca.CertEntry.CRT.asKey(pod.getMetadata().getName()))
                     ));
                 });
 
@@ -218,7 +218,7 @@ public class KafkaAssemblyOperatorMockTest {
                     assertThat(pod.getMetadata().getAnnotations(), hasEntry(Ca.ANNO_STRIMZI_IO_CLUSTER_CA_KEY_GENERATION, "0"));
                     var zooKeeperSecret = client.secrets().inNamespace(namespace).withName(KafkaResources.zookeeperSecretName(CLUSTER_NAME)).get();
                     assertThat(pod.getMetadata().getAnnotations(), hasEntry(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH,
-                            CertUtils.getCertificateThumbprint(zooKeeperSecret, Ca.SecretEntry.CRT.asKey(pod.getMetadata().getName()))
+                            CertUtils.getCertificateThumbprint(pod.getMetadata().getName(), zooKeeperSecret.getData(), Ca.CertEntry.CRT.asKey(pod.getMetadata().getName()))
                     ));
                 });
                 assertThat(client.configMaps().inNamespace(namespace).withName(KafkaResources.zookeeperMetricsAndLogConfigMapName(CLUSTER_NAME)).get(), is(notNullValue()));

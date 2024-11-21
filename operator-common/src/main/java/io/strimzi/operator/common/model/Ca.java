@@ -5,9 +5,7 @@
 package io.strimzi.operator.common.model;
 
 import io.fabric8.kubernetes.api.model.HasMetadata;
-import io.fabric8.kubernetes.api.model.OwnerReference;
 import io.fabric8.kubernetes.api.model.Secret;
-import io.fabric8.kubernetes.api.model.SecretBuilder;
 import io.strimzi.api.kafka.model.common.CertificateExpirationPolicy;
 import io.strimzi.certs.CertAndKey;
 import io.strimzi.certs.CertManager;
@@ -43,6 +41,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
@@ -53,9 +52,6 @@ import static java.time.temporal.ChronoField.MONTH_OF_YEAR;
 import static java.time.temporal.ChronoField.NANO_OF_SECOND;
 import static java.time.temporal.ChronoField.SECOND_OF_MINUTE;
 import static java.time.temporal.ChronoField.YEAR;
-import static java.util.Collections.emptyList;
-import static java.util.Collections.singletonList;
-import static java.util.Collections.singletonMap;
 
 /**
  * A Certificate Authority which can renew its own (self-signed) certificates, and generate signed certificates
@@ -64,9 +60,9 @@ import static java.util.Collections.singletonMap;
 public abstract class Ca {
 
     /**
-     * A certificate entry in a Kubernetes Secret. Used to construct the keys in the Secret data where certificates are stored.
+     * A certificate entry in a Map. Used to construct the keys in the Map where certificates are stored.
      */
-    public enum SecretEntry {
+    public enum CertEntry {
         /**
          * A 64-bit encoded X509 Certificate
          */
@@ -86,15 +82,15 @@ public abstract class Ca {
 
         final String suffix;
 
-        SecretEntry(String suffix) {
+        CertEntry(String suffix) {
             this.suffix = suffix;
         }
 
         /**
-         * Build the Kubernetes Secret key to use with this type of SecretEntry.
+         * Build the Map key to use with this type of CertEntry.
          *
-         * @param prefix to use for the certificate Secret key
-         * @return a certificate Secret key with the provided prefix and the suffix of this type of SecretEntry
+         * @param prefix to use for the certificate Map key
+         * @return a certificate Map key with the provided prefix and the suffix of this type of CertEntry
          */
         public String asKey(String prefix) {
             return prefix + suffix;
@@ -134,27 +130,27 @@ public abstract class Ca {
             .appendOffsetId()
             .toFormatter().withChronology(IsoChronology.INSTANCE);
 
-    private static final String CA_SECRET_PREFIX = "ca";
+    private static final String CA_MAP_PREFIX = "ca";
 
     /**
-     * Key for storing the CA private key in a Kubernetes Secret
+     * Key for storing the CA private key in a Map
      */
-    public static final String CA_KEY = SecretEntry.KEY.asKey(CA_SECRET_PREFIX);
+    public static final String CA_KEY = CertEntry.KEY.asKey(CA_MAP_PREFIX);
 
     /**
-     * Key for storing the CA public key in a Kubernetes Secret
+     * Key for storing the CA public key in a Map
      */
-    public static final String CA_CRT = SecretEntry.CRT.asKey(CA_SECRET_PREFIX);
+    public static final String CA_CRT = CertEntry.CRT.asKey(CA_MAP_PREFIX);
 
     /**
-     * Key for storing the CA PKCS21 store in a Kubernetes Secret
+     * Key for storing the CA PKCS21 store in a Map
      */
-    public static final String CA_STORE = SecretEntry.P12_KEYSTORE.asKey(CA_SECRET_PREFIX);
+    public static final String CA_STORE = CertEntry.P12_KEYSTORE.asKey(CA_MAP_PREFIX);
 
     /**
-     * Key for storing the PKCS12 store password in a Kubernetes Secret
+     * Key for storing the PKCS12 store password in a Map
      */
-    public static final String CA_STORE_PASSWORD = SecretEntry.P12_KEYSTORE_PASSWORD.asKey(CA_SECRET_PREFIX);
+    public static final String CA_STORE_PASSWORD = CertEntry.P12_KEYSTORE_PASSWORD.asKey(CA_MAP_PREFIX);
 
     /**
      * Organization used in the generated CAs
@@ -204,11 +200,11 @@ public abstract class Ca {
          */
         NOOP() {
             @Override
-            public String preDescription(String keySecretName, String certSecretName) {
-                return "CA key (in " + keySecretName + ") and certificate (in " + certSecretName + ") already exist and do not need replacing or renewing";
+            public String preDescription(String keyResourceName, String certResourceName) {
+                return "CA key (in " + keyResourceName + ") and certificate (in " + certResourceName + ") already exist and do not need replacing or renewing";
             }
             @Override
-            public String postDescription(String keySecretName, String certSecretName) {
+            public String postDescription(String keyResourceName, String certResourceName) {
                 return "noop";
             }
         },
@@ -217,11 +213,11 @@ public abstract class Ca {
          */
         POSTPONED() {
             @Override
-            public String preDescription(String keySecretName, String certSecretName) {
+            public String preDescription(String keyResourceName, String certResourceName) {
                 return "CA operation was postponed and will be done in the next maintenance window";
             }
             @Override
-            public String postDescription(String keySecretName, String certSecretName) {
+            public String postDescription(String keyResourceName, String certResourceName) {
                 return "postponed";
             }
         },
@@ -230,12 +226,12 @@ public abstract class Ca {
          */
         CREATE() {
             @Override
-            public String preDescription(String keySecretName, String certSecretName) {
-                return "CA key (in " + keySecretName + ") and certificate (in " + certSecretName + ") needs to be created";
+            public String preDescription(String keyResourceName, String certResourceName) {
+                return "CA key (in " + keyResourceName + ") and certificate (in " + certResourceName + ") needs to be created";
             }
             @Override
-            public String postDescription(String keySecretName, String certSecretName) {
-                return "CA key (in " + keySecretName + ") and certificate (in " + certSecretName + ") created";
+            public String postDescription(String keyResourceName, String certResourceName) {
+                return "CA key (in " + keyResourceName + ") and certificate (in " + certResourceName + ") created";
             }
         },
         /**
@@ -243,12 +239,12 @@ public abstract class Ca {
          */
         RENEW_CERT() {
             @Override
-            public String preDescription(String keySecretName, String certSecretName) {
-                return "CA certificate (in " + certSecretName + ") needs to be renewed";
+            public String preDescription(String keyResourceName, String certResourceName) {
+                return "CA certificate (in " + certResourceName + ") needs to be renewed";
             }
             @Override
-            public String postDescription(String keySecretName, String certSecretName) {
-                return "CA certificate (in " + certSecretName + ") renewed";
+            public String postDescription(String keyResourceName, String certResourceName) {
+                return "CA certificate (in " + certResourceName + ") renewed";
             }
         },
         /**
@@ -256,12 +252,12 @@ public abstract class Ca {
          */
         REPLACE_KEY() {
             @Override
-            public String preDescription(String keySecretName, String certSecretName) {
-                return "CA key (in " + keySecretName + ") needs to be replaced";
+            public String preDescription(String keyResourceName, String certResourceName) {
+                return "CA key (in " + keyResourceName + ") needs to be replaced";
             }
             @Override
-            public String postDescription(String keySecretName, String certSecretName) {
-                return "CA key (in " + keySecretName + ") replaced";
+            public String postDescription(String keyResourceName, String certResourceName) {
+                return "CA key (in " + keyResourceName + ") replaced";
             }
         };
 
@@ -271,22 +267,22 @@ public abstract class Ca {
         /**
          * Pre-renewal description which is used to log what is going to happen.
          *
-         * @param keySecretName     Name of the Secret
-         * @param certSecretName    Key in the Secret
+         * @param keyResourceName     Name of the resource
+         * @param certResourceName    Key in the resource
          *
          * @return  String with the description
          */
-        public abstract String preDescription(String keySecretName, String certSecretName);
+        public abstract String preDescription(String keyResourceName, String certResourceName);
 
         /**
          * Post-renewal description which is used to log what was just done.
          *
-         * @param keySecretName     Name of the Secret
-         * @param certSecretName    Key in the Secret
+         * @param keyResourceName     Name of the resource
+         * @param certResourceName    Key in the resource
          *
          * @return  String with the description
          */
-        public abstract String postDescription(String keySecretName, String certSecretName);
+        public abstract String postDescription(String keyResourceName, String certResourceName);
     }
 
     protected final String commonName;
@@ -295,9 +291,11 @@ public abstract class Ca {
     protected final int renewalDays;
     protected final boolean generateCa;
     protected String caCertSecretName;
-    protected Secret caCertSecret;
+    protected AtomicInteger caCertGeneration = new AtomicInteger(INIT_GENERATION);
+    protected Map<String, String> caCertData;
     protected String caKeySecretName;
-    protected Secret caKeySecret;
+    protected AtomicInteger caKeyGeneration = new AtomicInteger(INIT_GENERATION);
+    protected Map<String, String> caKeyData;
     protected RenewalType renewalType;
     protected boolean caCertsRemoved;
     protected final CertificateExpirationPolicy policy;
@@ -310,27 +308,33 @@ public abstract class Ca {
      * @param passwordGenerator     Password generator instance
      * @param commonName            Common name which should be used by this CA
      * @param caCertSecretName      Name of the Kubernetes Secret where the CA public key wil be stored
-     * @param caCertSecret          Kubernetes Secret where the CA public key will be stored
+     * @param caCert                CA public key and related generation
      * @param caKeySecretName       Name of the Kubernetes Secret where the CA private key wil be stored
-     * @param caKeySecret           Kubernetes Secret where the CA private key will be stored
+     * @param caKey                 CA private key and related generation
      * @param validityDays          Number of days for which the CA certificate should be value
      * @param renewalDays           Number of day before expiration, when the certificate should be renewed
      * @param generateCa            Flag indicating whether the CA should be generated by Strimzi or not
      * @param policy                Policy defining the behavior when the CA expires (renewal or completely replacing the CA)
      */
     public Ca(Reconciliation reconciliation, CertManager certManager, PasswordGenerator passwordGenerator, String commonName,
-              String caCertSecretName, Secret caCertSecret,
-              String caKeySecretName, Secret caKeySecret,
+              String caCertSecretName, CertAndGeneration caCert,
+              String caKeySecretName, CertAndGeneration caKey,
               int validityDays, int renewalDays, boolean generateCa, CertificateExpirationPolicy policy) {
-        if (!generateCa && (caCertSecret == null || caKeySecret == null))   {
-            throw new InvalidResourceException(caName() + " should not be generated, but the secrets were not found.");
+        if (!generateCa && (caCert == null || caKey == null))   {
+            throw new InvalidResourceException(caName() + " should not be generated, but the CA resources were not found.");
         }
 
         this.reconciliation = reconciliation;
         this.commonName = commonName;
-        this.caCertSecret = caCertSecret;
+        this.caCertData = caCert != null ? caCert.certData() : null;
+        if (caCert != null) {
+            caCertGeneration.set(caCert.generation());
+        }
         this.caCertSecretName = caCertSecretName;
-        this.caKeySecret = caKeySecret;
+        if (caKey != null) {
+            caKeyGeneration.set(caKey.generation());
+        }
+        this.caKeyData = caKey != null ? caKey.certData() : null;
         this.caKeySecretName = caKeySecretName;
         this.certManager = certManager;
         this.passwordGenerator = passwordGenerator;
@@ -354,22 +358,8 @@ public abstract class Ca {
         this.clock = clock;
     }
 
-    /**
-     * Extracts the CA generation from the CA
-     *
-     * @return CA generation or the initial generation if no generation is set
-     */
-    public int caCertGeneration() {
-        return Annotations.intAnnotation(caCertSecret(), ANNO_STRIMZI_IO_CA_CERT_GENERATION, INIT_GENERATION);
-    }
-
-    /**
-     * Extracts the CA key generation from the CA
-     *
-     * @return CA key generation or the initial generation if no generation is set
-     */
-    public int caKeyGeneration() {
-        return Annotations.intAnnotation(caKeySecret(), ANNO_STRIMZI_IO_CA_KEY_GENERATION, INIT_GENERATION);
+    public boolean replacementOrRenewalPostponed() {
+        return RenewalType.POSTPONED.equals(this.renewalType);
     }
 
     protected static void delete(Reconciliation reconciliation, File file) {
@@ -487,7 +477,7 @@ public abstract class Ca {
         boolean isExpiring = false;
 
         try {
-            X509Certificate currentCert = cert(secret, certKey);
+            X509Certificate currentCert = cert(caName(), secret.getData(), certKey);
             isExpiring = certNeedsRenewal(currentCert);
         } catch (RuntimeException e) {
             // TODO: We should mock the certificates properly so that this doesn't fail in tests (not now => long term :-o)
@@ -520,63 +510,53 @@ public abstract class Ca {
      * {@link #certRenewed()} and {@link #certsRemoved()} will return whether the certificate was renewed and whether
      * expired secrets were removed from the Secret.
      *
-     * @param namespace                     The namespace containing the cluster.
-     * @param labels                        The labels of the {@code Secrets} created.
-     * @param additionalLabels              The additional labels of the {@code Secrets} created.
-     * @param additionalAnnotations         The additional annotations of the {@code Secrets} created.
-     * @param ownerRef                      The owner of the {@code Secrets} created.
-     * @param maintenanceWindowSatisfied    Flag indicating whether we are in the maintenance window
+     * @param maintenanceWindowSatisfied Flag indicating whether we are in the maintenance window
      */
     public void createRenewOrReplace(
-            String namespace,
-            Map<String, String> labels,
-            Map<String, String> additionalLabels,
-            Map<String, String> additionalAnnotations,
-            OwnerReference ownerRef,
-            boolean maintenanceWindowSatisfied
+            boolean maintenanceWindowSatisfied,
+            boolean forceRenew,
+            boolean forceReplace
     ) {
-        X509Certificate currentCert = cert(caCertSecret, CA_CRT);
         Map<String, String> certData;
         Map<String, String> keyData;
-        int caCertGeneration = certGeneration();
-        int caKeyGeneration = keyGeneration();
 
         if (!generateCa) {
-            certData = caCertSecret.getData();
-            keyData = singletonMap(CA_KEY, caKeySecret.getData().get(CA_KEY));
+            certData = caCertData;
+            keyData = caKeyData;
             renewalType = RenewalType.NOOP; // User is managing CA
             caCertsRemoved = false;
         } else {
-            this.renewalType = shouldCreateOrRenew(currentCert, maintenanceWindowSatisfied);
+            X509Certificate currentCert = cert(caName(), caCertData, CA_CRT);
+            this.renewalType = shouldCreateOrRenew(currentCert, maintenanceWindowSatisfied, forceRenew, forceReplace);
             LOGGER.debugCr(reconciliation, "{} renewalType {}", this, renewalType);
 
             switch (renewalType) {
                 case CREATE:
                     keyData = new HashMap<>(1);
                     certData = new HashMap<>(3);
-                    generateCaKeyAndCert(nextCaSubject(caKeyGeneration), keyData, certData);
+                    generateCaKeyAndCert(nextCaSubject(caKeyGeneration.get()), keyData, certData);
                     break;
                 case REPLACE_KEY:
                     keyData = new HashMap<>(1);
-                    certData = new HashMap<>(caCertSecret.getData());
+                    certData = caCertData;
                     if (certData.containsKey(CA_CRT)) {
                         String notAfterDate = DATE_TIME_FORMATTER.format(currentCert.getNotAfter().toInstant().atZone(ZoneId.of("Z")));
-                        addCertCaToTrustStore("ca-" + notAfterDate + SecretEntry.CRT.suffix, certData);
-                        certData.put("ca-" + notAfterDate + SecretEntry.CRT.suffix, certData.remove(CA_CRT));
+                        addCertCaToTrustStore("ca-" + notAfterDate + CertEntry.CRT.suffix, certData);
+                        certData.put("ca-" + notAfterDate + CertEntry.CRT.suffix, certData.remove(CA_CRT));
                     }
-                    ++caCertGeneration;
-                    generateCaKeyAndCert(nextCaSubject(++caKeyGeneration), keyData, certData);
+                    caCertGeneration.incrementAndGet();
+                    generateCaKeyAndCert(nextCaSubject(caKeyGeneration.incrementAndGet()), keyData, certData);
                     break;
                 case RENEW_CERT:
-                    keyData = caKeySecret.getData();
+                    keyData = caKeyData;
                     certData = new HashMap<>(3);
-                    ++caCertGeneration;
-                    renewCaCert(nextCaSubject(caKeyGeneration), certData);
+                    caCertGeneration.incrementAndGet();
+                    renewCaCert(nextCaSubject(caKeyGeneration.get()), certData);
                     break;
                 default:
-                    keyData = caKeySecret.getData();
-                    certData = caCertSecret.getData();
-                    // coming from an older version, the secret could not have the CA truststore
+                    certData = caCertData;
+                    keyData = caKeyData;
+                    // coming from an older version, the Map could not have the CA truststore
                     if (!certData.containsKey(CA_STORE)) {
                         addCertCaToTrustStore(CA_CRT, certData);
                     }
@@ -592,57 +572,8 @@ public abstract class Ca {
             LOGGER.debugCr(reconciliation, "{}: {}", this, renewalType.postDescription(caKeySecretName, caCertSecretName));
         }
 
-        // cluster CA certificate annotation handling
-        Map<String, String> certAnnotations = new HashMap<>(2);
-        certAnnotations.put(ANNO_STRIMZI_IO_CA_CERT_GENERATION, String.valueOf(caCertGeneration));
-
-        if (renewalType.equals(RenewalType.POSTPONED)
-                && this.caCertSecret.getMetadata() != null
-                && Annotations.hasAnnotation(caCertSecret, Annotations.ANNO_STRIMZI_IO_FORCE_RENEW))   {
-            certAnnotations.put(Annotations.ANNO_STRIMZI_IO_FORCE_RENEW, Annotations.stringAnnotation(caCertSecret, Annotations.ANNO_STRIMZI_IO_FORCE_RENEW, "false"));
-        }
-
-        Map<String, String> keyAnnotations = new HashMap<>(2);
-        keyAnnotations.put(ANNO_STRIMZI_IO_CA_KEY_GENERATION, String.valueOf(caKeyGeneration));
-
-        if (renewalType.equals(RenewalType.POSTPONED)
-                && this.caKeySecret.getMetadata() != null
-                && Annotations.hasAnnotation(caKeySecret, Annotations.ANNO_STRIMZI_IO_FORCE_REPLACE))   {
-            keyAnnotations.put(Annotations.ANNO_STRIMZI_IO_FORCE_REPLACE, Annotations.stringAnnotation(caKeySecret, Annotations.ANNO_STRIMZI_IO_FORCE_REPLACE, "false"));
-        }
-
-        caCertSecret = createCaSecret(namespace, caCertSecretName, certData, Util.mergeLabelsOrAnnotations(labels, additionalLabels),
-                Util.mergeLabelsOrAnnotations(certAnnotations, additionalAnnotations), ownerRef);
-
-        caKeySecret = createCaSecret(namespace, caKeySecretName, keyData, labels,
-                keyAnnotations, ownerRef);
-    }
-
-    /**
-     * Create a Kubernetes secret containing the provided secret data section
-     *
-     * @param namespace Namespace
-     * @param name Secret name
-     * @param data Map with secret data / files
-     * @param labels Labels to add to the Secret
-     * @param annotations annotations to add to the Secret
-     * @param ownerReference owner of the Secret
-     * @return the Secret
-     */
-    private static Secret createCaSecret(String namespace, String name, Map<String, String> data,
-                               Map<String, String> labels, Map<String, String> annotations, OwnerReference ownerReference) {
-        List<OwnerReference> or = ownerReference != null ? singletonList(ownerReference) : emptyList();
-        return new SecretBuilder()
-                .withNewMetadata()
-                    .withName(name)
-                    .withNamespace(namespace)
-                    .withLabels(labels)
-                    .withAnnotations(annotations)
-                    .withOwnerReferences(or)
-                .endMetadata()
-                .withType("Opaque")
-                .withData(data)
-                .build();
+        caCertData = certData;
+        caKeyData = keyData;
     }
 
     private Subject nextCaSubject(int version) {
@@ -653,21 +584,18 @@ public abstract class Ca {
             .withOrganizationName(IO_STRIMZI).build();
     }
 
-    private RenewalType shouldCreateOrRenew(X509Certificate currentCert, boolean maintenanceWindowSatisfied) {
+    private RenewalType shouldCreateOrRenew(X509Certificate currentCert, boolean maintenanceWindowSatisfied, boolean forceRenew, boolean forceReplace) {
         String reason = null;
         RenewalType renewalType = RenewalType.NOOP;
-        if (caKeySecret == null
-                || caKeySecret.getData() == null
-                || caKeySecret.getData().get(CA_KEY) == null) {
+        if (caKeyData == null
+                || caKeyData.get(CA_KEY) == null) {
             reason = "CA key secret " + caKeySecretName + " is missing or lacking data." + CA_KEY.replace(".", "\\.");
             renewalType = RenewalType.CREATE;
-        } else if (this.caCertSecret == null
-                || this.caCertSecret.getData() == null
-                || this.caCertSecret.getData().get(CA_CRT) == null) {
+        } else if (this.caCertData == null
+                || this.caCertData.get(CA_CRT) == null) {
             reason = "CA certificate secret " + caCertSecretName + " is missing or lacking data." + CA_CRT.replace(".", "\\.");
             renewalType = RenewalType.RENEW_CERT;
-        } else if (this.caCertSecret.getMetadata() != null
-                && Annotations.booleanAnnotation(this.caCertSecret, Annotations.ANNO_STRIMZI_IO_FORCE_RENEW, false)) {
+        } else if (forceRenew) {
             reason = "CA certificate secret " + caCertSecretName + " is annotated with " + Annotations.ANNO_STRIMZI_IO_FORCE_RENEW;
 
             if (maintenanceWindowSatisfied) {
@@ -675,8 +603,7 @@ public abstract class Ca {
             } else {
                 renewalType = RenewalType.POSTPONED;
             }
-        } else if (this.caKeySecret.getMetadata() != null
-                && Annotations.booleanAnnotation(this.caKeySecret, Annotations.ANNO_STRIMZI_IO_FORCE_REPLACE, false)) {
+        } else if (forceReplace) {
             reason = "CA key secret " + caKeySecretName + " is annotated with " + Annotations.ANNO_STRIMZI_IO_FORCE_REPLACE;
 
             if (maintenanceWindowSatisfied) {
@@ -715,40 +642,40 @@ public abstract class Ca {
     /**
      * @return the CA cert secret, which contains both the current CA cert and also previous, still valid certs.
      */
-    public Secret caCertSecret() {
-        return caCertSecret;
+    public Map<String, String> caCertData() {
+        return caCertData;
     }
 
     /**
      * @return the CA key secret, which contains the current CA private key.
      */
-    public Secret caKeySecret() {
-        return caKeySecret;
+    public Map<String, String> caKeyData() {
+        return caKeyData;
     }
 
     /**
      * @return The current CA certificate as bytes.
      */
     public byte[] currentCaCertBytes() {
-        return Util.decodeBytesFromBase64(caCertSecret().getData().get(CA_CRT));
+        return Util.decodeBytesFromBase64(caCertData().get(CA_CRT));
     }
 
     /**
      * @return The base64 encoded bytes of the current CA certificate.
      */
     public String currentCaCertBase64() {
-        return caCertSecret().getData().get(CA_CRT);
+        return caCertData().get(CA_CRT);
     }
 
     /**
      * @return The current CA key as bytes.
      */
     public byte[] currentCaKey() {
-        return Util.decodeBytesFromBase64(caKeySecret().getData().get(CA_KEY));
+        return Util.decodeBytesFromBase64(caKeyData().get(CA_KEY));
     }
 
     /**
-     * True if the last call to {@link #createRenewOrReplace(String, Map, Map, Map, OwnerReference, boolean)}
+     * True if the last call to {@link #createRenewOrReplace(boolean, boolean, boolean)}
      * resulted in expired certificates being removed from the CA {@code Secret}.
      * @return Whether any expired certificates were removed.
      */
@@ -757,7 +684,7 @@ public abstract class Ca {
     }
 
     /**
-     * True if the last call to {@link #createRenewOrReplace(String, Map, Map, Map, OwnerReference, boolean)}
+     * True if the last call to {@link #createRenewOrReplace(boolean, boolean, boolean)}
      * resulted in a renewed CA certificate.
      * @return Whether the certificate was renewed.
      */
@@ -766,7 +693,7 @@ public abstract class Ca {
     }
 
     /**
-     * True if the last call to {@link #createRenewOrReplace(String, Map, Map, Map, OwnerReference, boolean)}
+     * True if the last call to {@link #createRenewOrReplace(boolean, boolean, boolean)}
      * resulted in a replaced CA key.
      * @return Whether the key was replaced.
      */
@@ -784,36 +711,22 @@ public abstract class Ca {
     /**
      * @return the generation of the current CA certificate
      */
-    public int certGeneration() {
-        if (caCertSecret != null) {
-            if (!Annotations.hasAnnotation(caCertSecret, ANNO_STRIMZI_IO_CA_CERT_GENERATION)) {
-                LOGGER.warnOp("Secret {}/{} is missing generation annotation {}",
-                        caCertSecret.getMetadata().getNamespace(), caCertSecret.getMetadata().getName(), ANNO_STRIMZI_IO_CA_CERT_GENERATION);
-            }
-            return caCertGeneration();
-        }
-        return INIT_GENERATION;
+    public int caCertGeneration() {
+        return caCertGeneration.get();
     }
 
     /**
      * @return the generation of the current CA certificate as an annotation
      */
     public Map.Entry<String, String> caCertGenerationFullAnnotation() {
-        return Map.entry(caCertGenerationAnnotation(), String.valueOf(certGeneration()));
+        return Map.entry(caCertGenerationAnnotation(), String.valueOf(caCertGeneration()));
     }
 
     /**
      * @return the generation of the current CA key
      */
-    public int keyGeneration() {
-        if (caKeySecret != null) {
-            if (!Annotations.hasAnnotation(caKeySecret, ANNO_STRIMZI_IO_CA_KEY_GENERATION)) {
-                LOGGER.warnOp("Secret {}/{} is missing generation annotation {}",
-                        caKeySecret.getMetadata().getNamespace(), caKeySecret.getMetadata().getName(), ANNO_STRIMZI_IO_CA_KEY_GENERATION);
-            }
-            return caKeyGeneration();
-        }
-        return INIT_GENERATION;
+    public int caKeyGeneration() {
+        return caKeyGeneration.get();
     }
 
     /**
@@ -836,7 +749,7 @@ public abstract class Ca {
             }
         } catch (CertificateException e) {
             // doesn't remove stores and related password
-            if (!SecretEntry.P12_KEYSTORE.matchesType(certName) && !SecretEntry.P12_KEYSTORE_PASSWORD.matchesType(certName)) {
+            if (!CertEntry.P12_KEYSTORE.matchesType(certName) && !CertEntry.P12_KEYSTORE_PASSWORD.matchesType(certName)) {
                 remove = true;
                 LOGGER.debugCr(reconciliation, "The certificate (data.{}) in Secret is not an X.509 certificate; removing it",
                         certName.replace(".", "\\."));
@@ -895,22 +808,23 @@ public abstract class Ca {
     }
 
     /**
-     * Extracts X509 certificate from a Kubernetes Secret
+     * Extracts X509 certificate from a Map
      *
-     * @param secret    Kubernetes Secret with the certificate
-     * @param key       Key under which the certificate is stored in the Secret
+     * @param resourceName  Name of the resource the certificate is being stored in
+     * @param certData      Map containing the certificate
+     * @param key           Key under which the certificate is stored in the Map
      *
      * @return  An X509Certificate instance with the certificate
      */
-    public static X509Certificate cert(Secret secret, String key)  {
-        if (secret == null || secret.getData() == null || secret.getData().get(key) == null) {
+    public static X509Certificate cert(String resourceName,  Map<String, String> certData, String key)  {
+        if (certData == null || certData.get(key) == null) {
             return null;
         }
-        byte[] bytes = Util.decodeBytesFromBase64(secret.getData().get(key));
+        byte[] bytes = Util.decodeBytesFromBase64(certData.get(key));
         try {
             return x509Certificate(bytes);
         } catch (CertificateException e) {
-            throw new RuntimeException("Failed to decode certificate in data." + key.replace(".", "\\.") + " of Secret " + secret.getMetadata().getName(), e);
+            throw new RuntimeException("Failed to decode certificate in data." + key.replace(".", "\\.") + " for " + resourceName, e);
         }
     }
 
@@ -929,7 +843,7 @@ public abstract class Ca {
                     .getData()
                     .entrySet()
                     .stream()
-                    .filter(record -> SecretEntry.CRT.matchesType(record.getKey()))
+                    .filter(record -> CertEntry.CRT.matchesType(record.getKey()))
                     .map(record -> {
                         byte[] bytes = Util.decodeBytesFromBase64(record.getValue());
                         try {
@@ -1051,7 +965,7 @@ public abstract class Ca {
         try {
             LOGGER.infoCr(reconciliation, "Renewing CA with subject={}", subject);
 
-            byte[] bytes = Util.decodeBytesFromBase64(caKeySecret.getData().get(CA_KEY));
+            byte[] bytes = Util.decodeBytesFromBase64(caKeyData.get(CA_KEY));
             File keyFile = Files.createTempFile("tls", subject.commonName() + "-key").toFile();
             try {
                 Files.write(keyFile.toPath(), bytes);
@@ -1102,7 +1016,7 @@ public abstract class Ca {
     public boolean hasCaCertGenerationChanged(HasMetadata secret) {
         if (secret != null) {
             String caCertGenerationAnno = Annotations.stringAnnotation(secret, caCertGenerationAnnotation(), null);
-            int currentCaCertGeneration = certGeneration();
+            int currentCaCertGeneration = caCertGeneration();
             LOGGER.debugOp("Secret {}/{} generation anno = {}, current CA generation = {}",
                     secret.getMetadata().getNamespace(), secret.getMetadata().getName(), caCertGenerationAnno, currentCaCertGeneration);
             return caCertGenerationAnno != null && Integer.parseInt(caCertGenerationAnno) != currentCaCertGeneration;
@@ -1117,9 +1031,9 @@ public abstract class Ca {
      * @throws  RuntimeException if the certificate cannot be decoded or the cert does not exist
      */
     public long getCertificateExpirationDateEpoch() {
-        var cert = cert(caCertSecret, CA_CRT);
+        var cert = cert(caName(), caCertData, CA_CRT);
         if (cert == null) {
-            throw new RuntimeException(CA_CRT + " does not exist in the secret " + caCertSecret);
+            throw new RuntimeException(CA_CRT + " does not exist in the secret " + caCertData);
         }
         return cert.getNotAfter().getTime();
     }

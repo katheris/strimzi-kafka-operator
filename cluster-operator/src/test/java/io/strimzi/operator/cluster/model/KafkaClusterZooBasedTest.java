@@ -94,7 +94,6 @@ import io.strimzi.operator.cluster.model.metrics.MetricsModel;
 import io.strimzi.operator.cluster.model.nodepools.NodePoolUtils;
 import io.strimzi.operator.common.Annotations;
 import io.strimzi.operator.common.Reconciliation;
-import io.strimzi.operator.common.model.Ca;
 import io.strimzi.operator.common.model.ClientsCa;
 import io.strimzi.operator.common.model.InvalidResourceException;
 import io.strimzi.operator.common.model.Labels;
@@ -228,9 +227,9 @@ public class KafkaClusterZooBasedTest {
 
     private Secret generateBrokerSecret(Set<String> externalBootstrapAddress, Map<Integer, Set<String>> externalAddresses) {
         ClusterCa clusterCa = new ClusterCa(Reconciliation.DUMMY_RECONCILIATION, new OpenSslCertManager(), new PasswordGenerator(10, "a", "a"), CLUSTER, null, null);
-        clusterCa.createRenewOrReplace(NAMESPACE, emptyMap(), emptyMap(), emptyMap(), null, true);
+        clusterCa.createRenewOrReplace(true, false, false);
         ClientsCa clientsCa = new ClientsCa(Reconciliation.DUMMY_RECONCILIATION, new OpenSslCertManager(), new PasswordGenerator(10, "a", "a"), null, null, null, null, 365, 30, true, CertificateExpirationPolicy.RENEW_CERTIFICATE);
-        clientsCa.createRenewOrReplace(NAMESPACE, emptyMap(), emptyMap(), emptyMap(), null, true);
+        clientsCa.createRenewOrReplace(true, false, false);
 
         return KC.generateCertificatesSecret(clusterCa, clientsCa, null, externalBootstrapAddress, externalAddresses, true);
     }
@@ -2472,7 +2471,7 @@ public class KafkaClusterZooBasedTest {
                 "foo-kafka-0.crt",  "foo-kafka-0.key",
                 "foo-kafka-1.crt", "foo-kafka-1.key",
                 "foo-kafka-2.crt", "foo-kafka-2.key")));
-        X509Certificate cert = Ca.cert(secret, "foo-kafka-0.crt");
+        X509Certificate cert = io.strimzi.operator.cluster.TestUtils.cert(secret, "foo-kafka-0.crt");
         assertThat(cert.getSubjectX500Principal().getName(), is("CN=foo-kafka,O=io.strimzi"));
         assertThat(new HashSet<Object>(cert.getSubjectAlternativeNames()), is(Set.of(
                 asList(2, "foo-kafka-0.foo-kafka-brokers.test.svc.cluster.local"),
@@ -2499,7 +2498,7 @@ public class KafkaClusterZooBasedTest {
                 "foo-kafka-0.crt",  "foo-kafka-0.key",
                 "foo-kafka-1.crt", "foo-kafka-1.key",
                 "foo-kafka-2.crt", "foo-kafka-2.key")));
-        X509Certificate cert = Ca.cert(secret, "foo-kafka-0.crt");
+        X509Certificate cert = io.strimzi.operator.cluster.TestUtils.cert(secret, "foo-kafka-0.crt");
         assertThat(cert.getSubjectX500Principal().getName(), is("CN=foo-kafka,O=io.strimzi"));
         assertThat(new HashSet<Object>(cert.getSubjectAlternativeNames()), is(Set.of(
                 asList(2, "foo-kafka-0.foo-kafka-brokers.test.svc.cluster.local"),
@@ -2528,7 +2527,7 @@ public class KafkaClusterZooBasedTest {
                 "foo-kafka-0.crt",  "foo-kafka-0.key",
                 "foo-kafka-1.crt", "foo-kafka-1.key",
                 "foo-kafka-2.crt", "foo-kafka-2.key")));
-        X509Certificate cert = Ca.cert(secret, "foo-kafka-0.crt");
+        X509Certificate cert = io.strimzi.operator.cluster.TestUtils.cert(secret, "foo-kafka-0.crt");
         assertThat(cert.getSubjectX500Principal().getName(), is("CN=foo-kafka,O=io.strimzi"));
         assertThat(new HashSet<Object>(cert.getSubjectAlternativeNames()), is(Set.of(
                 asList(2, "foo-kafka-0.foo-kafka-brokers.test.svc.cluster.local"),
