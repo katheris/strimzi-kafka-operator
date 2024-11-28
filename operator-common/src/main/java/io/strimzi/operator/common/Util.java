@@ -475,6 +475,17 @@ public class Util {
     }
 
     /**
+     * Encodes a Byte array into Base64.
+     *
+     * @param data    Bytes array that should be encoded.
+     *
+     * @return        Base64 data.
+     */
+    public static String encodeBytesToBase64(byte[] data)  {
+        return Base64.getEncoder().encodeToString(data);
+    }
+
+    /**
      * Encodes a String into Base64.
      *
      * @param data    String that should be encoded.

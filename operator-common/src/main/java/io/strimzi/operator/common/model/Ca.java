@@ -519,14 +519,14 @@ public abstract class Ca {
             boolean maintenanceWindowSatisfied
     ) {
         X509Certificate currentCert = cert(caCertSecret, CA_CRT);
-        Map<String, String> certData;
-        Map<String, String> keyData;
+        CaCert certData;
+        CaKey keyData;
         int caCertGeneration = certGeneration();
         int caKeyGeneration = keyGeneration();
 
         if (!generateCa) {
-            certData = caCertSecret.getData();
-            keyData = singletonMap(CA_KEY, caKeySecret.getData().get(CA_KEY));
+            certData = CaCert.fromSecretData(caCertSecret.getData());
+            keyData = CaKey.fromSecretData(caKeySecret.getData());
             renewalType = RenewalType.NOOP; // User is managing CA
             caCertsRemoved = false;
         } else {
@@ -535,36 +535,36 @@ public abstract class Ca {
 
             switch (renewalType) {
                 case CREATE:
-                    keyData = new HashMap<>(1);
-                    certData = new HashMap<>(3);
+                    keyData = new CaKey();
+                    certData = new CaCert();
                     generateCaKeyAndCert(nextCaSubject(caKeyGeneration), keyData, certData);
                     break;
                 case REPLACE_KEY:
-                    keyData = new HashMap<>(1);
-                    certData = new HashMap<>(caCertSecret.getData());
-                    if (certData.containsKey(CA_CRT)) {
+                    keyData = new CaKey();
+                    certData = CaCert.fromSecretData(caCertSecret.getData());
+                    if (certData.containsCertBytes()) {
                         String notAfterDate = DATE_TIME_FORMATTER.format(currentCert.getNotAfter().toInstant().atZone(ZoneId.of("Z")));
-                        addCertCaToTrustStore("ca-" + notAfterDate + SecretEntry.CRT.suffix, certData);
-                        certData.put("ca-" + notAfterDate + SecretEntry.CRT.suffix, certData.remove(CA_CRT));
+                        addCertCaToTrustStore("ca-" + notAfterDate + ".crt", certData);
+                        certData.markCurrentCertNotAfter(notAfterDate);
                     }
                     ++caCertGeneration;
                     generateCaKeyAndCert(nextCaSubject(++caKeyGeneration), keyData, certData);
                     break;
                 case RENEW_CERT:
-                    keyData = caKeySecret.getData();
-                    certData = new HashMap<>(3);
+                    keyData = CaKey.fromSecretData(caKeySecret.getData());
+                    certData = new CaCert();
                     ++caCertGeneration;
-                    renewCaCert(nextCaSubject(caKeyGeneration), certData);
+                    renewCaCert(nextCaSubject(caKeyGeneration), keyData, certData);
                     break;
                 default:
-                    keyData = caKeySecret.getData();
-                    certData = caCertSecret.getData();
+                    keyData = CaKey.fromSecretData(caKeySecret.getData());
+                    certData = CaCert.fromSecretData(caCertSecret.getData());
                     // coming from an older version, the secret could not have the CA truststore
-                    if (!certData.containsKey(CA_STORE)) {
-                        addCertCaToTrustStore(CA_CRT, certData);
+                    if (!certData.containsTrustStore()) {
+                        addCertCaToTrustStore("ca.crt", certData);
                     }
             }
-            this.caCertsRemoved = removeCerts(certData, this::removeExpiredCert) > 0;
+            this.caCertsRemoved = removeCerts(certData.previousCerts(), this::removeExpiredCert) > 0;
         }
 
         if (caCertsRemoved) {
@@ -594,10 +594,10 @@ public abstract class Ca {
             keyAnnotations.put(Annotations.ANNO_STRIMZI_IO_FORCE_REPLACE, Annotations.stringAnnotation(caKeySecret, Annotations.ANNO_STRIMZI_IO_FORCE_REPLACE, "false"));
         }
 
-        caCertSecret = createCaSecret(namespace, caCertSecretName, certData, Util.mergeLabelsOrAnnotations(labels, additionalLabels),
+        caCertSecret = createCaSecret(namespace, caCertSecretName, certData.toSecretData(), Util.mergeLabelsOrAnnotations(labels, additionalLabels),
                 Util.mergeLabelsOrAnnotations(certAnnotations, additionalAnnotations), ownerRef);
 
-        caKeySecret = createCaSecret(namespace, caKeySecretName, keyData, labels,
+        caKeySecret = createCaSecret(namespace, caKeySecretName, keyData.toSecretData(), labels,
                 keyAnnotations, ownerRef);
     }
 
@@ -959,22 +959,22 @@ public abstract class Ca {
         return factory;
     }
 
-    private void addCertCaToTrustStore(String alias, Map<String, String> certData) {
+    private void addCertCaToTrustStore(String alias, CaCert certData) {
         try {
             File certFile = Files.createTempFile("tls", "-cert").toFile();
-            Files.write(certFile.toPath(), Util.decodeBytesFromBase64(certData.get(CA_CRT)));
+            Files.write(certFile.toPath(), certData.certBytes());
             try {
                 File trustStoreFile = Files.createTempFile("tls", "-truststore").toFile();
-                if (certData.containsKey(CA_STORE)) {
-                    Files.write(trustStoreFile.toPath(), Util.decodeBytesFromBase64(certData.get(CA_STORE)));
+                if (certData.containsTrustStore()) {
+                    Files.write(trustStoreFile.toPath(), certData.trustStore());
                 }
                 try {
-                    String trustStorePassword = certData.containsKey(CA_STORE_PASSWORD) ?
-                            Util.decodeFromBase64(certData.get(CA_STORE_PASSWORD)) :
+                    String trustStorePassword = certData.containsStorePassword() ?
+                            certData.storePassword() :
                             passwordGenerator.generate();
                     certManager.addCertToTrustStore(certFile, alias, trustStoreFile, trustStorePassword);
-                    certData.put(CA_STORE, Base64.getEncoder().encodeToString(Files.readAllBytes(trustStoreFile.toPath())));
-                    certData.put(CA_STORE_PASSWORD, Base64.getEncoder().encodeToString(trustStorePassword.getBytes(StandardCharsets.US_ASCII)));
+                    certData.setTrustStore(Files.readAllBytes(trustStoreFile.toPath()));
+                    certData.setStorePassword(trustStorePassword);
                 } finally {
                     delete(reconciliation, trustStoreFile);
                 }
@@ -987,7 +987,7 @@ public abstract class Ca {
         }
     }
 
-    private void generateCaKeyAndCert(Subject subject, Map<String, String> keyData, Map<String, String> certData) {
+    private void generateCaKeyAndCert(Subject subject, CaKey key, CaCert cert) {
         try {
             LOGGER.infoCr(reconciliation, "Generating CA with subject={}", subject);
             File keyFile = Files.createTempFile("tls", subject.commonName() + "-key").toFile();
@@ -997,25 +997,20 @@ public abstract class Ca {
                     File trustStoreFile = Files.createTempFile("tls", subject.commonName() + "-truststore").toFile();
                     String trustStorePassword;
                     // if secret already contains the truststore, we have to reuse it without changing password
-                    if (certData.containsKey(CA_STORE)) {
-                        Files.write(trustStoreFile.toPath(), Util.decodeBytesFromBase64(certData.get(CA_STORE)));
-                        trustStorePassword = Util.decodeFromBase64(certData.get(CA_STORE_PASSWORD));
+                    if (cert.containsTrustStore()) {
+                        Files.write(trustStoreFile.toPath(), Util.decodeBytesFromBase64(cert.trustStore()));
+                        trustStorePassword = Util.decodeFromBase64(cert.storePassword());
                     } else {
                         trustStorePassword = passwordGenerator.generate();
                     }
                     try {
                         certManager.generateSelfSignedCert(keyFile, certFile, subject, validityDays);
                         certManager.addCertToTrustStore(certFile, CA_CRT, trustStoreFile, trustStorePassword);
-                        CertAndKey ca = new CertAndKey(
-                                Files.readAllBytes(keyFile.toPath()),
-                                Files.readAllBytes(certFile.toPath()),
-                                Files.readAllBytes(trustStoreFile.toPath()),
-                                null,
-                                trustStorePassword);
-                        certData.put(CA_CRT, ca.certAsBase64String());
-                        keyData.put(CA_KEY, ca.keyAsBase64String());
-                        certData.put(CA_STORE, ca.trustStoreAsBase64String());
-                        certData.put(CA_STORE_PASSWORD, ca.storePasswordAsBase64String());
+
+                        key.setKeyBytes(Files.readAllBytes(keyFile.toPath()));
+                        cert.setCertBytes(Files.readAllBytes(certFile.toPath()));
+                        cert.setTrustStore(Files.readAllBytes(trustStoreFile.toPath()));
+                        cert.setStorePassword(trustStorePassword);
                     } finally {
                         delete(reconciliation, trustStoreFile);
                     }
@@ -1030,14 +1025,14 @@ public abstract class Ca {
         }
     }
 
-    private void renewCaCert(Subject subject, Map<String, String> certData) {
+    private void renewCaCert(Subject subject, CaKey caKey, CaCert certData) {
         try {
             LOGGER.infoCr(reconciliation, "Renewing CA with subject={}", subject);
 
             byte[] bytes = Util.decodeBytesFromBase64(caKeySecret.getData().get(CA_KEY));
             File keyFile = Files.createTempFile("tls", subject.commonName() + "-key").toFile();
             try {
-                Files.write(keyFile.toPath(), bytes);
+                Files.write(keyFile.toPath(), caKey.keyBytes());
                 File certFile = Files.createTempFile("tls", subject.commonName() + "-cert").toFile();
                 try {
                     File trustStoreFile = Files.createTempFile("tls", subject.commonName() + "-truststore").toFile();
@@ -1045,15 +1040,9 @@ public abstract class Ca {
                         String trustStorePassword = passwordGenerator.generate();
                         certManager.renewSelfSignedCert(keyFile, certFile, subject, validityDays);
                         certManager.addCertToTrustStore(certFile, CA_CRT, trustStoreFile, trustStorePassword);
-                        CertAndKey ca = new CertAndKey(
-                                bytes,
-                                Files.readAllBytes(certFile.toPath()),
-                                Files.readAllBytes(trustStoreFile.toPath()),
-                                null,
-                                trustStorePassword);
-                        certData.put(CA_CRT, ca.certAsBase64String());
-                        certData.put(CA_STORE, ca.trustStoreAsBase64String());
-                        certData.put(CA_STORE_PASSWORD, ca.storePasswordAsBase64String());
+                        certData.setCertBytes(Files.readAllBytes(certFile.toPath()));
+                        certData.setTrustStore(Files.readAllBytes(trustStoreFile.toPath()));
+                        certData.setStorePassword(trustStorePassword);
                     } finally {
                         delete(reconciliation, trustStoreFile);
                     }
