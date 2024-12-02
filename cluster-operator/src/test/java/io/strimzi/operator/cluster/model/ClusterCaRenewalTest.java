@@ -476,7 +476,7 @@ public class ClusterCaRenewalTest {
         }
 
         @Override
-        public int certGeneration() {
+        public int caCertGeneration() {
             return caGeneration;
         }
         

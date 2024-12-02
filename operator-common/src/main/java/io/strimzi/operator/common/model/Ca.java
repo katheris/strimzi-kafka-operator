@@ -360,7 +360,14 @@ public abstract class Ca {
      * @return CA generation or the initial generation if no generation is set
      */
     public int caCertGeneration() {
-        return Annotations.intAnnotation(caCertSecret(), ANNO_STRIMZI_IO_CA_CERT_GENERATION, INIT_GENERATION);
+        if (caCertSecret != null) {
+            if (!Annotations.hasAnnotation(caCertSecret, ANNO_STRIMZI_IO_CA_CERT_GENERATION)) {
+                LOGGER.warnOp("Secret {}/{} is missing generation annotation {}",
+                        caCertSecret.getMetadata().getNamespace(), caCertSecret.getMetadata().getName(), ANNO_STRIMZI_IO_CA_CERT_GENERATION);
+            }
+            return Annotations.intAnnotation(caCertSecret(), ANNO_STRIMZI_IO_CA_CERT_GENERATION, INIT_GENERATION);
+        }
+        return INIT_GENERATION;
     }
 
     /**
@@ -369,7 +376,13 @@ public abstract class Ca {
      * @return CA key generation or the initial generation if no generation is set
      */
     public int caKeyGeneration() {
-        return Annotations.intAnnotation(caKeySecret(), ANNO_STRIMZI_IO_CA_KEY_GENERATION, INIT_GENERATION);
+        if (caKeySecret != null) {
+            if (!Annotations.hasAnnotation(caKeySecret, ANNO_STRIMZI_IO_CA_KEY_GENERATION)) {
+                LOGGER.warnOp("Secret {}/{} is missing generation annotation {}",
+                        caKeySecret.getMetadata().getNamespace(), caKeySecret.getMetadata().getName(), ANNO_STRIMZI_IO_CA_KEY_GENERATION);
+            }
+            return Annotations.intAnnotation(caKeySecret(), ANNO_STRIMZI_IO_CA_KEY_GENERATION, INIT_GENERATION);
+        }
     }
 
     protected static void delete(Reconciliation reconciliation, File file) {
@@ -521,8 +534,8 @@ public abstract class Ca {
         X509Certificate currentCert = cert(caCertSecret, CA_CRT);
         Map<String, String> certData;
         Map<String, String> keyData;
-        int caCertGeneration = certGeneration();
-        int caKeyGeneration = keyGeneration();
+        int caCertGeneration = caCertGeneration();
+        int caKeyGeneration = caKeyGeneration();
 
         if (!generateCa) {
             certData = caCertSecret.getData();
@@ -767,7 +780,7 @@ public abstract class Ca {
     /**
      * @return the generation of the current CA certificate
      */
-    public int certGeneration() {
+    private int initCertGeneration() {
         if (caCertSecret != null) {
             if (!Annotations.hasAnnotation(caCertSecret, ANNO_STRIMZI_IO_CA_CERT_GENERATION)) {
                 LOGGER.warnOp("Secret {}/{} is missing generation annotation {}",
@@ -782,13 +795,13 @@ public abstract class Ca {
      * @return the generation of the current CA certificate as an annotation
      */
     public Map.Entry<String, String> caCertGenerationFullAnnotation() {
-        return Map.entry(caCertGenerationAnnotation(), String.valueOf(certGeneration()));
+        return Map.entry(caCertGenerationAnnotation(), String.valueOf(caCertGeneration()));
     }
 
     /**
      * @return the generation of the current CA key
      */
-    public int keyGeneration() {
+    private int initKeyGeneration() {
         if (caKeySecret != null) {
             if (!Annotations.hasAnnotation(caKeySecret, ANNO_STRIMZI_IO_CA_KEY_GENERATION)) {
                 LOGGER.warnOp("Secret {}/{} is missing generation annotation {}",
@@ -1103,7 +1116,7 @@ public abstract class Ca {
     public boolean hasCaCertGenerationChanged(HasMetadata secret) {
         if (secret != null) {
             String caCertGenerationAnno = Annotations.stringAnnotation(secret, caCertGenerationAnnotation(), null);
-            int currentCaCertGeneration = certGeneration();
+            int currentCaCertGeneration = caCertGeneration();
             LOGGER.debugOp("Secret {}/{} generation anno = {}, current CA generation = {}",
                     secret.getMetadata().getNamespace(), secret.getMetadata().getName(), caCertGenerationAnno, currentCaCertGeneration);
             return caCertGenerationAnno != null && Integer.parseInt(caCertGenerationAnno) != currentCaCertGeneration;
