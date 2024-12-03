@@ -89,9 +89,10 @@ public class ZookeeperReconcilerKRaftMigrationTest {
             RECONCILIATION,
             CERT_MANAGER,
             PASSWORD_GENERATOR,
-            CLUSTER_NAME,
-            TestUtils.createInitialCaCertAndGeneration(MockCertManager.clusterCaCert(), MockCertManager.clusterCaCertStore(), "123456"),
-            TestUtils.createInitialCaKeyAndGeneration(MockCertManager.clusterCaKey())
+            TestUtils.createInitialCaCert(MockCertManager.clusterCaCert(), MockCertManager.clusterCaCertStore(), "123456"),
+            0,
+            TestUtils.createInitialCaKey(MockCertManager.clusterCaKey()),
+            0
     );
 
     @BeforeAll

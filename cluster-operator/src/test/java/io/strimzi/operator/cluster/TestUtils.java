@@ -14,7 +14,6 @@ import io.strimzi.api.kafka.model.common.metrics.JmxPrometheusExporterMetrics;
 import io.strimzi.api.kafka.model.common.metrics.JmxPrometheusExporterMetricsBuilder;
 import io.strimzi.operator.common.Util;
 import io.strimzi.operator.common.model.Ca;
-import io.strimzi.operator.common.model.CertAndGeneration;
 
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
@@ -82,17 +81,17 @@ public class TestUtils {
         }
     }
 
-    public static CertAndGeneration createInitialCaCertAndGeneration(String caCert, String caStore, String caStorePassword) {
+    public static Map<String, String> createInitialCaCert(String caCert, String caStore, String caStorePassword) {
         Map<String, String> certData = new HashMap<>();
         certData.put("ca.crt", caCert);
         certData.put("ca.p12", caStore);
         certData.put("ca.password", caStorePassword);
-        return new CertAndGeneration(certData, 0);
+        return certData;
     }
 
-    public static CertAndGeneration createInitialCaKeyAndGeneration(String caKey) {
+    public static Map<String, String> createInitialCaKey(String caKey) {
         Map<String, String> keyData = new HashMap<>();
         keyData.put("ca.key", caKey);
-        return new CertAndGeneration(keyData, 0);
+        return keyData;
     }
 }

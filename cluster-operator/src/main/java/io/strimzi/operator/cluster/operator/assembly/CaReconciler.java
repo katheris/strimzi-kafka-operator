@@ -62,6 +62,8 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import static io.strimzi.operator.common.model.Ca.INIT_GENERATION;
+
 /**
  * Class used for reconciliation of Cluster and Client CAs. This class contains both the steps of the CA reconciliation
  * pipeline and is also used to store the state between them.
@@ -254,9 +256,11 @@ public class CaReconciler {
                     Map<String, Secret> updatedSecrets = new HashMap<>(4);
 
                     //TODO initialize these, need to deal with Secret being null and either pass null record or extract data and init generation if missing
-                    clusterCa = new ClusterCa(reconciliation, certManager, passwordGenerator, reconciliation.name(),
-                            existingClusterCaCertSecret != null ? CertUtils.certAndGeneration(existingClusterCaCertSecret, Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION) : null,
-                            existingClusterCaKeySecret != null ? CertUtils.certAndGeneration(existingClusterCaKeySecret, Ca.ANNO_STRIMZI_IO_CA_KEY_GENERATION) : null,
+                    clusterCa = new ClusterCa(reconciliation, certManager, passwordGenerator,
+                            existingClusterCaCertSecret != null ? existingClusterCaCertSecret.getData() : null,
+                            existingClusterCaCertSecret != null ? Annotations.intAnnotation(existingClusterCaCertSecret, Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION, INIT_GENERATION) : INIT_GENERATION,
+                            existingClusterCaKeySecret != null ? existingClusterCaKeySecret.getData() : null,
+                            existingClusterCaKeySecret != null ? Annotations.intAnnotation(existingClusterCaKeySecret, Ca.ANNO_STRIMZI_IO_CA_KEY_GENERATION, INIT_GENERATION) : INIT_GENERATION,
                             ModelUtils.getCertificateValidity(clusterCaConfig),
                             ModelUtils.getRenewalDays(clusterCaConfig),
                             clusterCaConfig == null || clusterCaConfig.isGenerateCertificateAuthority(), clusterCaConfig != null ? clusterCaConfig.getCertificateExpirationPolicy() : null);
@@ -272,10 +276,11 @@ public class CaReconciler {
                             CertUtils.createCaKeySecret(clusterCa, reconciliation.namespace(), clusterCaKeyName, existingClusterCaKeySecret,
                                     caLabels, clusterCaConfig != null && !clusterCaConfig.isGenerateSecretOwnerReference() ? null : ownerRef)
                     );
-                    clientsCa = new ClientsCa(reconciliation, certManager, passwordGenerator, clientsCaCertName,
-                            existingClientsCaCertSecret != null ? CertUtils.certAndGeneration(existingClientsCaCertSecret, Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION) : null,
-                            clientsCaKeyName,
-                            existingClientsCaKeySecret != null ? CertUtils.certAndGeneration(existingClientsCaKeySecret, Ca.ANNO_STRIMZI_IO_CA_KEY_GENERATION) : null,
+                    clientsCa = new ClientsCa(reconciliation, certManager, passwordGenerator,
+                            existingClientsCaCertSecret != null ? existingClientsCaCertSecret.getData() : null,
+                            existingClientsCaCertSecret != null ? Annotations.intAnnotation(existingClientsCaCertSecret, Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION, INIT_GENERATION) : INIT_GENERATION,
+                            existingClientsCaKeySecret != null ? existingClientsCaKeySecret.getData() : null,
+                            existingClientsCaKeySecret != null ? Annotations.intAnnotation(existingClientsCaKeySecret, Ca.ANNO_STRIMZI_IO_CA_KEY_GENERATION, INIT_GENERATION) : INIT_GENERATION,
                             ModelUtils.getCertificateValidity(clientsCaConfig),
                             ModelUtils.getRenewalDays(clientsCaConfig),
                             clientsCaConfig == null || clientsCaConfig.isGenerateCertificateAuthority(),

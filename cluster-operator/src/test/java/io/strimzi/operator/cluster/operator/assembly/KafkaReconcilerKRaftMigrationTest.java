@@ -127,19 +127,20 @@ public class KafkaReconcilerKRaftMigrationTest {
             RECONCILIATION,
             CERT_MANAGER,
             PASSWORD_GENERATOR,
-            CLUSTER_NAME,
-            TestUtils.createInitialCaCertAndGeneration(MockCertManager.clusterCaCert(), MockCertManager.clusterCaCertStore(), "123456"),
-            TestUtils.createInitialCaKeyAndGeneration(MockCertManager.clusterCaKey())
+            TestUtils.createInitialCaCert(MockCertManager.clusterCaCert(), MockCertManager.clusterCaCertStore(), "123456"),
+            0,
+            TestUtils.createInitialCaKey(MockCertManager.clusterCaKey()),
+            0
     );
 
     private final static ClientsCa CLIENTS_CA = new ClientsCa(
             RECONCILIATION,
             new OpenSslCertManager(),
             PASSWORD_GENERATOR,
-            KafkaResources.clientsCaCertificateSecretName(CLUSTER_NAME),
-            TestUtils.createInitialCaCertAndGeneration(MockCertManager.clusterCaCert(), MockCertManager.clusterCaCertStore(), "123456"),
-            KafkaResources.clientsCaKeySecretName(CLUSTER_NAME),
-            TestUtils.createInitialCaKeyAndGeneration(MockCertManager.clusterCaKey()),
+            TestUtils.createInitialCaCert(MockCertManager.clusterCaCert(), MockCertManager.clusterCaCertStore(), "123456"),
+            0,
+            TestUtils.createInitialCaKey(MockCertManager.clusterCaKey()),
+            0,
             365,
             30,
             true,

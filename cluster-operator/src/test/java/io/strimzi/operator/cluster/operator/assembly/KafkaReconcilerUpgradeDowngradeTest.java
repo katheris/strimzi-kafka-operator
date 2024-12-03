@@ -7,7 +7,6 @@ package io.strimzi.operator.cluster.operator.assembly;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.strimzi.api.kafka.model.kafka.Kafka;
 import io.strimzi.api.kafka.model.kafka.KafkaBuilder;
-import io.strimzi.api.kafka.model.kafka.KafkaResources;
 import io.strimzi.api.kafka.model.kafka.KafkaStatus;
 import io.strimzi.api.kafka.model.kafka.listener.GenericKafkaListenerBuilder;
 import io.strimzi.api.kafka.model.kafka.listener.KafkaListenerType;
@@ -67,18 +66,19 @@ public class KafkaReconcilerUpgradeDowngradeTest {
             Reconciliation.DUMMY_RECONCILIATION,
             new OpenSslCertManager(),
             new PasswordGenerator(10, "a", "a"),
-            CLUSTER_NAME,
-            TestUtils.createInitialCaCertAndGeneration(MockCertManager.clusterCaCert(), MockCertManager.clusterCaCertStore(), "123456"),
-            TestUtils.createInitialCaKeyAndGeneration(MockCertManager.clusterCaKey())
+            TestUtils.createInitialCaCert(MockCertManager.clusterCaCert(), MockCertManager.clusterCaCertStore(), "123456"),
+            0,
+            TestUtils.createInitialCaKey(MockCertManager.clusterCaKey()),
+            0
     );
     private final static ClientsCa CLIENTS_CA = new ClientsCa(
             Reconciliation.DUMMY_RECONCILIATION,
             new OpenSslCertManager(),
             new PasswordGenerator(10, "a", "a"),
-            KafkaResources.clientsCaCertificateSecretName(CLUSTER_NAME),
-            TestUtils.createInitialCaCertAndGeneration(MockCertManager.clusterCaCert(), MockCertManager.clusterCaCertStore(), "123456"),
-            KafkaResources.clientsCaKeySecretName(CLUSTER_NAME),
-            TestUtils.createInitialCaKeyAndGeneration(MockCertManager.clusterCaKey()),
+            TestUtils.createInitialCaCert(MockCertManager.clusterCaCert(), MockCertManager.clusterCaCertStore(), "123456"),
+            0,
+            TestUtils.createInitialCaKey(MockCertManager.clusterCaKey()),
+            0,
             365,
             30,
             true,
