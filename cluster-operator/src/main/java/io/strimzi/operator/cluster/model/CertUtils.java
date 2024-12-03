@@ -118,7 +118,12 @@ public class CertUtils {
                 && Annotations.hasAnnotation(existingCaCertSecret, Annotations.ANNO_STRIMZI_IO_FORCE_RENEW))   {
             certAnnotations.put(Annotations.ANNO_STRIMZI_IO_FORCE_RENEW, Annotations.stringAnnotation(existingCaCertSecret, Annotations.ANNO_STRIMZI_IO_FORCE_RENEW, "false"));
         }
-
+        LOGGER.infoCr(Reconciliation.DUMMY_RECONCILIATION, "KATE: entry caCertData()");
+        String ca_crt = ca.caCertData().get("ca.crt");
+        String ca_123_crt = ca.caCertData().entrySet().stream().filter(entry -> entry.getKey().startsWith("ca-")).map(Map.Entry::getValue).findFirst().orElse("NOT_FOUND");
+        LOGGER.infoCr(Reconciliation.DUMMY_RECONCILIATION, "    ca-123.crt present? " + !ca_123_crt.equals("NOT_FOUND"));
+        LOGGER.infoCr(Reconciliation.DUMMY_RECONCILIATION, "    ca.crt == ca-123.crt? " + ca_crt.equals(ca_123_crt));
+        LOGGER.infoCr(Reconciliation.DUMMY_RECONCILIATION, "KATE: exit caCertData()");
         return createCaSecret(namespace, caCertSecretName, ca.caCertData(), Util.mergeLabelsOrAnnotations(labels, additionalLabels),
                 Util.mergeLabelsOrAnnotations(certAnnotations, additionalAnnotations), ownerReference);
     }
@@ -178,7 +183,7 @@ public class CertUtils {
         } else {
             if (clusterCa.keyCreated()
                     || clusterCa.certRenewed()
-                    || (isMaintenanceTimeWindowsSatisfied && clusterCa.isExpiring(secret, Ca.CertEntry.CRT.asKey(keyCertName)))
+                    || (isMaintenanceTimeWindowsSatisfied && clusterCa.isExpiring(secret.getData(), Ca.CertEntry.CRT.asKey(keyCertName)))
                     || clusterCa.hasCaCertGenerationChanged(secret)) {
                 reasons.add("certificate needs to be renewed");
                 shouldBeRegenerated = true;

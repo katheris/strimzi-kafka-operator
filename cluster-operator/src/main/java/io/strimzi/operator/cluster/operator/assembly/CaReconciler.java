@@ -308,8 +308,15 @@ public class CaReconciler {
 
                     if (clusterCaConfig == null || clusterCaConfig.isGenerateCertificateAuthority())   {
                         //TODO add new methods to create the Secret keeping the annotations and labels etc in this class and not bleeding them into Ca
+                        LOGGER.infoCr(Reconciliation.DUMMY_RECONCILIATION, "KATE: entry CaReconciler");
+                        String ca_crt = secretMap.get(clusterCaCertName).getData().get("ca.crt");
+                        String ca_123_crt = secretMap.get(clusterCaCertName).getData().entrySet().stream().filter(entry -> entry.getKey().startsWith("ca-")).map(Map.Entry::getValue).findFirst().orElse("NOT_FOUND");
+                        LOGGER.infoCr(Reconciliation.DUMMY_RECONCILIATION, "    ca-123.crt present? " + !ca_123_crt.equals("NOT_FOUND"));
+                        LOGGER.infoCr(Reconciliation.DUMMY_RECONCILIATION, "    ca.crt == ca-123.crt? " + ca_crt.equals(ca_123_crt));
+                        LOGGER.infoCr(Reconciliation.DUMMY_RECONCILIATION, "KATE: exit CaReconciler");
+
                         Future<ReconcileResult<Secret>> clusterSecretReconciliation = secretOperator.reconcile(reconciliation, reconciliation.namespace(), clusterCaCertName, secretMap.get(clusterCaCertName))
-                                .compose(ignored -> secretOperator.reconcile(reconciliation, reconciliation.namespace(), clusterCaKeyName, secretMap.get(clientsCaKeyName)));
+                                .compose(ignored -> secretOperator.reconcile(reconciliation, reconciliation.namespace(), clusterCaKeyName, secretMap.get(clusterCaKeyName)));
                         secretReconciliations.add(clusterSecretReconciliation);
                     }
 
