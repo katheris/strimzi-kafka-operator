@@ -16,7 +16,6 @@ import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.ReconciliationLogger;
 import io.strimzi.operator.common.Util;
 import io.strimzi.operator.common.model.Ca;
-import io.strimzi.operator.common.model.CertAndGeneration;
 import io.strimzi.operator.common.model.InvalidResourceException;
 import io.strimzi.operator.common.model.Labels;
 
@@ -27,7 +26,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 
 import static io.strimzi.operator.common.model.Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION;
@@ -433,17 +431,5 @@ public class CertUtils {
 
             return certsAndKeys;
         }
-    }
-
-    /**
-     * Extracts the certificate data and related generation from a Kubernetes Secret as a CertAndGeneration
-     *
-     * @param certSecret            Secret to extract certificate data and generation from
-     * @param generationAnnotation  Annotation where the generation is stored
-     * @return  CertAndGeneration containing the extracted certificate data and related generation
-     */
-    public static CertAndGeneration certAndGeneration(Secret certSecret, String generationAnnotation) {
-        Objects.requireNonNull(certSecret);
-        return new CertAndGeneration(certSecret.getData(), Annotations.intAnnotation(certSecret, generationAnnotation, Ca.INIT_GENERATION));
     }
 }

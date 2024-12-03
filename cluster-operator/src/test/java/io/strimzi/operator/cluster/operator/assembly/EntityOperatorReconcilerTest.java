@@ -82,9 +82,10 @@ public class EntityOperatorReconcilerTest {
             Reconciliation.DUMMY_RECONCILIATION,
             new MockCertManager(),
             new PasswordGenerator(10, "a", "a"),
-            NAME,
-            TestUtils.createInitialCaCertAndGeneration(MockCertManager.clusterCaCert(), MockCertManager.clusterCaCertStore(), "123456"),
-            TestUtils.createInitialCaKeyAndGeneration(MockCertManager.clusterCaKey())
+            TestUtils.createInitialCaCert(MockCertManager.clusterCaCert(), MockCertManager.clusterCaCertStore(), "123456"),
+            0,
+            TestUtils.createInitialCaKey(MockCertManager.clusterCaKey()),
+            0
     );
 
     @Test

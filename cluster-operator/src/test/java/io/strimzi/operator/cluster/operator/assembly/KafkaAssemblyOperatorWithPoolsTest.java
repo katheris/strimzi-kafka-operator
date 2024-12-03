@@ -13,7 +13,6 @@ import io.fabric8.kubernetes.client.KubernetesClient;
 import io.strimzi.api.kafka.model.kafka.Kafka;
 import io.strimzi.api.kafka.model.kafka.KafkaBuilder;
 import io.strimzi.api.kafka.model.kafka.KafkaList;
-import io.strimzi.api.kafka.model.kafka.KafkaResources;
 import io.strimzi.api.kafka.model.kafka.KafkaStatus;
 import io.strimzi.api.kafka.model.kafka.PersistentClaimStorageBuilder;
 import io.strimzi.api.kafka.model.kafka.Storage;
@@ -32,7 +31,6 @@ import io.strimzi.operator.cluster.KafkaVersionTestUtils;
 import io.strimzi.operator.cluster.PlatformFeaturesAvailability;
 import io.strimzi.operator.cluster.ResourceUtils;
 import io.strimzi.operator.cluster.TestUtils;
-import io.strimzi.operator.cluster.model.AbstractModel;
 import io.strimzi.operator.cluster.model.ClusterCa;
 import io.strimzi.operator.cluster.model.KafkaCluster;
 import io.strimzi.operator.cluster.model.KafkaMetadataConfigurationState;
@@ -203,19 +201,20 @@ public class KafkaAssemblyOperatorWithPoolsTest {
             Reconciliation.DUMMY_RECONCILIATION,
             CERT_MANAGER,
             PASSWORD_GENERATOR,
-            CLUSTER_NAME,
-            TestUtils.createInitialCaCertAndGeneration(MockCertManager.clusterCaCert(), MockCertManager.clusterCaCertStore(), "123456"),
-            TestUtils.createInitialCaKeyAndGeneration(MockCertManager.clusterCaKey())
+            TestUtils.createInitialCaCert(MockCertManager.clusterCaCert(), MockCertManager.clusterCaCertStore(), "123456"),
+            0,
+            TestUtils.createInitialCaKey(MockCertManager.clusterCaKey()),
+            0
     );
 
     private final static ClientsCa CLIENTS_CA = new ClientsCa(
             Reconciliation.DUMMY_RECONCILIATION,
             new OpenSslCertManager(),
             new PasswordGenerator(10, "a", "a"),
-            KafkaResources.clientsCaCertificateSecretName(CLUSTER_NAME),
-            TestUtils.createInitialCaCertAndGeneration(MockCertManager.clusterCaCert(), MockCertManager.clusterCaCertStore(), "123456"),
-            KafkaResources.clientsCaKeySecretName(CLUSTER_NAME),
-            TestUtils.createInitialCaKeyAndGeneration(MockCertManager.clusterCaKey()),
+            TestUtils.createInitialCaCert(MockCertManager.clusterCaCert(), MockCertManager.clusterCaCertStore(), "123456"),
+            0,
+            TestUtils.createInitialCaKey(MockCertManager.clusterCaKey()),
+            0,
             365,
             30,
             true,

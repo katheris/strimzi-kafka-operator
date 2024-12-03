@@ -9,7 +9,6 @@ import io.strimzi.certs.OpenSslCertManager;
 import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.Util;
 import io.strimzi.operator.common.model.Ca;
-import io.strimzi.operator.common.model.CertAndGeneration;
 import io.strimzi.operator.common.model.PasswordGenerator;
 import io.strimzi.test.annotations.ParallelSuite;
 import io.strimzi.test.annotations.ParallelTest;
@@ -25,17 +24,13 @@ import static org.hamcrest.MatcherAssert.assertThat;
 
 @ParallelSuite
 public class ClusterCaTest {
-
-    private final String namespace = "test";
-    private final String cluster = "my-cluster";
-
     @ParallelTest
     public void testRemoveExpiredCertificate() {
         // simulate certificate creation at following time, with expire at 365 days later (by default)
         String instantExpected = "2022-03-23T09:00:00Z";
         Clock clock = Clock.fixed(Instant.parse(instantExpected), Clock.systemUTC().getZone());
 
-        ClusterCa clusterCa = new ClusterCa(Reconciliation.DUMMY_RECONCILIATION, new OpenSslCertManager(clock), new PasswordGenerator(10, "a", "a"), cluster, null, null);
+        ClusterCa clusterCa = new ClusterCa(Reconciliation.DUMMY_RECONCILIATION, new OpenSslCertManager(clock), new PasswordGenerator(10, "a", "a"), null, 0, null, 0);
         clusterCa.setClock(clock);
         clusterCa.createRenewOrReplace(true, false, false);
         assertThat(clusterCa.caCertData().size(), is(3));
@@ -44,7 +39,7 @@ public class ClusterCaTest {
         instantExpected = "2022-03-23T11:00:00Z";
         clock = Clock.fixed(Instant.parse(instantExpected), Clock.systemUTC().getZone());
 
-        clusterCa = new ClusterCa(Reconciliation.DUMMY_RECONCILIATION, new OpenSslCertManager(clock), new PasswordGenerator(10, "a", "a"), cluster, new CertAndGeneration(clusterCa.caCertData(), 0), new CertAndGeneration(clusterCa.caKeyData(), 0));
+        clusterCa = new ClusterCa(Reconciliation.DUMMY_RECONCILIATION, new OpenSslCertManager(clock), new PasswordGenerator(10, "a", "a"), clusterCa.caCertData(), 0, clusterCa.caKeyData(), 0);
         clusterCa.setClock(clock);
         // force key replacement so certificate renewal ...
         clusterCa.createRenewOrReplace(true, false, true);
@@ -55,7 +50,7 @@ public class ClusterCaTest {
         instantExpected = "2023-03-23T10:00:00Z";
         clock = Clock.fixed(Instant.parse(instantExpected), Clock.systemUTC().getZone());
 
-        clusterCa = new ClusterCa(Reconciliation.DUMMY_RECONCILIATION, new OpenSslCertManager(), new PasswordGenerator(10, "a", "a"), cluster, new CertAndGeneration(clusterCa.caCertData(), 0), new CertAndGeneration(clusterCa.caKeyData(), 0));
+        clusterCa = new ClusterCa(Reconciliation.DUMMY_RECONCILIATION, new OpenSslCertManager(), new PasswordGenerator(10, "a", "a"), clusterCa.caCertData(), 0, clusterCa.caKeyData(), 0);
         clusterCa.setClock(clock);
         clusterCa.createRenewOrReplace(true, false, false);
         assertThat(clusterCa.caCertData().size(), is(3));
@@ -68,7 +63,7 @@ public class ClusterCaTest {
         String instantExpected = "2022-03-30T09:00:00Z";
         Clock clock = Clock.fixed(Instant.parse(instantExpected), Clock.systemUTC().getZone());
 
-        ClusterCa clusterCa = new ClusterCa(Reconciliation.DUMMY_RECONCILIATION, new OpenSslCertManager(clock), new PasswordGenerator(10, "a", "a"), cluster, null, null);
+        ClusterCa clusterCa = new ClusterCa(Reconciliation.DUMMY_RECONCILIATION, new OpenSslCertManager(clock), new PasswordGenerator(10, "a", "a"), null, 0, null, 0);
         clusterCa.setClock(clock);
         clusterCa.createRenewOrReplace(true, false, false);
 
@@ -91,7 +86,7 @@ public class ClusterCaTest {
         String instantExpected = "2022-03-23T09:00:00Z";
         Clock clock = Clock.fixed(Instant.parse(instantExpected), Clock.systemUTC().getZone());
 
-        ClusterCa clusterCa = new ClusterCa(Reconciliation.DUMMY_RECONCILIATION, new OpenSslCertManager(clock), new PasswordGenerator(10, "a", "a"), cluster, null, null);
+        ClusterCa clusterCa = new ClusterCa(Reconciliation.DUMMY_RECONCILIATION, new OpenSslCertManager(clock), new PasswordGenerator(10, "a", "a"), null, 0, null, 0);
         clusterCa.setClock(clock);
         clusterCa.createRenewOrReplace(true, false, false);
         assertThat(clusterCa.caCertData().size(), is(3));
@@ -100,7 +95,7 @@ public class ClusterCaTest {
         instantExpected = "2022-03-23T11:00:00Z";
         clock = Clock.fixed(Instant.parse(instantExpected), Clock.systemUTC().getZone());
 
-        clusterCa = new ClusterCa(Reconciliation.DUMMY_RECONCILIATION, new OpenSslCertManager(clock), new PasswordGenerator(10, "a", "a"), cluster, new CertAndGeneration(clusterCa.caCertData(), 0), new CertAndGeneration(clusterCa.caKeyData(), 0));
+        clusterCa = new ClusterCa(Reconciliation.DUMMY_RECONCILIATION, new OpenSslCertManager(clock), new PasswordGenerator(10, "a", "a"), clusterCa.caCertData(), 0, clusterCa.caKeyData(), 0);
         clusterCa.setClock(clock);
         // force key replacement so certificate renewal ...
         clusterCa.createRenewOrReplace(true, false, true);
@@ -122,8 +117,8 @@ public class ClusterCaTest {
         Map<String, String> clusterCaKeyData = new HashMap<>();
         clusterCaKeyData.put(Ca.CA_KEY, Base64.getEncoder().encodeToString("dummy-key".getBytes()));
 
-        ClusterCa clusterCa = new ClusterCa(Reconciliation.DUMMY_RECONCILIATION, new OpenSslCertManager(), new PasswordGenerator(10, "a", "a"), cluster,
-                new CertAndGeneration(clusterCaCertData, Ca.INIT_GENERATION), new CertAndGeneration(clusterCaKeyData, Ca.INIT_GENERATION), 0, 0, false, CertificateExpirationPolicy.RENEW_CERTIFICATE);
+        ClusterCa clusterCa = new ClusterCa(Reconciliation.DUMMY_RECONCILIATION, new OpenSslCertManager(), new PasswordGenerator(10, "a", "a"),
+                clusterCaCertData, Ca.INIT_GENERATION, clusterCaKeyData, Ca.INIT_GENERATION, 0, 0, false, CertificateExpirationPolicy.RENEW_CERTIFICATE);
 
         // simulate a renewal with new private key ...
         clusterCaKeyData.put(Ca.CA_KEY, Base64.getEncoder().encodeToString("new-dummy-key".getBytes()));

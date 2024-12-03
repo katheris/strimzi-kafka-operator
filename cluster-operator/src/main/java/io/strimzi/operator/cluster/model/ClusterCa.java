@@ -14,7 +14,6 @@ import io.strimzi.certs.IpAndDnsValidation;
 import io.strimzi.certs.Subject;
 import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.model.Ca;
-import io.strimzi.operator.common.model.CertAndGeneration;
 import io.strimzi.operator.common.model.PasswordGenerator;
 
 import java.io.File;
@@ -49,12 +48,13 @@ public class ClusterCa extends Ca {
      * @param reconciliation        Reconciliation marker
      * @param certManager           Certificate manager instance
      * @param passwordGenerator     Password generator instance
-     * @param clusterName           Name of the Kafka cluster
-     * @param clusterCaCert         CA public cert and related generation
-     * @param clusterCaKey          CA private key and related generation
+     * @param clusterCaCert         CA public cert
+     * @param clusterCaCertGen      Generation of the CA private key
+     * @param clusterCaKey          CA private key
+     * @param clusterCaKeyGen       Generation of the CA private key
      */
-    public ClusterCa(Reconciliation reconciliation, CertManager certManager, PasswordGenerator passwordGenerator, String clusterName, CertAndGeneration clusterCaCert, CertAndGeneration clusterCaKey) {
-        this(reconciliation, certManager, passwordGenerator, clusterName, clusterCaCert, clusterCaKey, CertificateAuthority.DEFAULT_CERTS_VALIDITY_DAYS, CertificateAuthority.DEFAULT_CERTS_RENEWAL_DAYS, true, null);
+    public ClusterCa(Reconciliation reconciliation, CertManager certManager, PasswordGenerator passwordGenerator, Map<String, String> clusterCaCert, int clusterCaCertGen, Map<String, String> clusterCaKey, int clusterCaKeyGen) {
+        this(reconciliation, certManager, passwordGenerator, clusterCaCert, clusterCaCertGen, clusterCaKey, clusterCaKeyGen, CertificateAuthority.DEFAULT_CERTS_VALIDITY_DAYS, CertificateAuthority.DEFAULT_CERTS_RENEWAL_DAYS, true, null);
     }
 
     /**
@@ -63,9 +63,10 @@ public class ClusterCa extends Ca {
      * @param reconciliation        Reconciliation marker
      * @param certManager           Certificate manager instance
      * @param passwordGenerator     Password generator instance
-     * @param clusterName           Name of the Kafka cluster
-     * @param clusterCaCert         CA public cert and related generation
-     * @param clusterCaKey          CA private key and related generation
+     * @param clusterCaCert         CA public cert
+     * @param clusterCaCertGen      Generation of the CA private key
+     * @param clusterCaKey          CA private key
+     * @param clusterCaKeyGen       Generation of the CA private key
      * @param validityDays          Validity days
      * @param renewalDays           Renewal days (how many days before expiration should the CA be renewed)
      * @param generateCa            Flag indicating if Strimzi CA should be generated or custom CA is used
@@ -73,19 +74,20 @@ public class ClusterCa extends Ca {
      */
     public ClusterCa(Reconciliation reconciliation, CertManager certManager,
                      PasswordGenerator passwordGenerator,
-                     String clusterName,
-                     CertAndGeneration clusterCaCert,
-                     CertAndGeneration clusterCaKey,
+                     Map<String, String> clusterCaCert,
+                     int clusterCaCertGen,
+                     Map<String, String> clusterCaKey,
+                     int clusterCaKeyGen,
                      int validityDays,
                      int renewalDays,
                      boolean generateCa,
                      CertificateExpirationPolicy policy) {
         super(reconciliation, certManager, passwordGenerator,
                 "cluster-ca",
-                AbstractModel.clusterCaCertSecretName(clusterName),
                 clusterCaCert,
-                AbstractModel.clusterCaKeySecretName(clusterName),
-                clusterCaKey, validityDays, renewalDays, generateCa, policy);
+                clusterCaCertGen,
+                clusterCaKey,
+                clusterCaKeyGen, validityDays, renewalDays, generateCa, policy);
     }
 
     @Override
@@ -423,7 +425,7 @@ public class ClusterCa extends Ca {
     public void maybeDeleteOldCerts() {
         // the operator doesn't have to touch Secret provided by the user with his own custom CA certificate
         if (this.generateCa) {
-            this.caCertsRemoved = removeCerts(this.caCertData, entry -> OLD_CA_CERT_PATTERN.matcher(entry.getKey()).matches()) > 0;
+            this.caCertsRemoved = removeCerts(this.caCert.certData(), entry -> OLD_CA_CERT_PATTERN.matcher(entry.getKey()).matches()) > 0;
             if (this.caCertsRemoved) {
                 LOGGER.infoCr(reconciliation, "{}: Old CA certificates removed", this);
             }

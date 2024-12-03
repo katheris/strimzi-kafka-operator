@@ -57,7 +57,6 @@ import io.strimzi.operator.common.Annotations;
 import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.auth.PemAuthIdentity;
 import io.strimzi.operator.common.auth.PemTrustSet;
-import io.strimzi.operator.common.model.CertAndGeneration;
 import io.strimzi.operator.common.model.ClientsCa;
 import io.strimzi.operator.common.model.Labels;
 import io.strimzi.operator.common.model.PasswordGenerator;
@@ -99,8 +98,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-import static io.strimzi.operator.cluster.TestUtils.createInitialCaCertAndGeneration;
-import static io.strimzi.operator.cluster.TestUtils.createInitialCaKeyAndGeneration;
+import static io.strimzi.operator.cluster.TestUtils.createInitialCaCert;
+import static io.strimzi.operator.cluster.TestUtils.createInitialCaKey;
 import static io.strimzi.operator.cluster.ResourceUtils.dummyClusterOperatorConfig;
 import static io.strimzi.operator.cluster.model.RestartReason.CA_CERT_HAS_OLD_GENERATION;
 import static io.strimzi.operator.cluster.model.RestartReason.CA_CERT_REMOVED;
@@ -302,7 +301,7 @@ public class KubernetesRestartEventsMockTest {
 
     @Test
     void testEventEmittedWhenCaCertHasOldGeneration(Vertx vertx, VertxTestContext context) {
-        ClusterCa oldGenClusterCa = createClusterCaWithCert(new CertAndGeneration(clusterCa.caCertData(), -1));
+        ClusterCa oldGenClusterCa = createClusterCaWithCert(clusterCa.caCertData(), -1);
 
         KafkaCluster kafkaCluster = KafkaClusterCreator.createKafkaCluster(reconciliation,
                 kafka,
@@ -536,9 +535,10 @@ public class KubernetesRestartEventsMockTest {
                 Reconciliation.DUMMY_RECONCILIATION,
                 new OpenSslCertManager(),
                 passwordGenerator,
-                CLUSTER_NAME,
-                createInitialCaCertAndGeneration(MockCertManager.clusterCaCert(), MockCertManager.clusterCaCertStore(), "123456"),
-                createInitialCaKeyAndGeneration(MockCertManager.clusterCaKey())
+                createInitialCaCert(MockCertManager.clusterCaCert(), MockCertManager.clusterCaCertStore(), "123456"),
+                0,
+                createInitialCaKey(MockCertManager.clusterCaKey()),
+                0
         );
 
         KafkaCluster kafkaCluster = KafkaClusterCreator.createKafkaCluster(reconciliation,
@@ -684,17 +684,18 @@ public class KubernetesRestartEventsMockTest {
     }
 
     private ClusterCa createClusterCa() {
-        return createClusterCaWithCert(null);
+        return createClusterCaWithCert(null, 0);
     }
 
-    private ClusterCa createClusterCaWithCert(CertAndGeneration caCert) {
+    private ClusterCa createClusterCaWithCert(Map<String, String> caCert, int caCertGen) {
         return new ClusterCa(
                 Reconciliation.DUMMY_RECONCILIATION,
                 mockCertManager,
                 passwordGenerator,
-                CLUSTER_NAME,
-                caCert != null ? caCert : createInitialCaCertAndGeneration(MockCertManager.clusterCaCert(), MockCertManager.clusterCaCertStore(), "123456"),
-                createInitialCaKeyAndGeneration(MockCertManager.clusterCaKey())
+                caCert != null ? caCert : createInitialCaCert(MockCertManager.clusterCaCert(), MockCertManager.clusterCaCertStore(), "123456"),
+                caCert != null ? caCertGen : 0,
+                createInitialCaKey(MockCertManager.clusterCaKey()),
+                0
         );
     }
 
@@ -703,10 +704,10 @@ public class KubernetesRestartEventsMockTest {
                 Reconciliation.DUMMY_RECONCILIATION,
                 mockCertManager,
                 passwordGenerator,
-                KafkaResources.clientsCaCertificateSecretName(CLUSTER_NAME),
-                createInitialCaCertAndGeneration(MockCertManager.clusterCaCert(), MockCertManager.clusterCaCertStore(), "123456"),
-                KafkaResources.clientsCaKeySecretName(CLUSTER_NAME),
-                createInitialCaKeyAndGeneration(MockCertManager.clusterCaKey()),
+                createInitialCaCert(MockCertManager.clusterCaCert(), MockCertManager.clusterCaCertStore(), "123456"),
+                0,
+                createInitialCaKey(MockCertManager.clusterCaKey()),
+                0,
                 365,
                 30,
                 true,
@@ -742,9 +743,10 @@ public class KubernetesRestartEventsMockTest {
             super(Reconciliation.DUMMY_RECONCILIATION,
                     mockCertManager,
                     passwordGenerator,
-                    CLUSTER_NAME,
-                    createInitialCaCertAndGeneration(MockCertManager.clusterCaCert(), MockCertManager.clusterCaCertStore(), "123456"),
-                    createInitialCaKeyAndGeneration(MockCertManager.clusterCaKey()));
+                    createInitialCaCert(MockCertManager.clusterCaCert(), MockCertManager.clusterCaCertStore(), "123456"),
+                    0,
+                    createInitialCaKey(MockCertManager.clusterCaKey()),
+                    0);
         }
     }
 }

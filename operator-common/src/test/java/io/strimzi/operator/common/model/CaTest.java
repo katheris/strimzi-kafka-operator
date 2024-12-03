@@ -17,6 +17,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -34,11 +35,13 @@ class CaTest {
          * @param reconciliation    Reconciliation marker
          * @param certManager       Certificate manager instance
          * @param passwordGenerator Password generator instance
-         * @param caCertSecret      Kubernetes Secret where the CA public key will be stored
-         * @param caKeySecret       Kubernetes Secret where the CA private key will be stored
+         * @param caCertData        CA public cert data
+         * @param caCertGeneration  Generation of the CA public cert
+         * @param caKeyData         CA private key data
+         * @param caKeyGeneration   Generation of the CA private key
          */
-        public MockCa(Reconciliation reconciliation, CertManager certManager, PasswordGenerator passwordGenerator, CertAndGeneration caCertSecret, CertAndGeneration caKeySecret) {
-            super(reconciliation, certManager, passwordGenerator, "mock", "mock-ca-secret", caCertSecret, "mock-key-secret", caKeySecret, CertificateAuthority.DEFAULT_CERTS_VALIDITY_DAYS, CertificateAuthority.DEFAULT_CERTS_RENEWAL_DAYS, true, null);
+        public MockCa(Reconciliation reconciliation, CertManager certManager, PasswordGenerator passwordGenerator, Map<String, String> caCertData, int caCertGeneration, Map<String, String> caKeyData, int caKeyGeneration) {
+            super(reconciliation, certManager, passwordGenerator, "mock", caCertData, caCertGeneration, caKeyData, caKeyGeneration, CertificateAuthority.DEFAULT_CERTS_VALIDITY_DAYS, CertificateAuthority.DEFAULT_CERTS_RENEWAL_DAYS, true, null);
         }
 
         @Override
@@ -60,7 +63,7 @@ class CaTest {
     public void setup() {
         now = Clock.fixed(new Date().toInstant(), Clock.systemUTC().getZone());
         oneYear = Duration.ofDays(CertificateAuthority.DEFAULT_CERTS_VALIDITY_DAYS);
-        ca = new MockCa(Reconciliation.DUMMY_RECONCILIATION, new OpenSslCertManager(now), new PasswordGenerator(10, "a", "a"), null, null);
+        ca = new MockCa(Reconciliation.DUMMY_RECONCILIATION, new OpenSslCertManager(now), new PasswordGenerator(10, "a", "a"), null, 0, null, 0);
     }
 
     @Test
@@ -78,6 +81,6 @@ class CaTest {
     @DisplayName("Should raise RuntimeException when certificate is not present")
     void shouldReturnZeroWhenCertificateNotPresent() {
         Exception exception = assertThrows(RuntimeException.class, () -> ca.getCertificateExpirationDateEpoch());
-        assertEquals("ca.crt does not exist in the secret null", exception.getMessage());
+        assertEquals("ca.crt does not exist for CA Mock CA", exception.getMessage());
     }
 }

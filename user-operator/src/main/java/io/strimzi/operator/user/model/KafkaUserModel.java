@@ -20,6 +20,7 @@ import io.strimzi.api.kafka.model.user.acl.AclRule;
 import io.strimzi.certs.CertAndKey;
 import io.strimzi.certs.CertManager;
 import io.strimzi.certs.OpenSslCertManager;
+import io.strimzi.operator.common.Annotations;
 import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.ReconciliationLogger;
 import io.strimzi.operator.common.Util;
@@ -43,6 +44,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+
+import static io.strimzi.operator.common.model.Ca.INIT_GENERATION;
 
 /**
  * Model of the Kafka user which is created based on the KafkaUser custom resource
@@ -229,10 +232,10 @@ public class KafkaUserModel {
                 reconciliation,
                 certManager,
                 passwordGenerator,
-                clientsCaCertSecret.getMetadata().getName(),
-                clientsCaCertSecret,
-                clientsCaCertSecret.getMetadata().getName(),
-                clientsCaKeySecret,
+                clientsCaCertSecret.getData(),
+                Annotations.intAnnotation(clientsCaCertSecret, Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION, INIT_GENERATION),
+                clientsCaKeySecret.getData(),
+                Annotations.intAnnotation(clientsCaKeySecret, Ca.ANNO_STRIMZI_IO_CA_KEY_GENERATION, INIT_GENERATION),
                 validityDays,
                 renewalDays,
                 false,

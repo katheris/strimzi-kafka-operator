@@ -146,7 +146,7 @@ public class ZookeeperClusterTest {
     }
 
     private Secret generateCertificatesSecret() {
-        ClusterCa clusterCa = new ClusterCa(Reconciliation.DUMMY_RECONCILIATION, new OpenSslCertManager(), new PasswordGenerator(10, "a", "a"), CLUSTER, null, null);
+        ClusterCa clusterCa = new ClusterCa(Reconciliation.DUMMY_RECONCILIATION, new OpenSslCertManager(), new PasswordGenerator(10, "a", "a"), null, 0, null, 0);
         clusterCa.createRenewOrReplace(true, false, false);
 
         return ZC.generateCertificatesSecret(clusterCa, null, true);
