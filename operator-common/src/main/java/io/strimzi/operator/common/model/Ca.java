@@ -5,7 +5,6 @@
 package io.strimzi.operator.common.model;
 
 import io.fabric8.kubernetes.api.model.HasMetadata;
-import io.fabric8.kubernetes.api.model.Secret;
 import io.strimzi.api.kafka.model.common.CertificateExpirationPolicy;
 import io.strimzi.certs.CertAndKey;
 import io.strimzi.certs.CertManager;
@@ -40,9 +39,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.function.Predicate;
-import java.util.stream.Collectors;
 
 import static java.time.temporal.ChronoField.DAY_OF_MONTH;
 import static java.time.temporal.ChronoField.HOUR_OF_DAY;
@@ -454,15 +451,15 @@ public abstract class Ca {
     /**
      * Returns whether the certificate is expiring or not
      *
-     * @param secret  Secret with the certificate
+     * @param certData  Map with the certificate
      * @param certKey   Key under which is the certificate stored
      * @return  True when the certificate should be renewed. False otherwise.
      */
-    public boolean isExpiring(Secret secret, String certKey)  {
+    public boolean isExpiring(Map<String, String> certData, String certKey)  {
         boolean isExpiring = false;
 
         try {
-            X509Certificate currentCert = cert(caName(), secret.getData(), certKey);
+            X509Certificate currentCert = cert(caName(), certData, certKey);
             isExpiring = certNeedsRenewal(currentCert);
         } catch (RuntimeException e) {
             // TODO: We should mock the certificates properly so that this doesn't fail in tests (not now => long term :-o)
@@ -490,10 +487,10 @@ public abstract class Ca {
     }
 
     /**
-     * Create the CA {@code Secrets} if they don't exist, otherwise if within the renewal period then either renew
+     * Create the CA certificates if they don't exist, otherwise if within the renewal period then either renew
      * the CA cert or replace the CA cert and key, according to the configured policy. After calling this method
      * {@link #certRenewed()} and {@link #certsRemoved()} will return whether the certificate was renewed and whether
-     * expired secrets were removed from the Secret.
+     * expired certificates were removed from the CA data.
      *
      * @param maintenanceWindowSatisfied Flag indicating whether we are in the maintenance window
      */
@@ -506,6 +503,7 @@ public abstract class Ca {
         Map<String, String> keyData;
         int caCertGeneration = caCertGeneration();
         int caKeyGeneration = caKeyGeneration();
+        String previous_ca_crt = caCertData().get("ca.crt");
 
         if (!generateCa) {
             certData = caCertData();
@@ -515,7 +513,7 @@ public abstract class Ca {
         } else {
             X509Certificate currentCert = cert(caName(), caCertData(), CA_CRT);
             this.renewalType = shouldCreateOrRenew(currentCert, maintenanceWindowSatisfied, forceRenew, forceReplace);
-            LOGGER.debugCr(reconciliation, "{} renewalType {}", this, renewalType);
+            LOGGER.infoCr(reconciliation, "{} renewalType {}", this, renewalType);
 
             switch (renewalType) {
                 case CREATE:
@@ -525,7 +523,7 @@ public abstract class Ca {
                     break;
                 case REPLACE_KEY:
                     keyData = new HashMap<>(1);
-                    certData = caCertData();
+                    certData = caCert.certData();
                     if (certData.containsKey(CA_CRT)) {
                         String notAfterDate = DATE_TIME_FORMATTER.format(currentCert.getNotAfter().toInstant().atZone(ZoneId.of("Z")));
                         addCertCaToTrustStore("ca-" + notAfterDate + CertEntry.CRT.suffix, certData);
@@ -558,9 +556,21 @@ public abstract class Ca {
         if (renewalType != RenewalType.NOOP && renewalType != RenewalType.POSTPONED) {
             LOGGER.debugCr(reconciliation, "{}: {}", this, renewalType.postDescription(caName()));
         }
+        String ca_crt = certData.get("ca.crt");
+        LOGGER.infoCr(reconciliation, "KATE: entry createRenewOrReplace()");
+        LOGGER.infoCr(reconciliation, "    previous ca.crt == ca.crt? " + previous_ca_crt.equals(ca_crt));
+        String ca_123_crt = certData.entrySet().stream().filter(entry -> entry.getKey().startsWith("ca-")).map(Map.Entry::getValue).findFirst().orElse("NOT_FOUND");
+        LOGGER.infoCr(reconciliation, "    ca-123.crt found? " + !ca_123_crt.equals("NOT_FOUND"));
+        LOGGER.infoCr(reconciliation, "    previous ca.crt == ca-123.crt? " + previous_ca_crt.equals(ca_123_crt));
 
         caCert = new CertAndGeneration(certData, caCertGeneration);
         caKey = new CertAndGeneration(keyData, caKeyGeneration);
+
+        String ca_crt_post_update = caCert.certData().get("ca.crt");
+        LOGGER.infoCr(reconciliation, "    previous ca.crt == ca.crt post update" + previous_ca_crt.equals(ca_crt_post_update));
+        String ca_123_crt_post_update = caCert.certData().entrySet().stream().filter(entry -> entry.getKey().startsWith("ca-")).map(Map.Entry::getValue).findFirst().orElse("NOT_FOUND");
+        LOGGER.infoCr(reconciliation, "    ca-123.crt found post update? " + !ca_123_crt_post_update.equals("NOT_FOUND"));
+        LOGGER.infoCr(reconciliation, "    previous ca.crt == ca-123.crt post update? " + previous_ca_crt.equals(ca_123_crt_post_update));
     }
 
     private Subject nextCaSubject(int version) {
@@ -632,6 +642,13 @@ public abstract class Ca {
      * @return the CA cert data, which contains both the current CA cert and also previous, still valid certs.
      */
     public Map<String, String> caCertData() {
+//        if (caCert != null ) {
+//            LOGGER.infoCr(reconciliation, "KATE: in caCertData()");
+//            String newCaCertData = caCert.certData().get("ca.crt");
+//            String newOldCaCertData = caCert.certData().entrySet().stream().filter(entry -> entry.getKey().startsWith("ca-")).map(Map.Entry::getValue).findFirst().orElse("NOT_FOUND");
+//            LOGGER.infoCr(reconciliation, "KATE: new old data found? " + !newOldCaCertData.equals("NOT_FOUND"));
+//            LOGGER.infoCr(reconciliation, "KATE: Old ca.crt equals new ca-sgesugse.crt? " + newCaCertData.equals(newOldCaCertData));
+//        }
         return caCert != null ? caCert.certData() : null;
     }
 
@@ -665,7 +682,7 @@ public abstract class Ca {
 
     /**
      * True if the last call to {@link #createRenewOrReplace(boolean, boolean, boolean)}
-     * resulted in expired certificates being removed from the CA {@code Secret}.
+     * resulted in expired certificates being removed from the CA data.
      * @return Whether any expired certificates were removed.
      */
     public boolean certsRemoved() {
@@ -754,9 +771,9 @@ public abstract class Ca {
     }
 
     /**
-     * Remove certificates from the CA related Secret and store which match the provided predicate
+     * Remove certificates from the CA data and store which match the provided predicate
      *
-     * @param newData data section of the CA Secret containing certificates
+     * @param newData data section of the CA containing certificates
      * @param predicate predicate to match for removing a certificate
      * @return the number of removed certificates
      */
@@ -768,7 +785,7 @@ public abstract class Ca {
             boolean remove = predicate.test(entry);
             if (remove) {
                 String certName = entry.getKey();
-                LOGGER.debugCr(reconciliation, "Removing data.{} from Secret",
+                LOGGER.debugCr(reconciliation, "Removing data.{} from CA data",
                         certName.replace(".", "\\."));
                 iter.remove();
                 removed.add(certName);
@@ -776,7 +793,7 @@ public abstract class Ca {
         }
 
         if (removed.size() > 0) {
-            // the certificates removed from the Secret data has tobe removed from the store as well
+            // the certificates removed from the CA data have to be removed from the store as well
             try {
                 File trustStoreFile = Files.createTempFile("tls", "-truststore").toFile();
                 Files.write(trustStoreFile.toPath(), Util.decodeBytesFromBase64(newData.get(CA_STORE)));
@@ -820,34 +837,6 @@ public abstract class Ca {
             return x509Certificate(bytes);
         } catch (CertificateException e) {
             throw new RuntimeException("Failed to decode certificate in data." + key.replace(".", "\\.") + " for " + resourceName, e);
-        }
-    }
-
-    /**
-     * Returns set of all public keys (all .crt records) from a secret
-     *
-     * @param secret    Kubernetes Secret with certificates
-     *
-     * @return          Set with X509Certificate instances
-     */
-    public static Set<X509Certificate> certs(Secret secret)  {
-        if (secret == null || secret.getData() == null) {
-            return Set.of();
-        } else {
-            return secret
-                    .getData()
-                    .entrySet()
-                    .stream()
-                    .filter(record -> CertEntry.CRT.matchesType(record.getKey()))
-                    .map(record -> {
-                        byte[] bytes = Util.decodeBytesFromBase64(record.getValue());
-                        try {
-                            return x509Certificate(bytes);
-                        } catch (CertificateException e) {
-                            throw new RuntimeException("Failed to decode certificate in data." + record.getKey().replace(".", "\\.") + " of Secret " + secret.getMetadata().getName(), e);
-                        }
-                    })
-                    .collect(Collectors.toSet());
         }
     }
 
@@ -922,7 +911,7 @@ public abstract class Ca {
                 try {
                     File trustStoreFile = Files.createTempFile("tls", subject.commonName() + "-truststore").toFile();
                     String trustStorePassword;
-                    // if secret already contains the truststore, we have to reuse it without changing password
+                    // if data already contains the truststore, we have to reuse it without changing password
                     if (certData.containsKey(CA_STORE)) {
                         Files.write(trustStoreFile.toPath(), Util.decodeBytesFromBase64(certData.get(CA_STORE)));
                         trustStorePassword = Util.decodeFromBase64(certData.get(CA_STORE_PASSWORD));
@@ -996,7 +985,7 @@ public abstract class Ca {
 
     /**
      * @return the name of the annotation bringing the generation of the specific CA certificate type (cluster or clients)
-     *         on the Secrets containing certificates signed by that CA (i.e. ZooKeeper nodes, Kafka brokers, ...)
+     *         on the Kubernetes resources containing certificates signed by that CA (i.e. ZooKeeper nodes, Kafka brokers, ...)
      */
     protected abstract String caCertGenerationAnnotation();
 
