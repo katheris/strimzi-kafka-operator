@@ -18,8 +18,10 @@ import io.fabric8.kubernetes.client.dsl.MixedOperation;
 import io.fabric8.kubernetes.client.dsl.NonNamespaceOperation;
 import io.fabric8.kubernetes.client.dsl.Resource;
 import io.fabric8.kubernetes.client.dsl.V1EventingAPIGroupDSL;
+import io.strimzi.api.kafka.model.kafka.Kafka;
 import io.strimzi.operator.cluster.model.RestartReason;
 import io.strimzi.operator.cluster.model.RestartReasons;
+import io.strimzi.operator.common.Reconciliation;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -42,6 +44,7 @@ import static org.mockito.Mockito.when;
 
 class KubernetesRestartEventPublisherTest {
     private final static String NAMESPACE = "test-ns";
+    private final static String CLUSTER_NAME = "example-cluster";
     private final static String POD_NAME = "example-pod";
 
     private KubernetesRestartEventPublisher publisher;
@@ -70,6 +73,22 @@ class KubernetesRestartEventPublisherTest {
         assertThat(podRef.getName(), is("cluster-kafka-0"));
         assertThat(podRef.getNamespace(), is("strimzi-kafka"));
         assertThat(podRef.getKind(), is("Pod"));
+    }
+
+    @Test
+    void testObjectReferenceFromReconciliation() {
+        Reconciliation reconciliation = new Reconciliation(
+                "test-trigger",
+                Kafka.RESOURCE_KIND,
+                NAMESPACE,
+                CLUSTER_NAME
+        );
+
+        ObjectReference clusterRef = publisher.createClusterReference(reconciliation);
+
+        assertThat(clusterRef.getName(), is(CLUSTER_NAME));
+        assertThat(clusterRef.getNamespace(), is(NAMESPACE));
+        assertThat(clusterRef.getKind(), is(Kafka.RESOURCE_KIND));
     }
 
     @Test

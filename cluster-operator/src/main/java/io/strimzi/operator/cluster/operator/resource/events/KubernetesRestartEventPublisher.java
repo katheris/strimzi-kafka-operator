@@ -10,8 +10,10 @@ import io.fabric8.kubernetes.api.model.ObjectReferenceBuilder;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.events.v1.EventBuilder;
 import io.fabric8.kubernetes.client.KubernetesClient;
+import io.strimzi.api.kafka.model.kafka.Kafka;
 import io.strimzi.operator.cluster.model.RestartReason;
 import io.strimzi.operator.cluster.model.RestartReasons;
+import io.strimzi.operator.common.Reconciliation;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -81,6 +83,30 @@ public class KubernetesRestartEventPublisher {
     }
 
     /**
+     * Publishes a Kubernetes Event about Pod restart
+     *
+     * @param pod       Pod which is restarted
+     * @param reasons   Reasons for the restart
+     */
+    public void publishRestartEvents(Reconciliation reconciliation, Pod pod, RestartReasons reasons) {
+        MicroTime k8sEventTime = new MicroTime(K8S_MICROTIME.format(ZonedDateTime.now(clock)));
+        ObjectReference podReference = createPodReference(pod);
+
+        try {
+            for (RestartReason reason : reasons) {
+                String note = maybeTruncated(reasons.getNoteFor(reason));
+                String type = "Normal";
+                String k8sFormattedReason = reason.pascalCased();
+                LOG.debug("Publishing K8s event, time {}, type, {}, reason, {}, note, {}, pod, {}",
+                        k8sEventTime, type, k8sFormattedReason, note, podReference);
+                publishEvent(k8sEventTime, podReference, k8sFormattedReason, type, note);
+            }
+        } catch (Exception e) {
+            LOG.error("Exception on K8s event publication", e);
+        }
+    }
+
+    /**
      * Publish a Kubernetes Event referring to certain KafkaRoller pod action
      *
      * @param eventTime    - Microtime to use for event
@@ -112,6 +138,14 @@ public class KubernetesRestartEventPublisher {
                                            .withNamespace(pod.getMetadata().getNamespace())
                                            .withName(pod.getMetadata().getName())
                                            .build();
+    }
+
+    ObjectReference createClusterReference(Reconciliation reconciliation) {
+        return new ObjectReferenceBuilder()
+                .withKind(Kafka.RESOURCE_KIND)
+                .withNamespace(reconciliation.namespace())
+                .withName(reconciliation.name())
+                .build();
     }
 
 
