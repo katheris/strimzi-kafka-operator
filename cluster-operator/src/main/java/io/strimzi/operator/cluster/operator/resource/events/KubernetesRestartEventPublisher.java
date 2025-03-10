@@ -10,7 +10,6 @@ import io.fabric8.kubernetes.api.model.ObjectReferenceBuilder;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.events.v1.EventBuilder;
 import io.fabric8.kubernetes.client.KubernetesClient;
-import io.strimzi.api.kafka.model.kafka.Kafka;
 import io.strimzi.operator.cluster.model.RestartReason;
 import io.strimzi.operator.cluster.model.RestartReasons;
 import io.strimzi.operator.common.Reconciliation;
@@ -59,37 +58,15 @@ public class KubernetesRestartEventPublisher {
     }
 
     /**
-     * Publishes an Kubernetes Event about Pod restart
-     *
-     * @param pod       Pod which is restarted
-     * @param reasons   Reasons for the restart
-     */
-    public void publishRestartEvents(Pod pod, RestartReasons reasons) {
-        MicroTime k8sEventTime = new MicroTime(K8S_MICROTIME.format(ZonedDateTime.now(clock)));
-        ObjectReference podReference = createPodReference(pod);
-
-        try {
-            for (RestartReason reason : reasons) {
-                String note = maybeTruncated(reasons.getNoteFor(reason));
-                String type = "Normal";
-                String k8sFormattedReason = reason.pascalCased();
-                LOG.debug("Publishing K8s event, time {}, type, {}, reason, {}, note, {}, pod, {}",
-                        k8sEventTime, type, k8sFormattedReason, note, podReference);
-                publishEvent(k8sEventTime, podReference, k8sFormattedReason, type, note);
-            }
-        } catch (Exception e) {
-            LOG.error("Exception on K8s event publication", e);
-        }
-    }
-
-    /**
      * Publishes a Kubernetes Event about Pod restart
      *
-     * @param pod       Pod which is restarted
-     * @param reasons   Reasons for the restart
+     * @param reconciliation    Reconciliation marker
+     * @param pod               Pod which is restarted
+     * @param reasons           Reasons for the restart
      */
     public void publishRestartEvents(Reconciliation reconciliation, Pod pod, RestartReasons reasons) {
         MicroTime k8sEventTime = new MicroTime(K8S_MICROTIME.format(ZonedDateTime.now(clock)));
+        ObjectReference resourceReference = createResourceReference(reconciliation);
         ObjectReference podReference = createPodReference(pod);
 
         try {
@@ -97,9 +74,9 @@ public class KubernetesRestartEventPublisher {
                 String note = maybeTruncated(reasons.getNoteFor(reason));
                 String type = "Normal";
                 String k8sFormattedReason = reason.pascalCased();
-                LOG.debug("Publishing K8s event, time {}, type, {}, reason, {}, note, {}, pod, {}",
-                        k8sEventTime, type, k8sFormattedReason, note, podReference);
-                publishEvent(k8sEventTime, podReference, k8sFormattedReason, type, note);
+                LOG.debug("Publishing K8s event, time {}, type, {}, reason, {}, note, {}, resource {}, pod, {}",
+                        k8sEventTime, type, k8sFormattedReason, note, resourceReference, podReference);
+                publishEvent(k8sEventTime, resourceReference, podReference, k8sFormattedReason, type, note);
             }
         } catch (Exception e) {
             LOG.error("Exception on K8s event publication", e);
@@ -109,13 +86,14 @@ public class KubernetesRestartEventPublisher {
     /**
      * Publish a Kubernetes Event referring to certain KafkaRoller pod action
      *
-     * @param eventTime    - Microtime to use for event
-     * @param podReference - ObjectReference pointing to rolled pod
-     * @param reason       - reason the pod is being rolled
-     * @param type         - the type of K8s event "Normal", or "Warning"
-     * @param note         - the note to attach to the event
+     * @param eventTime         - Microtime to use for event
+     * @param resourceReference - ObjectReference pointing to the owning resource
+     * @param podReference      - ObjectReference pointing to rolled pod
+     * @param reason            - reason the pod is being rolled
+     * @param type              - the type of K8s event "Normal", or "Warning"
+     * @param note              - the note to attach to the event
      */
-    protected void publishEvent(MicroTime eventTime, ObjectReference podReference, String reason, String type, String note) {
+    protected void publishEvent(MicroTime eventTime, ObjectReference resourceReference, ObjectReference podReference, String reason, String type, String note) {
         EventBuilder builder = new EventBuilder();
 
         builder.withNewMetadata()
@@ -124,7 +102,8 @@ public class KubernetesRestartEventPublisher {
                 .withAction(ACTION)
                 .withReportingController(CONTROLLER)
                 .withReportingInstance(operatorName)
-                .withRegarding(podReference)
+                .withRegarding(resourceReference)
+                .withRelated(podReference)
                 .withReason(reason)
                 .withType(type)
                 .withEventTime(eventTime)
@@ -140,9 +119,9 @@ public class KubernetesRestartEventPublisher {
                                            .build();
     }
 
-    ObjectReference createClusterReference(Reconciliation reconciliation) {
+    ObjectReference createResourceReference(Reconciliation reconciliation) {
         return new ObjectReferenceBuilder()
-                .withKind(Kafka.RESOURCE_KIND)
+                .withKind(reconciliation.kind())
                 .withNamespace(reconciliation.namespace())
                 .withName(reconciliation.name())
                 .build();

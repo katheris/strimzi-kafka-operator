@@ -54,7 +54,7 @@ class KubernetesRestartEventPublisherTest {
         KubernetesClient client = mock(KubernetesClient.class);
         publisher = new KubernetesRestartEventPublisher(client, "op") {
             @Override
-            protected void publishEvent(MicroTime eventTime, ObjectReference podReference, String reason, String type, String note) {
+            protected void publishEvent(MicroTime eventTime, ObjectReference resourceReference, ObjectReference podReference, String reason, String type, String note) {
             }
         };
     }
@@ -84,7 +84,7 @@ class KubernetesRestartEventPublisherTest {
                 CLUSTER_NAME
         );
 
-        ObjectReference clusterRef = publisher.createClusterReference(reconciliation);
+        ObjectReference clusterRef = publisher.createResourceReference(reconciliation);
 
         assertThat(clusterRef.getName(), is(CLUSTER_NAME));
         assertThat(clusterRef.getNamespace(), is(NAMESPACE));
@@ -126,7 +126,7 @@ class KubernetesRestartEventPublisherTest {
         Set<String> capturedReasons = new HashSet<>();
         KubernetesRestartEventPublisher capturingPublisher = new KubernetesRestartEventPublisher(client, "op") {
             @Override
-            protected void publishEvent(MicroTime eventTime, ObjectReference podReference, String reason, String type, String note) {
+            protected void publishEvent(MicroTime eventTime, ObjectReference resourceReference, ObjectReference podReference, String reason, String type, String note) {
                 capturedReasons.add(reason);
             }
         };
@@ -136,7 +136,7 @@ class KubernetesRestartEventPublisherTest {
         RestartReasons reasons = new RestartReasons().add(RestartReason.FILE_SYSTEM_RESIZE_NEEDED)
                                                      .add(RestartReason.CLUSTER_CA_CERT_KEY_REPLACED);
 
-        capturingPublisher.publishRestartEvents(mockPod, reasons);
+        capturingPublisher.publishRestartEvents(Reconciliation.DUMMY_RECONCILIATION, mockPod, reasons);
 
         assertThat(capturedReasons, is(expectedReasons));
 
@@ -178,14 +178,18 @@ class KubernetesRestartEventPublisherTest {
         KubernetesRestartEventPublisher eventPublisher = new KubernetesRestartEventPublisher(client, "cluster-operator-id", clock);
 
         RestartReasons reasons = new RestartReasons().add(RestartReason.FILE_SYSTEM_RESIZE_NEEDED);
-        eventPublisher.publishRestartEvents(pod, reasons);
+        eventPublisher.publishRestartEvents(new Reconciliation("test", Kafka.RESOURCE_KIND, NAMESPACE, CLUSTER_NAME), pod, reasons);
 
         verify(mockEventResource, times(1)).create();
 
         Event publishedEvent = eventCaptor.getValue();
-        assertThat(publishedEvent.getRegarding().getKind(), is("Pod"));
-        assertThat(publishedEvent.getRegarding().getName(), is(POD_NAME));
+        assertThat(publishedEvent.getRegarding().getKind(), is(Kafka.RESOURCE_KIND));
+        assertThat(publishedEvent.getRegarding().getName(), is(CLUSTER_NAME));
         assertThat(publishedEvent.getRegarding().getNamespace(), is(NAMESPACE));
+
+        assertThat(publishedEvent.getRelated().getKind(), is("Pod"));
+        assertThat(publishedEvent.getRelated().getName(), is(POD_NAME));
+        assertThat(publishedEvent.getRelated().getNamespace(), is(NAMESPACE));
 
         assertThat(publishedEvent.getReportingController(), is("strimzi.io/cluster-operator"));
         assertThat(publishedEvent.getReportingInstance(), is("cluster-operator-id"));
