@@ -7,8 +7,8 @@ package io.strimzi.operator.cluster.model;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.SecretBuilder;
 import io.strimzi.api.kafka.model.common.CertificateExpirationPolicy;
+import io.strimzi.api.kafka.model.common.CertificateManagerType;
 import io.strimzi.certs.OpenSslCertManager;
-import io.strimzi.operator.common.Annotations;
 import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.Util;
 import io.strimzi.operator.common.model.Ca;
@@ -37,22 +37,22 @@ public class ClusterCaTest {
 
         ClusterCa clusterCa = new ClusterCa(Reconciliation.DUMMY_RECONCILIATION, new OpenSslCertManager(clock), new PasswordGenerator(10, "a", "a"), cluster, null, null);
         clusterCa.setClock(clock);
-        clusterCa.createRenewOrReplace(true);
+        clusterCa.createRenewOrReplace(true, false, false);
         assertThat(clusterCa.caCertData().size(), is(3));
 
-        // force key replacement so certificate renewal ...
-        Secret caKeySecretWithReplaceAnno = new SecretBuilder(buildKeySecret(clusterCa))
-                .editMetadata()
-                .addToAnnotations(Annotations.ANNO_STRIMZI_IO_FORCE_REPLACE, "true")
-                .endMetadata()
-                .build();
+//        // force key replacement so certificate renewal ...
+//        Secret caKeySecretWithReplaceAnno = new SecretBuilder(buildKeySecret(clusterCa))
+//                .editMetadata()
+//                .addToAnnotations(Annotations.ANNO_STRIMZI_IO_FORCE_REPLACE, "true")
+//                .endMetadata()
+//                .build();
         // ... simulated at the following time, with expire at 365 days later (by default)
         instantExpected = "2022-03-23T11:00:00Z";
         clock = Clock.fixed(Instant.parse(instantExpected), Clock.systemUTC().getZone());
 
-        clusterCa = new ClusterCa(Reconciliation.DUMMY_RECONCILIATION, new OpenSslCertManager(clock), new PasswordGenerator(10, "a", "a"), cluster, buildCertSecret(clusterCa), caKeySecretWithReplaceAnno);
+        clusterCa = new ClusterCa(Reconciliation.DUMMY_RECONCILIATION, new OpenSslCertManager(clock), new PasswordGenerator(10, "a", "a"), cluster, buildCertSecret(clusterCa), buildKeySecret(clusterCa));
         clusterCa.setClock(clock);
-        clusterCa.createRenewOrReplace(true);
+        clusterCa.createRenewOrReplace(true, true, false);
         assertThat(clusterCa.caCertData().size(), is(4));
         assertThat(clusterCa.caCertData().containsKey("ca-2023-03-23T09-00-00Z.crt"), is(true));
 
@@ -62,7 +62,7 @@ public class ClusterCaTest {
 
         clusterCa = new ClusterCa(Reconciliation.DUMMY_RECONCILIATION, new OpenSslCertManager(), new PasswordGenerator(10, "a", "a"), cluster, buildCertSecret(clusterCa), buildKeySecret(clusterCa));
         clusterCa.setClock(clock);
-        clusterCa.createRenewOrReplace(true);
+        clusterCa.createRenewOrReplace(true, false, false);
         assertThat(clusterCa.caCertData().size(), is(3));
         assertThat(clusterCa.caCertData().containsKey("ca-2023-03-23T09-00-00Z.crt"), is(false));
     }
@@ -75,7 +75,7 @@ public class ClusterCaTest {
 
         ClusterCa clusterCa = new ClusterCa(Reconciliation.DUMMY_RECONCILIATION, new OpenSslCertManager(clock), new PasswordGenerator(10, "a", "a"), cluster, null, null);
         clusterCa.setClock(clock);
-        clusterCa.createRenewOrReplace(true);
+        clusterCa.createRenewOrReplace(true, false, false);
 
         // check certificate expiration out of the renewal period, certificate is not expiring
         instantExpected = "2023-02-15T09:00:00Z";
@@ -98,22 +98,22 @@ public class ClusterCaTest {
 
         ClusterCa clusterCa = new ClusterCa(Reconciliation.DUMMY_RECONCILIATION, new OpenSslCertManager(clock), new PasswordGenerator(10, "a", "a"), cluster, null, null);
         clusterCa.setClock(clock);
-        clusterCa.createRenewOrReplace(true);
+        clusterCa.createRenewOrReplace(true, false, false);
         assertThat(clusterCa.caCertData().size(), is(3));
 
         // force key replacement so certificate renewal ...
-        Secret caKeySecretWithReplaceAnno = new SecretBuilder(buildKeySecret(clusterCa))
-                .editMetadata()
-                .addToAnnotations(Annotations.ANNO_STRIMZI_IO_FORCE_REPLACE, "true")
-                .endMetadata()
-                .build();
+//        Secret caKeySecretWithReplaceAnno = new SecretBuilder(buildKeySecret(clusterCa))
+//                .editMetadata()
+//                .addToAnnotations(Annotations.ANNO_STRIMZI_IO_FORCE_REPLACE, "true")
+//                .endMetadata()
+//                .build();
         // ... simulated at the following time, with expire at 365 days later (by default)
         instantExpected = "2022-03-23T11:00:00Z";
         clock = Clock.fixed(Instant.parse(instantExpected), Clock.systemUTC().getZone());
 
-        clusterCa = new ClusterCa(Reconciliation.DUMMY_RECONCILIATION, new OpenSslCertManager(clock), new PasswordGenerator(10, "a", "a"), cluster, buildCertSecret(clusterCa), caKeySecretWithReplaceAnno);
+        clusterCa = new ClusterCa(Reconciliation.DUMMY_RECONCILIATION, new OpenSslCertManager(clock), new PasswordGenerator(10, "a", "a"), cluster, buildCertSecret(clusterCa), buildKeySecret(clusterCa));
         clusterCa.setClock(clock);
-        clusterCa.createRenewOrReplace(true);
+        clusterCa.createRenewOrReplace(true, true, false);
         assertThat(clusterCa.caCertData().size(), is(4));
         assertThat(clusterCa.caCertData().containsKey("ca-2023-03-23T09-00-00Z.crt"), is(true));
 
@@ -148,7 +148,7 @@ public class ClusterCaTest {
                 .withData(clusterCaKeyData)
                 .build();
 
-        ClusterCa clusterCa = new ClusterCa(Reconciliation.DUMMY_RECONCILIATION, new OpenSslCertManager(), new PasswordGenerator(10, "a", "a"), cluster, clusterCaCert, clusterCaKey, 0, 0, false, CertificateExpirationPolicy.RENEW_CERTIFICATE);
+        ClusterCa clusterCa = new ClusterCa(Reconciliation.DUMMY_RECONCILIATION, new OpenSslCertManager(), new PasswordGenerator(10, "a", "a"), cluster, clusterCaCert, clusterCaKey, 0, 0, false, CertificateManagerType.STRIMZI_IO, CertificateExpirationPolicy.RENEW_CERTIFICATE);
 
         clusterCa.maybeDeleteOldCerts();
 
