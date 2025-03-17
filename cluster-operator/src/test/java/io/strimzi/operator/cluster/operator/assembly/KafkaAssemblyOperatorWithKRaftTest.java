@@ -210,9 +210,8 @@ public class KafkaAssemblyOperatorWithKRaftTest {
             ResourceUtils.createInitialCaKeySecret(NAMESPACE, CLUSTER_NAME, AbstractModel.clusterCaKeySecretName(CLUSTER_NAME), MockCertManager.clusterCaKey()),
             365,
             30,
-            true,
-            null
-    );
+            true, ,
+            null);
 
     protected static Vertx vertx;
     private static WorkerExecutor sharedWorkerExecutor;

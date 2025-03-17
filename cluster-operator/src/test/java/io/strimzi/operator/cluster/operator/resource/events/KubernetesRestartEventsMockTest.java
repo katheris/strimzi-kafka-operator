@@ -671,9 +671,8 @@ public class KubernetesRestartEventsMockTest {
                 createInitialCaKeySecret(namespace, CLUSTER_NAME, clusterCaKeySecretName(CLUSTER_NAME), MockCertManager.clusterCaKey()),
                 365,
                 30,
-                true,
-                null
-        );
+                true, ,
+                null);
     }
 
     private void patchClusterCaKeySecretWithAnnotation(String annotation, String value) {

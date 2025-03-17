@@ -95,9 +95,8 @@ public class KafkaReconcilerStatusTest {
             ResourceUtils.createInitialCaKeySecret(NAMESPACE, CLUSTER_NAME, AbstractModel.clusterCaKeySecretName(CLUSTER_NAME), MockCertManager.clusterCaKey()),
             365,
             30,
-            true,
-            null
-    );
+            true, ,
+            null);
     private final static Kafka KAFKA = new KafkaBuilder()
                 .withNewMetadata()
                     .withName(CLUSTER_NAME)
