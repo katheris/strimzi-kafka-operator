@@ -8,6 +8,8 @@ import io.fabric8.kubernetes.api.model.OwnerReference;
 import io.fabric8.kubernetes.api.model.OwnerReferenceBuilder;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.Secret;
+import io.fabric8.kubernetes.api.model.SecretBuilder;
+import io.strimzi.api.ResourceAnnotations;
 import io.strimzi.api.kafka.model.common.CertificateAuthority;
 import io.strimzi.api.kafka.model.kafka.Kafka;
 import io.strimzi.api.kafka.model.kafka.KafkaResources;
@@ -52,10 +54,16 @@ import io.vertx.core.Vertx;
 
 import java.time.Clock;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+
+import static io.strimzi.operator.common.model.Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION;
+import static io.strimzi.operator.common.model.Ca.ANNO_STRIMZI_IO_CA_KEY_GENERATION;
+import static java.util.Collections.emptyList;
+import static java.util.Collections.singletonList;
 
 /**
  * Class used for reconciliation of Cluster and Client CAs. This class contains both the steps of the CA reconciliation
@@ -91,6 +99,7 @@ public class CaReconciler {
     // Fields used to store state during the reconciliation
     private ClusterCa clusterCa;
     private ClientsCa clientsCa;
+    private Secret clusterCaCertSecret;
     private Secret coSecret;
 
     /* test */ boolean isClusterCaNeedFullTrust;
@@ -225,63 +234,77 @@ public class CaReconciler {
 
         return secretOperator.listAsync(reconciliation.namespace(), Labels.EMPTY.withStrimziKind(reconciliation.kind()).withStrimziCluster(reconciliation.name()))
                 .compose(clusterSecrets -> {
-                    Secret clusterCaCertSecret = null;
-                    Secret clusterCaKeySecret = null;
-                    Secret clientsCaCertSecret = null;
-                    Secret clientsCaKeySecret = null;
+                    Secret existingClusterCaCertSecret = null;
+                    Secret existingClusterCaKeySecret = null;
+                    Secret existingClientsCaCertSecret = null;
+                    Secret existingClientsCaKeySecret = null;
 
                     for (Secret secret : clusterSecrets) {
                         String secretName = secret.getMetadata().getName();
                         if (secretName.equals(clusterCaCertName)) {
-                            clusterCaCertSecret = secret;
+                            existingClusterCaCertSecret = secret;
                         } else if (secretName.equals(clusterCaKeyName)) {
-                            clusterCaKeySecret = secret;
+                            existingClusterCaKeySecret = secret;
                         } else if (secretName.equals(clientsCaCertName)) {
-                            clientsCaCertSecret = secret;
+                            existingClientsCaCertSecret = secret;
                         } else if (secretName.equals(clientsCaKeyName)) {
-                            clientsCaKeySecret = secret;
+                            existingClientsCaKeySecret = secret;
                         }
                     }
 
-                    clusterCa = new ClusterCa(reconciliation, certManager, passwordGenerator, reconciliation.name(), clusterCaCertSecret,
-                            clusterCaKeySecret,
+                    boolean generateClusterCa = clusterCaConfig == null || clusterCaConfig.isGenerateCertificateAuthority();
+                    boolean generateClientsCa = clientsCaConfig == null || clientsCaConfig.isGenerateCertificateAuthority();
+
+                    clusterCa = new ClusterCa(reconciliation, certManager, passwordGenerator,
+                            reconciliation.name(),
+                            existingClusterCaCertSecret,
+                            existingClusterCaKeySecret,
                             ModelUtils.getCertificateValidity(clusterCaConfig),
                             ModelUtils.getRenewalDays(clusterCaConfig),
-                            clusterCaConfig == null || clusterCaConfig.isGenerateCertificateAuthority(), clusterCaConfig != null ? clusterCaConfig.getCertificateExpirationPolicy() : null);
-                    clusterCa.createRenewOrReplace(
-                            reconciliation.namespace(), caLabels,
-                            clusterCaCertLabels, clusterCaCertAnnotations,
-                            clusterCaConfig != null && !clusterCaConfig.isGenerateSecretOwnerReference() ? null : ownerRef,
-                            Util.isMaintenanceTimeWindowsSatisfied(reconciliation, maintenanceWindows, clock.instant()));
+                            generateClusterCa, clusterCaConfig != null ? clusterCaConfig.getCertificateExpirationPolicy() : null);
 
-                    clientsCa = new ClientsCa(reconciliation, certManager,
-                            passwordGenerator, clientsCaCertName,
-                            clientsCaCertSecret, clientsCaKeyName,
-                            clientsCaKeySecret,
+
+                    clientsCa = new ClientsCa(reconciliation, certManager, passwordGenerator,
+                            clientsCaCertName, existingClientsCaCertSecret,
+                            clientsCaKeyName, existingClientsCaKeySecret,
                             ModelUtils.getCertificateValidity(clientsCaConfig),
                             ModelUtils.getRenewalDays(clientsCaConfig),
-                            clientsCaConfig == null || clientsCaConfig.isGenerateCertificateAuthority(),
+                            generateClientsCa,
                             clientsCaConfig != null ? clientsCaConfig.getCertificateExpirationPolicy() : null);
-                    clientsCa.createRenewOrReplace(reconciliation.namespace(),
-                            caLabels, Map.of(), Map.of(),
-                            clientsCaConfig != null && !clientsCaConfig.isGenerateSecretOwnerReference() ? null : ownerRef,
-                            Util.isMaintenanceTimeWindowsSatisfied(reconciliation, maintenanceWindows, clock.instant()));
-
-                    Promise<Void> caUpdatePromise = Promise.promise();
 
                     List<Future<ReconcileResult<Secret>>> secretReconciliations = new ArrayList<>(2);
 
-                    if (clusterCaConfig == null || clusterCaConfig.isGenerateCertificateAuthority())   {
-                        Future<ReconcileResult<Secret>> clusterSecretReconciliation = secretOperator.reconcile(reconciliation, reconciliation.namespace(), clusterCaCertName, clusterCa.caCertSecret())
-                                .compose(ignored -> secretOperator.reconcile(reconciliation, reconciliation.namespace(), clusterCaKeyName, clusterCa.caKeySecret()));
+                    if (generateClusterCa)   {
+                        clusterCa.createRenewOrReplace(Util.isMaintenanceTimeWindowsSatisfied(reconciliation, maintenanceWindows, clock.instant()),
+                                parseForceReplaceAnnotation(existingClusterCaKeySecret),
+                                parseForceRenewAnnotation(existingClusterCaCertSecret));
+
+                        OwnerReference ownerReference = clusterCaConfig != null && !clusterCaConfig.isGenerateSecretOwnerReference() ? null : ownerRef;
+                        clusterCaCertSecret = createCaCertSecret(clusterCaCertName, clusterCaCertLabels, clusterCaCertAnnotations, ownerReference, clusterCa, existingClusterCaCertSecret);
+                        Secret clusterCaKeySecret = createCaKeySecret(clusterCaKeyName, ownerReference, clusterCa, existingClusterCaKeySecret);
+
+                        Future<ReconcileResult<Secret>> clusterSecretReconciliation = secretOperator.reconcile(reconciliation, reconciliation.namespace(), clusterCaCertName, clusterCaCertSecret)
+                                .compose(ignored -> secretOperator.reconcile(reconciliation, reconciliation.namespace(), clusterCaKeyName, clusterCaKeySecret));
                         secretReconciliations.add(clusterSecretReconciliation);
+                    } else {
+                        clusterCaCertSecret = existingClusterCaCertSecret;
                     }
 
-                    if (clientsCaConfig == null || clientsCaConfig.isGenerateCertificateAuthority())   {
-                        Future<ReconcileResult<Secret>> clientsSecretReconciliation = secretOperator.reconcile(reconciliation, reconciliation.namespace(), clientsCaCertName, clientsCa.caCertSecret())
-                                .compose(ignored -> secretOperator.reconcile(reconciliation, reconciliation.namespace(), clientsCaKeyName, clientsCa.caKeySecret()));
+                    if (generateClientsCa)   {
+                        clientsCa.createRenewOrReplace(Util.isMaintenanceTimeWindowsSatisfied(reconciliation, maintenanceWindows, clock.instant()),
+                                parseForceReplaceAnnotation(existingClientsCaKeySecret),
+                                parseForceRenewAnnotation(existingClientsCaCertSecret));
+
+                        OwnerReference ownerReference = clientsCaConfig != null && !clientsCaConfig.isGenerateSecretOwnerReference() ? null : ownerRef;
+                        Secret clientsCaCertSecret = createCaCertSecret(clientsCaCertName, Map.of(), Map.of(), ownerReference, clientsCa, existingClientsCaCertSecret);
+                        Secret clientsCaKeySecret = createCaKeySecret(clientsCaKeyName, ownerReference, clientsCa, existingClientsCaKeySecret);
+
+                        Future<ReconcileResult<Secret>> clientsSecretReconciliation = secretOperator.reconcile(reconciliation, reconciliation.namespace(), clientsCaCertName, clientsCaCertSecret)
+                                .compose(ignored -> secretOperator.reconcile(reconciliation, reconciliation.namespace(), clientsCaKeyName, clientsCaKeySecret));
                         secretReconciliations.add(clientsSecretReconciliation);
                     }
+
+                    Promise<Void> caUpdatePromise = Promise.promise();
 
                     Future.join(secretReconciliations).onComplete(res -> {
                         if (res.succeeded())    {
@@ -345,7 +368,7 @@ public class CaReconciler {
     Future<Void> maybeRollingUpdateForNewClusterCaKey() {
         if (clusterCa.keyReplaced() || isClusterCaNeedFullTrust) {
             RestartReason restartReason = RestartReason.CLUSTER_CA_CERT_KEY_REPLACED;
-            TlsPemIdentity coTlsPemIdentity = new TlsPemIdentity(new PemTrustSet(clusterCa.caCertSecret()), PemAuthIdentity.clusterOperator(coSecret));
+            TlsPemIdentity coTlsPemIdentity = new TlsPemIdentity(new PemTrustSet(clusterCaCertSecret), PemAuthIdentity.clusterOperator(coSecret));
             return patchClusterCaKeyGenerationAndReturnNodes()
                     .compose(nodes -> rollKafkaBrokers(nodes, RestartReasons.of(restartReason), coTlsPemIdentity))
                     .compose(i -> rollDeploymentIfExists(KafkaResources.entityOperatorDeploymentName(reconciliation.name()), restartReason))
@@ -519,7 +542,7 @@ public class CaReconciler {
             clusterCa.maybeDeleteOldCerts();
 
             if (clusterCa.certsRemoved()) {
-                return secretOperator.reconcile(reconciliation, reconciliation.namespace(), AbstractModel.clusterCaCertSecretName(reconciliation.name()), clusterCa.caCertSecret())
+                return secretOperator.reconcile(reconciliation, reconciliation.namespace(), AbstractModel.clusterCaCertSecretName(reconciliation.name()), clusterCaCertSecret)
                         .mapEmpty();
             } else {
                 return Future.succeededFuture();
@@ -529,6 +552,79 @@ public class CaReconciler {
         }
     }
 
+    private boolean parseForceReplaceAnnotation(Secret caSecret) {
+        if (caSecret != null && caSecret.getMetadata() != null &&
+                Annotations.hasAnnotation(caSecret, ResourceAnnotations.ANNO_STRIMZI_IO_FORCE_REPLACE)) {
+            return Annotations.booleanAnnotation(caSecret, ResourceAnnotations.ANNO_STRIMZI_IO_FORCE_REPLACE, false);
+        } else {
+            return false;
+        }
+    }
+
+    private boolean parseForceRenewAnnotation(Secret caSecret) {
+        if (caSecret != null && caSecret.getMetadata() != null &&
+                Annotations.hasAnnotation(caSecret, ResourceAnnotations.ANNO_STRIMZI_IO_FORCE_RENEW)) {
+            return Annotations.booleanAnnotation(caSecret, ResourceAnnotations.ANNO_STRIMZI_IO_FORCE_RENEW, false);
+        } else {
+            return false;
+        }
+    }
+
+    private Secret createCaCertSecret(String secretName, Map<String, String> additionalLabels, Map<String, String> additionalAnnotations,
+                                      OwnerReference ownerReference, Ca ca, Secret existingCaCertSecret) {
+        Map<String, String> certAnnotations = new HashMap<>(2);
+        certAnnotations.put(ANNO_STRIMZI_IO_CA_CERT_GENERATION, String.valueOf(ca.caCertGeneration()));
+
+        if (ca.postponed()
+                && existingCaCertSecret != null
+                && Annotations.hasAnnotation(existingCaCertSecret, Annotations.ANNO_STRIMZI_IO_FORCE_RENEW))   {
+            certAnnotations.put(Annotations.ANNO_STRIMZI_IO_FORCE_RENEW, Annotations.stringAnnotation(existingCaCertSecret, Annotations.ANNO_STRIMZI_IO_FORCE_RENEW, "false"));
+        }
+        return createCaSecret(reconciliation.namespace(), secretName, ca.caCertData(), Util.mergeLabelsOrAnnotations(caLabels, additionalLabels),
+                Util.mergeLabelsOrAnnotations(certAnnotations, additionalAnnotations), ownerReference);
+
+    }
+
+    private Secret createCaKeySecret(String secretName, OwnerReference ownerReference, Ca ca, Secret existingCaKeySecret) {
+        Map<String, String> keyAnnotations = new HashMap<>(2);
+        keyAnnotations.put(ANNO_STRIMZI_IO_CA_KEY_GENERATION, String.valueOf(ca.caKeyGeneration()));
+
+        if (ca.postponed()
+                && existingCaKeySecret != null
+                && Annotations.hasAnnotation(existingCaKeySecret, Annotations.ANNO_STRIMZI_IO_FORCE_REPLACE))   {
+            keyAnnotations.put(Annotations.ANNO_STRIMZI_IO_FORCE_REPLACE, Annotations.stringAnnotation(existingCaKeySecret, Annotations.ANNO_STRIMZI_IO_FORCE_REPLACE, "false"));
+        }
+        return createCaSecret(reconciliation.namespace(), secretName, ca.caKeyData(), caLabels, keyAnnotations, ownerReference);
+
+    }
+
+    /**
+     * Create a Kubernetes secret containing the provided secret data section
+     *
+     * @param namespace Namespace
+     * @param name Secret name
+     * @param data Map with secret data / files
+     * @param labels Labels to add to the Secret
+     * @param annotations annotations to add to the Secret
+     * @param ownerReference owner of the Secret
+     * @return the Secret
+     */
+    private static Secret createCaSecret(String namespace, String name, Map<String, String> data,
+                                         Map<String, String> labels, Map<String, String> annotations, OwnerReference ownerReference) {
+        List<OwnerReference> or = ownerReference != null ? singletonList(ownerReference) : emptyList();
+        return new SecretBuilder()
+                .withNewMetadata()
+                    .withName(name)
+                    .withNamespace(namespace)
+                    .withLabels(labels)
+                    .withAnnotations(annotations)
+                    .withOwnerReferences(or)
+                .endMetadata()
+                .withType("Opaque")
+                .withData(data)
+                .build();
+    }
+
     /**
      * Helper class to pass both Cluster and Clients CA as a result of the reconciliation
      *
@@ -536,4 +632,6 @@ public class CaReconciler {
      * @param clientsCa     The Clients CA instance
      */
     public record CaReconciliationResult(ClusterCa clusterCa, ClientsCa clientsCa) { }
+
+    private record CaSecrets(Secret caCertSecret, Secret caKeySecret) { }
 }
