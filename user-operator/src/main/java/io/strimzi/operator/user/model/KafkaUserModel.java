@@ -252,7 +252,7 @@ public class KafkaUserModel {
                     && !userCrt.isEmpty()
                     && userKey != null
                     && !userKey.isEmpty()) {
-                if (clientsCa.isExpiring(userSecret, "user.crt"))   {
+                if (clientsCa.isExpiring(userSecret.getMetadata().getName(), userSecret.getData(), "user.crt"))   {
                     // The certificate exists but is expiring
                     if (Util.isMaintenanceTimeWindowsSatisfied(reconciliation, maintenanceWindows, clock.instant()))   {
                         // => if we are in compliance with maintenance window, we renew it

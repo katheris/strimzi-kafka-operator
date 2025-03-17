@@ -55,7 +55,7 @@ public class CertUtils {
      */
     public static String getCertificateThumbprint(Secret certSecret, String key) {
         try {
-            var cert = Ca.cert(certSecret, key);
+            var cert = Ca.cert(certSecret.getMetadata().getName(), certSecret.getData(), key);
             return cert == null ? null : String.format("%040x", new BigInteger(1, Util.sha1Digest(cert.getEncoded())));
         } catch (CertificateEncodingException e) {
             throw new RuntimeException("Failed to get certificate thumbprint of " + key + " from Secret " + certSecret.getMetadata().getName(), e);
@@ -90,7 +90,7 @@ public class CertUtils {
         } else {
             if (clusterCa.keyCreated()
                     || clusterCa.certRenewed()
-                    || (isMaintenanceTimeWindowsSatisfied && clusterCa.isExpiring(secret, Ca.SecretEntry.CRT.asKey(keyCertName)))
+                    || (isMaintenanceTimeWindowsSatisfied && clusterCa.isExpiring(secret.getMetadata().getName(), secret.getData(), Ca.SecretEntry.CRT.asKey(keyCertName)))
                     || clusterCa.hasCaCertGenerationChanged(secret)) {
                 reasons.add("certificate needs to be renewed");
                 shouldBeRegenerated = true;

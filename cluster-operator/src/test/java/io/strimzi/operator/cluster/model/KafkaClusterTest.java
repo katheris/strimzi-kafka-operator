@@ -258,9 +258,9 @@ public class KafkaClusterTest {
 
     private List<Secret> generateBrokerSecrets(Set<String> externalBootstrapAddress, Map<Integer, Set<String>> externalAddresses) {
         ClusterCa clusterCa = new ClusterCa(Reconciliation.DUMMY_RECONCILIATION, new OpenSslCertManager(), new PasswordGenerator(10, "a", "a"), CLUSTER, null, null);
-        clusterCa.createRenewOrReplace(NAMESPACE, Map.of(), Map.of(), Map.of(), null, true);
+        clusterCa.createRenewOrReplace(true);
         ClientsCa clientsCa = new ClientsCa(Reconciliation.DUMMY_RECONCILIATION, new OpenSslCertManager(), new PasswordGenerator(10, "a", "a"), null, null, null, null, 365, 30, true, CertificateExpirationPolicy.RENEW_CERTIFICATE);
-        clientsCa.createRenewOrReplace(NAMESPACE, Map.of(), Map.of(), Map.of(), null, true);
+        clientsCa.createRenewOrReplace(true);
 
         return KC.generateCertificatesSecrets(clusterCa, clientsCa, List.of(), externalBootstrapAddress, externalAddresses, true);
     }
@@ -1248,7 +1248,7 @@ public class KafkaClusterTest {
                 "foo-brokers-6.crt", "foo-brokers-6.key",
                 "foo-brokers-7.crt", "foo-brokers-7.key")));
 
-        X509Certificate cert = Ca.cert(secretMap.get("foo-controllers-0"), "foo-controllers-0.crt");
+        X509Certificate cert = Ca.cert("foo-controllers-0", secretMap.get("foo-controllers-0").getData(), "foo-controllers-0.crt");
         assertThat(cert.getSubjectX500Principal().getName(), is("CN=foo-kafka,O=io.strimzi"));
         assertThat(cert.getSubjectAlternativeNames().size(), is(10));
         assertThat(new HashSet<Object>(cert.getSubjectAlternativeNames()), is(Set.of(
@@ -1263,7 +1263,7 @@ public class KafkaClusterTest {
                 List.of(2, "foo-kafka-brokers.test.svc"),
                 List.of(2, "foo-kafka-brokers.test.svc.cluster.local"))));
 
-        cert = Ca.cert(secretMap.get("foo-mixed-3"), "foo-mixed-3.crt");
+        cert = Ca.cert("foo-mixed-3", secretMap.get("foo-mixed-3").getData(), "foo-mixed-3.crt");
         assertThat(cert.getSubjectX500Principal().getName(), is("CN=foo-kafka,O=io.strimzi"));
         assertThat(cert.getSubjectAlternativeNames().size(), is(10));
         assertThat(new HashSet<Object>(cert.getSubjectAlternativeNames()), is(Set.of(
@@ -1278,7 +1278,7 @@ public class KafkaClusterTest {
                 List.of(2, "foo-kafka-brokers.test.svc"),
                 List.of(2, "foo-kafka-brokers.test.svc.cluster.local"))));
 
-        cert = Ca.cert(secretMap.get("foo-brokers-6"), "foo-brokers-6.crt");
+        cert = Ca.cert("foo-brokers-6", secretMap.get("foo-brokers-6").getData(), "foo-brokers-6.crt");
         assertThat(cert.getSubjectX500Principal().getName(), is("CN=foo-kafka,O=io.strimzi"));
         assertThat(cert.getSubjectAlternativeNames().size(), is(10));
         assertThat(new HashSet<Object>(cert.getSubjectAlternativeNames()), is(Set.of(
@@ -1318,7 +1318,7 @@ public class KafkaClusterTest {
                 "foo-brokers-6.crt", "foo-brokers-6.key",
                 "foo-brokers-7.crt", "foo-brokers-7.key")));
 
-        X509Certificate cert = Ca.cert(secretMap.get("foo-controllers-0"), "foo-controllers-0.crt");
+        X509Certificate cert = Ca.cert("foo-controllers-0", secretMap.get("foo-controllers-0").getData(), "foo-controllers-0.crt");
         assertThat(cert.getSubjectX500Principal().getName(), is("CN=foo-kafka,O=io.strimzi"));
         assertThat(cert.getSubjectAlternativeNames().size(), is(10));
         assertThat(new HashSet<Object>(cert.getSubjectAlternativeNames()), is(Set.of(
@@ -1333,7 +1333,7 @@ public class KafkaClusterTest {
                 List.of(2, "foo-kafka-brokers.test.svc"),
                 List.of(2, "foo-kafka-brokers.test.svc.cluster.local"))));
 
-        cert = Ca.cert(secretMap.get("foo-mixed-3"), "foo-mixed-3.crt");
+        cert = Ca.cert("foo-mixed-3", secretMap.get("foo-mixed-3").getData(), "foo-mixed-3.crt");
         assertThat(cert.getSubjectX500Principal().getName(), is("CN=foo-kafka,O=io.strimzi"));
         assertThat(cert.getSubjectAlternativeNames().size(), is(12));
         assertThat(new HashSet<Object>(cert.getSubjectAlternativeNames()), is(Set.of(
@@ -1350,7 +1350,7 @@ public class KafkaClusterTest {
                 List.of(7, "123.10.125.140"),
                 List.of(7, "123.10.125.133"))));
 
-        cert = Ca.cert(secretMap.get("foo-brokers-6"), "foo-brokers-6.crt");
+        cert = Ca.cert("foo-brokers-6", secretMap.get("foo-brokers-6").getData(), "foo-brokers-6.crt");
         assertThat(cert.getSubjectX500Principal().getName(), is("CN=foo-kafka,O=io.strimzi"));
         assertThat(cert.getSubjectAlternativeNames().size(), is(12));
         assertThat(new HashSet<Object>(cert.getSubjectAlternativeNames()), is(Set.of(
@@ -1393,7 +1393,7 @@ public class KafkaClusterTest {
                 "foo-brokers-6.crt", "foo-brokers-6.key",
                 "foo-brokers-7.crt", "foo-brokers-7.key")));
 
-        X509Certificate cert = Ca.cert(secretMap.get("foo-controllers-0"), "foo-controllers-0.crt");
+        X509Certificate cert = Ca.cert("foo-controllers-0", secretMap.get("foo-controllers-0").getData(), "foo-controllers-0.crt");
         assertThat(cert.getSubjectX500Principal().getName(), is("CN=foo-kafka,O=io.strimzi"));
         assertThat(cert.getSubjectAlternativeNames().size(), is(10));
         assertThat(new HashSet<Object>(cert.getSubjectAlternativeNames()), is(Set.of(
@@ -1408,7 +1408,7 @@ public class KafkaClusterTest {
                 List.of(2, "foo-kafka-brokers.test.svc"),
                 List.of(2, "foo-kafka-brokers.test.svc.cluster.local"))));
 
-        cert = Ca.cert(secretMap.get("foo-mixed-3"), "foo-mixed-3.crt");
+        cert = Ca.cert("foo-mixed-3", secretMap.get("foo-mixed-3").getData(), "foo-mixed-3.crt");
         assertThat(cert.getSubjectX500Principal().getName(), is("CN=foo-kafka,O=io.strimzi"));
         assertThat(cert.getSubjectAlternativeNames().size(), is(14));
         assertThat(new HashSet<Object>(cert.getSubjectAlternativeNames()), is(Set.of(
@@ -1427,7 +1427,7 @@ public class KafkaClusterTest {
                 List.of(7, "123.10.125.140"),
                 List.of(7, "123.10.125.133"))));
 
-        cert = Ca.cert(secretMap.get("foo-brokers-6"), "foo-brokers-6.crt");
+        cert = Ca.cert("foo-brokers-6", secretMap.get("foo-brokers-6").getData(), "foo-brokers-6.crt");
         assertThat(cert.getSubjectX500Principal().getName(), is("CN=foo-kafka,O=io.strimzi"));
         assertThat(cert.getSubjectAlternativeNames().size(), is(14));
         assertThat(new HashSet<Object>(cert.getSubjectAlternativeNames()), is(Set.of(
