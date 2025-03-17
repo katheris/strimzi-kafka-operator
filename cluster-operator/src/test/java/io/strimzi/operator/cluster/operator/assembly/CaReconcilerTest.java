@@ -97,6 +97,7 @@ import static org.mockito.Mockito.when;
  * The test cases use a mock CaReconciler class to capture when Kafka pods and
  * other deployment (Kafka Exporter etc) are rolled.
  * <p>
+ * Use CaReconcilerCertManagerTest for testing rolling updates after Cert Manager provided CA Secrets are reconciled.
  * Use CaReconcilerReconcileCasTest for testing the reconcileCas method in isolation.
  */
 @ExtendWith(VertxExtension.class)
@@ -198,7 +199,7 @@ public class CaReconcilerTest {
     }
 
     @Test
-    public void testOldClusterCaCertsGetsRemovedAuto(VertxTestContext context)
+    public void testOldStrimziManagedClusterCaCertsGetsRemovedAuto(VertxTestContext context)
             throws IOException, CertificateException, KeyStoreException, NoSuchAlgorithmException {
         CertificateAuthority certificateAuthority = getCertificateAuthority();
 

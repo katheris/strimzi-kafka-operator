@@ -58,7 +58,7 @@ class CaTest {
          * @param caKeySecret       Kubernetes Secret where the CA private key will be stored
          */
         public MockCa(Reconciliation reconciliation, CertManager certManager, PasswordGenerator passwordGenerator, Secret caCertSecret, Secret caKeySecret, boolean generateCa) {
-            super(reconciliation, certManager, passwordGenerator, "mock", caCertSecret, caKeySecret, new CaConfig(new CertificateAuthorityBuilder().withGenerateCertificateAuthority(generateCa).build(), true));
+            super(reconciliation, certManager, passwordGenerator, "mock", caCertSecret, caKeySecret, new CaConfig(new CertificateAuthorityBuilder().withGenerateCertificateAuthority(generateCa).build(), true), null);
         }
 
         @Override
@@ -69,6 +69,10 @@ class CaTest {
         @Override
         protected String caName() {
             return "Mock CA";
+        }
+
+        @Override
+        public void updateCertAndIncrementGenerations(String newCaCertData, X509Certificate endEntityCertificate) {
         }
     }
 
@@ -86,7 +90,7 @@ class CaTest {
     @Test
     @DisplayName("Should return certificate expiration date as epoch when certificate is present")
     void shouldReturnCertificateExpirationDateEpoch() {
-        ca.createRenewOrReplace(true, false, false);
+        ca.createOrUpdateStrimziManagedCa(true, false, false);
 
         Instant inOneYear = Clock.offset(now, oneYear).instant();
         long expectedEpoch = inOneYear.truncatedTo(ChronoUnit.SECONDS).toEpochMilli();
@@ -97,10 +101,10 @@ class CaTest {
     @Test
     @DisplayName("Should result in NOOP when CA key and certificate already exist and are valid")
     void shouldNoopWhenCaAlreadyExists() {
-        ca.createRenewOrReplace(true, false, false);
+        ca.createOrUpdateStrimziManagedCa(true, false, false);
         assertTrue(ca.keyCreated(), "First call should create the CA");
 
-        ca.createRenewOrReplace(true, false, false);
+        ca.createOrUpdateStrimziManagedCa(true, false, false);
         assertFalse(ca.certRenewed(), "Second call should not renew the certificate");
         assertFalse(ca.keyReplaced(), "Second call should not replace the key");
         assertFalse(ca.keyCreated(), "Second call should not create a new key");

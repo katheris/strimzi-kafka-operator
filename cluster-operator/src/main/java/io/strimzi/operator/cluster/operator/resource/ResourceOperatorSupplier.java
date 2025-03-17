@@ -27,6 +27,7 @@ import io.strimzi.operator.cluster.operator.assembly.BrokersInUseCheck;
 import io.strimzi.operator.cluster.operator.resource.events.KubernetesRestartEventPublisher;
 import io.strimzi.operator.cluster.operator.resource.kubernetes.BuildConfigOperator;
 import io.strimzi.operator.cluster.operator.resource.kubernetes.BuildOperator;
+import io.strimzi.operator.cluster.operator.resource.kubernetes.CertManagerCertificateOperator;
 import io.strimzi.operator.cluster.operator.resource.kubernetes.ClusterRoleBindingOperator;
 import io.strimzi.operator.cluster.operator.resource.kubernetes.ConfigMapOperator;
 import io.strimzi.operator.cluster.operator.resource.kubernetes.CrdOperator;
@@ -229,6 +230,11 @@ public class ResourceOperatorSupplier {
     public final BrokersInUseCheck brokersInUseCheck;
 
     /**
+     * cert-manager Certificate operator
+     */
+    public final CertManagerCertificateOperator certManagerCertificateOperator;
+
+    /**
      * Constructor
      *
      * @param vertx                 Vert.x instance
@@ -335,7 +341,8 @@ public class ResourceOperatorSupplier {
                 adminClientProvider,
                 restartEventPublisher,
                 new DefaultSharedEnvironmentProvider(),
-                new BrokersInUseCheck());
+                new BrokersInUseCheck(),
+                new CertManagerCertificateOperator(vertx, client));
     }
 
     /**
@@ -375,6 +382,7 @@ public class ResourceOperatorSupplier {
      * @param restartEventsPublisher                Kubernetes Events publisher
      * @param sharedEnvironmentProvider             Shared environment provider
      * @param brokersInUseCheck                     Broker scale down operations
+     * @param certManagerCertificateOperator        cert-manager Certificate operator
      */
     @SuppressWarnings({"checkstyle:ParameterNumber"})
     public ResourceOperatorSupplier(ServiceOperator serviceOperations,
@@ -410,7 +418,8 @@ public class ResourceOperatorSupplier {
                                     AdminClientProvider adminClientProvider,
                                     KubernetesRestartEventPublisher restartEventsPublisher,
                                     SharedEnvironmentProvider sharedEnvironmentProvider,
-                                    BrokersInUseCheck brokersInUseCheck) {
+                                    BrokersInUseCheck brokersInUseCheck,
+                                    CertManagerCertificateOperator certManagerCertificateOperator) {
         this.serviceOperations = serviceOperations;
         this.routeOperations = routeOperations;
         this.imageStreamOperations = imageStreamOperations;
@@ -445,5 +454,6 @@ public class ResourceOperatorSupplier {
         this.restartEventsPublisher = restartEventsPublisher;
         this.sharedEnvironmentProvider = sharedEnvironmentProvider;
         this.brokersInUseCheck = brokersInUseCheck;
+        this.certManagerCertificateOperator = certManagerCertificateOperator;
     }
 }

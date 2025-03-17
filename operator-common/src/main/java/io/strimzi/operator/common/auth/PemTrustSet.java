@@ -9,6 +9,7 @@ import io.strimzi.operator.common.Util;
 import io.strimzi.operator.common.model.Ca;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.security.KeyStore;
 import java.security.cert.CertificateEncodingException;
@@ -37,6 +38,15 @@ public class PemTrustSet {
         this.secretName = secret.getMetadata().getName();
         this.secretNamespace = secret.getMetadata().getNamespace();
         trustedCertificateMap = extractCerts(secret);
+    }
+
+    /**
+     * Certificates to use in a TrustStore for TLS connections, with each certificate on a separate line.
+     *
+     * @return The set of trusted certificates as a byte array
+     */
+    public byte[] trustedCertificatesPemBytes() {
+        return trustedCertificatesString().getBytes(StandardCharsets.US_ASCII);
     }
 
     /**
