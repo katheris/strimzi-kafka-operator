@@ -60,9 +60,11 @@ public class CaProviderTest {
                 caConfig,
                 KAFKA,
                 null,
+                null,
                 CERT_ISSUER,
                 PASSWORD_GENERATOR,
                 Clock.systemUTC(),
+                null,
                 null,
                 null);
 
@@ -80,9 +82,11 @@ public class CaProviderTest {
                 caConfig,
                 KAFKA,
                 null,
+                null,
                 CERT_ISSUER,
                 PASSWORD_GENERATOR,
                 Clock.systemUTC(),
+                null,
                 null,
                 null);
 

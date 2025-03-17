@@ -44,6 +44,7 @@ import io.strimzi.operator.common.ca.Ca;
 import io.strimzi.operator.common.ca.CaConfig;
 import io.strimzi.operator.common.model.Labels;
 import io.strimzi.operator.common.model.PasswordGenerator;
+import io.strimzi.operator.common.operator.resource.kubernetes.CertManagerCertificateOperator;
 import io.strimzi.operator.common.operator.resource.kubernetes.SecretOperator;
 import io.vertx.core.Future;
 
@@ -68,6 +69,7 @@ public class CaReconciler {
     /* test */ final DeploymentOperator deploymentOperator;
     private final StrimziPodSetOperator strimziPodSetOperator;
     private final SecretOperator secretOperator;
+    private final CertManagerCertificateOperator certManagerCertificateOperator;
     /* test */ final PodOperator podOperator;
     private final AdminClientProvider adminClientProvider;
     private final KafkaAgentClientProvider kafkaAgentClientProvider;
@@ -114,6 +116,7 @@ public class CaReconciler {
         this.deploymentOperator = supplier.deploymentOperations;
         this.strimziPodSetOperator = supplier.strimziPodSetOperator;
         this.secretOperator = supplier.secretOperations;
+        this.certManagerCertificateOperator = supplier.certManagerCertificateOperator;
         this.podOperator = supplier.podOperations;
 
         this.adminClientProvider = supplier.adminClientProvider;
@@ -199,6 +202,7 @@ public class CaReconciler {
                             clusterCaConfig,
                             existingClusterCaCertSecret,
                             existingClusterCaKeySecret,
+                            coSecret,
                             clock
                     ).createAndReconcileCa().thenApply(result -> {
                         clusterCa = result.ca();
@@ -211,6 +215,7 @@ public class CaReconciler {
                             clientsCaConfig,
                             existingClientsCaCertSecret,
                             existingClientsCaKeySecret,
+                            coSecret,
                             clock
                     ).createAndReconcileCa().thenApply(result -> {
                         clientsCa = result.ca();
@@ -225,8 +230,8 @@ public class CaReconciler {
      *
      * @return  CaProvider instance
      */
-    /*test*/ CaProvider createCaProvider(Ca.CaRole caRole, CaConfig caConfig, Secret existingCaCertSecret, Secret existingCaKeySecret, Clock clock) {
-        return CaProvider.create(reconciliation, caRole, caConfig, kafkaCr, secretOperator, certIssuer, passwordGenerator, clock, existingCaCertSecret, existingCaKeySecret);
+    /*test*/ CaProvider createCaProvider(Ca.CaRole caRole, CaConfig caConfig, Secret existingCaCertSecret, Secret existingCaKeySecret, Secret coSecret, Clock clock) {
+        return CaProvider.create(reconciliation, caRole, caConfig, kafkaCr, certManagerCertificateOperator, secretOperator, certIssuer, passwordGenerator, clock, existingCaCertSecret, existingCaKeySecret, coSecret);
     }
 
     /**

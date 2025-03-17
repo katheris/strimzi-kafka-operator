@@ -18,6 +18,7 @@ import io.strimzi.operator.common.ca.Ca;
 import io.strimzi.operator.common.ca.CaConfig;
 import io.strimzi.operator.common.model.Labels;
 import io.strimzi.operator.common.model.PasswordGenerator;
+import io.strimzi.operator.common.operator.resource.kubernetes.CertManagerCertificateOperator;
 import io.strimzi.operator.common.operator.resource.kubernetes.SecretOperator;
 
 import java.time.Clock;
@@ -48,16 +49,18 @@ public abstract class CaProvider {
     /**
      * Creates a CA provider.
      *
-     * @param reconciliation        Reconciliation marker
-     * @param caRole                The role of the CA
-     * @param caConfig              CA configuration
-     * @param kafkaCr               The Kafka custom resource
-     * @param secretOperator        Secret operator for managing secrets
-     * @param certIssuer            Certificate issuer
-     * @param passwordGenerator     Password generator
-     * @param clock                 Clock for time-based operations
-     * @param existingCaCertSecret  Existing CA certificate secret
-     * @param existingCaKeySecret   Existing CA key secret
+     * @param reconciliation                    Reconciliation marker
+     * @param caRole                            The role of the CA
+     * @param caConfig                          CA configuration
+     * @param kafkaCr                           The Kafka custom resource
+     * @param certManagerCertificateOperator    Certificate operator for managing cert-manager certificates
+     * @param secretOperator                    Secret operator for managing secrets
+     * @param certIssuer                        Certificate issuer
+     * @param passwordGenerator                 Password generator
+     * @param clock                             Clock for time-based operations
+     * @param existingCaCertSecret              Existing CA certificate secret
+     * @param existingCaKeySecret               Existing CA key secret
+     * @param clusterOperatorCertSecret         Cluster Operator cert secret
      *
      * @return The created CaProvider instance
      */
@@ -66,22 +69,29 @@ public abstract class CaProvider {
             Ca.CaRole caRole,
             CaConfig caConfig,
             Kafka kafkaCr,
+            CertManagerCertificateOperator certManagerCertificateOperator,
             SecretOperator secretOperator,
             CertIssuer certIssuer,
             PasswordGenerator passwordGenerator,
             Clock clock,
             Secret existingCaCertSecret,
-            Secret existingCaKeySecret
+            Secret existingCaKeySecret,
+            Secret clusterOperatorCertSecret
     ) {
-        if (caConfig.isGenerateCa()) {
-            return new InternalCaProvider(reconciliation, caRole, caConfig, kafkaCr, secretOperator, certIssuer,
-                    passwordGenerator, clock, existingCaCertSecret, existingCaKeySecret
-            );
-        } else {
-            return new CustomCaProvider(reconciliation, caRole, caConfig, kafkaCr, certIssuer, passwordGenerator,
-                    existingCaCertSecret, existingCaKeySecret
-            );
-        }
+        return switch (caConfig.getCertificateManagerType()) {
+            case STRIMZI_IO -> {
+                if (caConfig.isGenerateCa()) {
+                    yield new InternalCaProvider(reconciliation, caRole, caConfig, kafkaCr, secretOperator, certIssuer,
+                            passwordGenerator, clock, existingCaCertSecret, existingCaKeySecret
+                    );
+                } else {
+                    yield new CustomCaProvider(reconciliation, caRole, caConfig, kafkaCr, certIssuer, passwordGenerator,
+                            existingCaCertSecret, existingCaKeySecret
+                    );
+                }
+            }
+            case CERT_MANAGER_IO -> new CertManagerCaProvider(reconciliation, caRole, caConfig, kafkaCr, existingCaCertSecret, clusterOperatorCertSecret, certManagerCertificateOperator, secretOperator);
+        };
     }
 
     /**
