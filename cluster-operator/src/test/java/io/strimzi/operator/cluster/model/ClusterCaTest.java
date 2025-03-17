@@ -7,6 +7,7 @@ package io.strimzi.operator.cluster.model;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.SecretBuilder;
 import io.strimzi.api.kafka.model.common.CertificateExpirationPolicy;
+import io.strimzi.api.kafka.model.common.CertificateManagerType;
 import io.strimzi.certs.OpenSslCertManager;
 import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.Util;
@@ -45,6 +46,7 @@ public class ClusterCaTest {
 
         clusterCa = new ClusterCa(Reconciliation.DUMMY_RECONCILIATION, new OpenSslCertManager(clock), new PasswordGenerator(10, "a", "a"), cluster, buildCertSecret(clusterCa), buildKeySecret(clusterCa));
         clusterCa.setClock(clock);
+
         // force key replacement so certificate renewal ...
         clusterCa.createRenewOrReplace(true, true, false);
         assertThat(clusterCa.caCertData().size(), is(4));
@@ -101,6 +103,7 @@ public class ClusterCaTest {
 
         clusterCa = new ClusterCa(Reconciliation.DUMMY_RECONCILIATION, new OpenSslCertManager(clock), new PasswordGenerator(10, "a", "a"), cluster, buildCertSecret(clusterCa), buildKeySecret(clusterCa));
         clusterCa.setClock(clock);
+
         // force key replacement so certificate renewal ...
         clusterCa.createRenewOrReplace(true, true, false);
         assertThat(clusterCa.caCertData().size(), is(4));
@@ -137,7 +140,7 @@ public class ClusterCaTest {
                 .withData(clusterCaKeyData)
                 .build();
 
-        ClusterCa clusterCa = new ClusterCa(Reconciliation.DUMMY_RECONCILIATION, new OpenSslCertManager(), new PasswordGenerator(10, "a", "a"), cluster, clusterCaCert, clusterCaKey, 0, 0, false, CertificateExpirationPolicy.RENEW_CERTIFICATE);
+        ClusterCa clusterCa = new ClusterCa(Reconciliation.DUMMY_RECONCILIATION, new OpenSslCertManager(), new PasswordGenerator(10, "a", "a"), cluster, clusterCaCert, clusterCaKey, 0, 0, false, CertificateManagerType.STRIMZI_IO, CertificateExpirationPolicy.RENEW_CERTIFICATE);
 
         clusterCa.maybeDeleteOldCerts();
 
