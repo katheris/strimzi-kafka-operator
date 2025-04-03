@@ -43,6 +43,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Predicate;
 
 import static java.time.temporal.ChronoField.DAY_OF_MONTH;
@@ -328,9 +329,6 @@ public abstract class Ca {
                 if (generateCa) {
                     throw new InvalidResourceException("Invalid CA configuration. " + caName() + " should be generated, but type is `cert-manager.io`.");
                 }
-//                } else if (caCertSecret == null) {
-//                    throw new InvalidResourceException("CaCert Secret for " + caName() + " missing.");
-//                } //Don't need
             }
             case STRIMZI_IO -> {
                 if (!generateCa && (caCertSecret == null || caKeySecret == null))   {
@@ -344,7 +342,7 @@ public abstract class Ca {
         this.commonName = commonName;
         this.caCertSecretName = caCertSecretName;
         this.caCertGeneration = initCaCertGeneration(caCertSecret);
-        this.caCertData = initCaCertData(generateCa, caCertSecret);
+        this.caCertData = initCaCertData(caCertSecret);
         this.caKeySecretName = caKeySecretName;
         this.caKeyGeneration = initCaKeyGeneration(certificateManagerType, caKeySecret, caCertSecret);
         this.caKeyData = initCaKeyData(generateCa, certificateManagerType, caKeySecret);
@@ -407,21 +405,17 @@ public abstract class Ca {
         return INIT_GENERATION;
     }
 
-    private Map<String, String> initCaCertData(boolean generateCa, Secret caCertSecret) {
-        if (generateCa) {
-            return caCertSecret == null ? null : caCertSecret.getData();
-        } else {
-            return caCertSecret.getData();
-        }
+    private Map<String, String> initCaCertData(Secret caCertSecret) {
+        return caCertSecret == null ? new HashMap<>() : caCertSecret.getData();
     }
 
     private Map<String, String> initCaKeyData(boolean generateCa, CertificateManagerType certificateManagerType, Secret caKeySecret) {
         Map<String, String> keyData;
         if (generateCa) {
-            keyData = caKeySecret == null ? null : caKeySecret.getData();
+            keyData = caKeySecret == null ? new HashMap<>() : caKeySecret.getData();
         } else {
             keyData = switch (certificateManagerType) {
-                case CERT_MANAGER_IO -> null;
+                case CERT_MANAGER_IO -> new HashMap<>();
                 case STRIMZI_IO -> singletonMap(CA_KEY, caKeySecret.getData().get(CA_KEY));
             };
         }
@@ -709,13 +703,15 @@ public abstract class Ca {
      * @param endEntityCertificate  End entity certificate to use for cert path validation.
      */
     public void maybeUpdateCertAndGenerations(String newCaCertData, String existingCaCertHash, X509Certificate endEntityCertificate) {
-        if (this.caCertData == null) {
+        LOGGER.infoCr(reconciliation, "maybeUpdateCertAndGenerations: caCertData size = " + this.caCertData.size() + " new data is null? " + (newCaCertData == null));
+        if (this.caCertData.isEmpty()) {
             // No data, so we add it
             Map<String, String> caCertData = new HashMap<>();
             caCertData.put(CA_CRT, newCaCertData);
             this.caCertData = caCertData;
             renewalType = RenewalType.CREATE;
         } else {
+            Objects.requireNonNull(endEntityCertificate);
             String newCaCertHash;
             try {
                 X509Certificate x509CaCert = x509Certificate(Util.decodeBytesFromBase64(newCaCertData));

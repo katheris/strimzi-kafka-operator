@@ -46,7 +46,6 @@ import io.strimzi.operator.common.auth.PemTrustSet;
 import io.strimzi.operator.common.auth.TlsPemIdentity;
 import io.strimzi.operator.common.model.Ca;
 import io.strimzi.operator.common.model.ClientsCa;
-import io.strimzi.operator.common.model.InvalidResourceException;
 import io.strimzi.operator.common.model.Labels;
 import io.strimzi.operator.common.model.PasswordGenerator;
 import io.strimzi.operator.common.operator.resource.ReconcileResult;
@@ -228,25 +227,27 @@ public class CaReconciler {
      * @param clock     The clock for supplying the reconciler with the time instant of each reconciliation cycle.
      *                  That time is used for checking maintenance windows
      */
-    @SuppressWarnings({"checkstyle:CyclomaticComplexity", "checkstyle:NPathComplexity"})
+    @SuppressWarnings({"checkstyle:CyclomaticComplexity", "checkstyle:NPathComplexity", "checkstyle:MethodLength"})
     Future<Void> reconcileCas(Clock clock) {
-        CertificateManagerType clusterCaCertManagerType = clusterCaConfig != null ? clusterCaConfig.getType() : CertificateManagerType.STRIMZI_IO;
-        CertificateManagerType clientsCaCertManagerType = clientsCaConfig != null ? clientsCaConfig.getType() : CertificateManagerType.STRIMZI_IO;
-
         String clusterCaCertName = AbstractModel.clusterCaCertSecretName(reconciliation.name());
         String clusterCaKeyName = AbstractModel.clusterCaKeySecretName(reconciliation.name());
         String clientsCaCertName = KafkaResources.clientsCaCertificateSecretName(reconciliation.name());
         String clientsCaKeyName = KafkaResources.clientsCaKeySecretName(reconciliation.name());
         String clusterOperatorName = KafkaResources.clusterOperatorCertsSecretName(reconciliation.name());
 
-        return secretOperator.listAsync(reconciliation.namespace(), Labels.EMPTY.withStrimziKind(reconciliation.kind()).withStrimziCluster(reconciliation.name()))
-                .compose(clusterSecrets -> {
+        return Future.join(
+                        getCertManagerCaData(clusterCaConfig),
+                        getCertManagerCaData(clientsCaConfig),
+                        secretOperator.listAsync(reconciliation.namespace(), Labels.EMPTY.withStrimziKind(reconciliation.kind()).withStrimziCluster(reconciliation.name())))
+                .compose(results -> {
+                    String clusterCaCertManagerCert = results.resultAt(0);
+                    String clientsCaCertManagerCert = results.resultAt(1);
+                    List<Secret> clusterSecrets = results.resultAt(2);
+
                     Secret existingClusterCaCertSecret = null;
                     Secret existingClusterCaKeySecret = null;
                     Secret existingClientsCaCertSecret = null;
                     Secret existingClientsCaKeySecret = null;
-                    Secret clusterCaCertManagerSecret = null;
-                    Secret clientsCaCertManagerSecret = null;
 
                     for (Secret secret : clusterSecrets) {
                         String secretName = secret.getMetadata().getName();
@@ -258,25 +259,18 @@ public class CaReconciler {
                             existingClientsCaCertSecret = secret;
                         } else if (secretName.equals(clientsCaKeyName)) {
                             existingClientsCaKeySecret = secret;
-                        } else if (secretNameMatchesCertManagerName(clusterCaConfig, secretName)) {
-                            clusterCaCertManagerSecret = secret;
-                        } else if (secretNameMatchesCertManagerName(clientsCaConfig, secretName)) {
-                            clientsCaCertManagerSecret = secret;
                         } else if (secretName.equals(clusterOperatorName)) {
                             coSecret = secret;
                         }
                     }
 
-                    if (clusterCaCertManagerType.equals(CertificateManagerType.CERT_MANAGER_IO) && clusterCaCertManagerSecret == null) {
-                        throw new InvalidResourceException("Cert Secret for Cluster CA missing.");
-                    }
-
-                    if (clientsCaCertManagerType.equals(CertificateManagerType.CERT_MANAGER_IO) && clientsCaCertManagerSecret == null) {
-                        throw new InvalidResourceException("Cert Secret for Clients CA missing.");
-                    }
-
                     boolean generateClusterCa = clusterCaConfig == null || clusterCaConfig.isGenerateCertificateAuthority();
                     boolean generateClientsCa = clientsCaConfig == null || clientsCaConfig.isGenerateCertificateAuthority();
+                    CertificateManagerType clusterCaCertManagerType = clusterCaConfig != null ? clusterCaConfig.getType() : CertificateManagerType.STRIMZI_IO;
+                    CertificateManagerType clientsCaCertManagerType = clientsCaConfig != null ? clientsCaConfig.getType() : CertificateManagerType.STRIMZI_IO;
+
+                    LOGGER.infoCr(reconciliation, "Reconciling Cluster CA. Generate CA is " + generateClusterCa + ", CertificateManagerType is " + clusterCaCertManagerType);
+                    LOGGER.infoCr(reconciliation, "Reconciling Clients CA. Generate CA is " + generateClientsCa + ", CertificateManagerType is " + clientsCaCertManagerType);
 
                     clusterCa = new ClusterCa(reconciliation, certManager, passwordGenerator,
                             reconciliation.name(),
@@ -308,10 +302,9 @@ public class CaReconciler {
                         }
 
                         if (clusterCaCertManagerType.equals(CertificateManagerType.CERT_MANAGER_IO)) {
-                            String certSecretKey = clusterCaConfig.getCertManager().getCaCert().getCertificate();
-                            clusterCa.maybeUpdateCertAndGenerations(clusterCaCertManagerSecret.getData().get(certSecretKey),
+                            clusterCa.maybeUpdateCertAndGenerations(clusterCaCertManagerCert,
                                     existingClusterCaCertSecret == null ? null : Annotations.stringAnnotation(existingClusterCaCertSecret, Annotations.ANNO_STRIMZI_SERVER_CERT_HASH, ""),
-                                    cert(clusterOperatorName, coSecret.getData(), Ca.CA_CRT));
+                                    cert(clusterOperatorName, coSecret == null ? null : coSecret.getData(), Ca.CA_CRT));
                         }
 
                         clusterCaCertSecret = createCaCertSecret(clusterCaCertName, clusterCaCertLabels, clusterCaCertAnnotations, clusterCa, clusterCaConfig, existingClusterCaCertSecret);
@@ -330,8 +323,7 @@ public class CaReconciler {
                         }
 
                         if (clientsCaCertManagerType.equals(CertificateManagerType.CERT_MANAGER_IO)) {
-                            String certSecretKey = clientsCaConfig.getCertManager().getCaCert().getCertificate();
-                            clientsCa.maybeUpdateCertAndGenerations(clientsCaCertManagerSecret.getData().get(certSecretKey),
+                            clientsCa.maybeUpdateCertAndGenerations(clientsCaCertManagerCert,
                                     existingClientsCaCertSecret == null ? null : Annotations.stringAnnotation(existingClientsCaCertSecret, Annotations.ANNO_STRIMZI_SERVER_CERT_HASH, ""),
                                     null);
                         }
@@ -356,6 +348,25 @@ public class CaReconciler {
 
                     return caUpdatePromise.future();
                 });
+    }
+
+    Future<String> getCertManagerCaData(CertificateAuthority caConfig) {
+        if (caConfig != null && caConfig.getType().equals(CertificateManagerType.CERT_MANAGER_IO)) {
+            String certManagerSecretName = caConfig.getCertManager().getCaCert().getSecretName();
+            String certManagerSecretKey = caConfig.getCertManager().getCaCert().getCertificate();
+            return secretOperator.getAsync(reconciliation.namespace(), certManagerSecretName)
+                    .compose(secret -> {
+                        if (secret == null) {
+                            return Future.failedFuture("CA public certificate Secret " + certManagerSecretName + " missing.");
+                        } else if (secret.getData().get(certManagerSecretKey) == null) {
+                            return Future.failedFuture("CA public certificate Secret " + certManagerSecretName + " missing key " + certManagerSecretKey);
+                        } else {
+                            return Future.succeededFuture(secret.getData().get(certManagerSecretKey));
+                        }
+                    });
+        } else {
+            return Future.succeededFuture(null);
+        }
     }
 
     /**
