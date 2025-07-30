@@ -236,8 +236,8 @@ public class CaReconciler {
         String clusterOperatorName = KafkaResources.clusterOperatorCertsSecretName(reconciliation.name());
 
         return Future.join(
-                        getCertManagerCaData(clusterCaConfig),
-                        getCertManagerCaData(clientsCaConfig),
+                        getCertManagerCaCert(clusterCaConfig),
+                        getCertManagerCaCert(clientsCaConfig),
                         secretOperator.listAsync(reconciliation.namespace(), Labels.EMPTY.withStrimziKind(reconciliation.kind()).withStrimziCluster(reconciliation.name())))
                 .compose(results -> {
                     String clusterCaCertManagerCert = results.resultAt(0);
@@ -294,11 +294,14 @@ public class CaReconciler {
 
                     List<Future<ReconcileResult<Secret>>> secretReconciliations = new ArrayList<>(4);
 
+                    //TODO: we need to first run either maybeUpdateCertAndGeneratiosn or createRenewOrReplace and then call reconcile
+                    //TODO: for the tests we either need to have certs created before keys or need to fix tests to not be order dependent
+                    //TODO: Could we have one method we call? And then the Ca classes handle the two scenarios? Basically make the calls more similar between the two
                     if (generateClusterCa || clusterCaCertManagerType.equals(CertificateManagerType.CERT_MANAGER_IO)) {
                         OwnerReference ownerReference = clusterCaConfig != null && !clusterCaConfig.isGenerateSecretOwnerReference() ? null : ownerRef;
 
                         if (generateClusterCa) {
-                            clusterCa.createRenewOrReplace(Util.isMaintenanceTimeWindowsSatisfied(reconciliation, maintenanceWindows, clock.instant()),
+                            clusterCa.createOrUpdateStrimziManagedCa(Util.isMaintenanceTimeWindowsSatisfied(reconciliation, maintenanceWindows, clock.instant()),
                                     isForceReplace(existingClusterCaKeySecret),
                                     isForceRenew(existingClusterCaCertSecret));
                             Secret clusterCaKeySecret = createCaKeySecret(clusterCaKeyName, ownerReference, clusterCa, existingClusterCaKeySecret);
@@ -306,13 +309,14 @@ public class CaReconciler {
                         }
 
                         if (clusterCaCertManagerType.equals(CertificateManagerType.CERT_MANAGER_IO)) {
-                            clusterCa.maybeUpdateCertAndGenerations(clusterCaCertManagerCert,
+                            clusterCa.createOrUpdateCertManagerCa(clusterCaCertManagerCert,
                                     existingClusterCaCertSecret == null ? null : Annotations.stringAnnotation(existingClusterCaCertSecret, Annotations.ANNO_STRIMZI_SERVER_CERT_HASH, ""),
                                     cert(coSecret, Ca.CA_CRT));
                         }
 
                         clusterCaCertSecret = createCaCertSecret(clusterCaCertName, clusterCaCertLabels, clusterCaCertAnnotations, ownerReference, clusterCa, existingClusterCaCertSecret);
                         secretReconciliations.add(secretOperator.reconcile(reconciliation, reconciliation.namespace(), clusterCaCertName, clusterCaCertSecret));
+
                     } else {
                         clusterCaCertSecret = existingClusterCaCertSecret;
                     }
@@ -321,7 +325,7 @@ public class CaReconciler {
                         OwnerReference ownerReference = clientsCaConfig != null && !clientsCaConfig.isGenerateSecretOwnerReference() ? null : ownerRef;
 
                         if (generateClientsCa) {
-                            clientsCa.createRenewOrReplace(Util.isMaintenanceTimeWindowsSatisfied(reconciliation, maintenanceWindows, clock.instant()),
+                            clientsCa.createOrUpdateStrimziManagedCa(Util.isMaintenanceTimeWindowsSatisfied(reconciliation, maintenanceWindows, clock.instant()),
                                     isForceReplace(existingClientsCaKeySecret),
                                     isForceRenew(existingClientsCaCertSecret));
                             Secret clientsCaKeySecret = createCaKeySecret(clientsCaKeyName, ownerReference, clientsCa, existingClientsCaKeySecret);
@@ -329,13 +333,14 @@ public class CaReconciler {
                         }
 
                         if (clientsCaCertManagerType.equals(CertificateManagerType.CERT_MANAGER_IO)) {
-                            clientsCa.maybeUpdateCertAndGenerations(clientsCaCertManagerCert,
+                            clientsCa.createOrUpdateCertManagerCa(clientsCaCertManagerCert,
                                     existingClientsCaCertSecret == null ? null : Annotations.stringAnnotation(existingClientsCaCertSecret, Annotations.ANNO_STRIMZI_SERVER_CERT_HASH, ""),
                                     null);
                         }
 
                         Secret clientsCaCertSecret = createCaCertSecret(clientsCaCertName, Map.of(), Map.of(), ownerReference, clientsCa, existingClientsCaCertSecret);
                         secretReconciliations.add(secretOperator.reconcile(reconciliation, reconciliation.namespace(), clientsCaCertName, clientsCaCertSecret));
+
                     }
 
                     Promise<Void> caUpdatePromise = Promise.promise();
@@ -352,7 +357,7 @@ public class CaReconciler {
                 });
     }
 
-    Future<String> getCertManagerCaData(CertificateAuthority caConfig) {
+    Future<String> getCertManagerCaCert(CertificateAuthority caConfig) {
         if (caConfig != null && caConfig.getType().equals(CertificateManagerType.CERT_MANAGER_IO)) {
             String certManagerSecretName = caConfig.getCertManager().getCaCert().getSecretName();
             String certManagerSecretKey = caConfig.getCertManager().getCaCert().getCertificate();
