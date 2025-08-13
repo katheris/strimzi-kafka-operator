@@ -390,7 +390,7 @@ public class ClusterCa extends Ca {
         } catch (CertificateException e) {
             throw new RuntimeException(e);
         }
-        if (certPathIsValid(endEntityCertificate, x509CaCert)) {
+        if (CertUtils.certIsTrusted(reconciliation, endEntityCertificate, x509CaCert)) {
             // No key replacement
             Map<String, String> newCaCertData = new HashMap<>();
             newCaCertData.put(CA_CRT, caCert);
@@ -399,7 +399,6 @@ public class ClusterCa extends Ca {
             this.caCertGeneration++;
         } else {
             // key replacement
-            //TODO handle cert chain with intermediate certs
             X509Certificate currentCert = currentCaCertX509();
             String notAfterDate = DATE_TIME_FORMATTER.format(currentCert.getNotAfter().toInstant().atZone(ZoneId.of("Z")));
             Map<String, String> newCaCertData = new HashMap<>();
@@ -409,32 +408,6 @@ public class ClusterCa extends Ca {
             renewalType = RenewalType.REPLACE_KEY;
             this.caCertGeneration++;
             this.caKeyGeneration++;
-        }
-    }
-
-    private boolean certPathIsValid(X509Certificate certToValidate, X509Certificate caCert) {
-        CertPathValidator certPathValidator;
-        CertPath eeCertPath;
-        PKIXParameters pkixParams;
-        try {
-            certPathValidator = CertPathValidator.getInstance("PKIX");
-            CertificateFactory factory = CertificateFactory.getInstance("X.509");
-            TrustAnchor trustAnchor = new TrustAnchor(caCert, null);
-            pkixParams = new PKIXParameters(Collections.singleton(trustAnchor));
-            pkixParams.setRevocationEnabled(false);
-            eeCertPath = factory.generateCertPath(List.of(certToValidate));
-        } catch (NoSuchAlgorithmException | CertificateException | InvalidAlgorithmParameterException e) {
-            throw new RuntimeException(e);
-        }
-        try {
-            certPathValidator.validate(eeCertPath, pkixParams);
-            System.out.println("Certificate valid");
-            return true;
-        } catch (CertPathValidatorException e) {
-            System.out.println("Validation failed: " + e);
-            return false;
-        } catch (InvalidAlgorithmParameterException e) {
-            throw new RuntimeException(e);
         }
     }
 }
