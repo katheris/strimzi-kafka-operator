@@ -53,6 +53,7 @@ import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 
+import java.security.cert.CertificateEncodingException;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -308,7 +309,7 @@ public class CaReconciler {
                         if (clusterCaCertManagerType.equals(CertificateManagerType.CERT_MANAGER_IO)) {
                             clusterCa.createOrUpdateCertManagerCa(clusterCaCertManagerCert,
                                     existingClusterCaCertSecret == null ? null : Annotations.stringAnnotation(existingClusterCaCertSecret, Annotations.ANNO_STRIMZI_SERVER_CERT_HASH, ""),
-                                    cert(coSecret, Ca.CA_CRT));
+                                    cert(coSecret, "cluster-operator.crt"));
                         }
 
                         clusterCaCertSecret = createCaCertSecret(clusterCaCertName, clusterCaCertLabels, clusterCaCertAnnotations, ownerReference, clusterCa, existingClusterCaCertSecret);
@@ -628,8 +629,17 @@ public class CaReconciler {
 
     private Secret createCaCertSecret(String secretName, Map<String, String> additionalLabels, Map<String, String> additionalAnnotations,
                                       OwnerReference ownerReference, Ca ca, Secret existingCaCertSecret) {
-        Map<String, String> certAnnotations = new HashMap<>(2);
+        Map<String, String> certAnnotations = new HashMap<>(3);
         certAnnotations.put(ANNO_STRIMZI_IO_CA_CERT_GENERATION, String.valueOf(ca.caCertGeneration()));
+
+        if (CertificateManagerType.CERT_MANAGER_IO.equals(ca.getType())) {
+            certAnnotations.put(ANNO_STRIMZI_IO_CA_KEY_GENERATION, String.valueOf(ca.caKeyGeneration()));
+            try {
+                certAnnotations.put(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH, CertUtils.getCertificateThumbprint(ca.currentCaCertX509()));
+            } catch (CertificateEncodingException e) {
+                throw new RuntimeException(e);
+            }
+        }
 
         if (ca.postponed()
                 && existingCaCertSecret != null
