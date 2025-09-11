@@ -25,6 +25,7 @@ import io.strimzi.operator.cluster.operator.resource.ResourceOperatorSupplier;
 import io.strimzi.operator.cluster.operator.resource.events.KubernetesRestartEventPublisher;
 import io.strimzi.operator.cluster.operator.resource.kubernetes.BuildConfigOperator;
 import io.strimzi.operator.cluster.operator.resource.kubernetes.BuildOperator;
+import io.strimzi.operator.cluster.operator.resource.kubernetes.CertManagerCertificateOperator;
 import io.strimzi.operator.cluster.operator.resource.kubernetes.ClusterRoleBindingOperator;
 import io.strimzi.operator.cluster.operator.resource.kubernetes.ConfigMapOperator;
 import io.strimzi.operator.cluster.operator.resource.kubernetes.CrdOperator;
@@ -134,7 +135,7 @@ public class ResourceUtils {
                 .build();
     }
 
-    public static Secret createInitialCertManagerCaCertSecret(String clusterNamespace, String clusterName, String secretName, String caCert, boolean addKeyGeneration) {
+    public static Secret createInitialCaCertSecretForCMCa(String clusterNamespace, String clusterName, String secretName, String caCert, boolean addKeyGeneration) {
         X509Certificate x509Certificate;
         String certificateHash;
         try {
@@ -384,7 +385,8 @@ public class ResourceUtils {
                 adminClientProvider(),
                 mock(KubernetesRestartEventPublisher.class),
                 new MockSharedEnvironmentProvider(),
-                mock(BrokersInUseCheck.class));
+                mock(BrokersInUseCheck.class),
+                mock(CertManagerCertificateOperator.class));
 
         when(supplier.secretOperations.getAsync(any(), any())).thenReturn(Future.succeededFuture());
         when(supplier.secretOperations.getAsync(any(), or(endsWith("ca-cert"), endsWith("certs")))).thenReturn(Future.succeededFuture(

@@ -4,6 +4,9 @@
  */
 package io.strimzi.operator.cluster.model;
 
+import io.fabric8.certmanager.api.model.v1.Certificate;
+import io.fabric8.certmanager.api.model.v1.CertificateBuilder;
+import io.fabric8.kubernetes.api.model.OwnerReference;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.Volume;
 import io.fabric8.kubernetes.api.model.VolumeMount;
@@ -15,6 +18,7 @@ import io.strimzi.operator.common.ReconciliationLogger;
 import io.strimzi.operator.common.Util;
 import io.strimzi.operator.common.model.Ca;
 import io.strimzi.operator.common.model.InvalidResourceException;
+import io.strimzi.operator.common.model.Labels;
 
 import java.math.BigInteger;
 import java.security.InvalidAlgorithmParameterException;
@@ -33,6 +37,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -79,6 +84,78 @@ public class CertUtils {
      */
     public static String getCertificateThumbprint(X509Certificate certificate) throws CertificateEncodingException {
         return String.format("%040x", new BigInteger(1, Util.sha1Digest(certificate.getEncoded())));
+    }
+
+    /**
+     * Build Certificate object to give to cert-manager to generate certificate
+     *
+     * @param clusterCa      Cluster CA
+     * @param namespace      Namespace for the Certificate
+     * @param name           Name for the Certificate
+     * @param commonName     Common name for certificates
+     * @param labels         Labels for Certificate
+     * @param ownerReference Owner reference for Certificate
+     * @return Certificate object
+     */
+    public static Certificate buildCertManagerCertificate(ClusterCa clusterCa, String namespace,
+                                                          String name, String commonName,
+                                                          Labels labels, OwnerReference ownerReference) {
+        Certificate certificate = clusterCa.getCertManagerCert(commonName, Ca.IO_STRIMZI);
+        String secretName = name + "cm";
+        if (ownerReference == null) {
+            return new CertificateBuilder(certificate)
+                    .withNewMetadata()
+                        .withName(name)
+                        .withNamespace(namespace)
+                    .endMetadata()
+                    .editSpec()
+                        .withSecretName(secretName)
+                        .withNewSecretTemplate()
+                            .withLabels(labels.toMap())
+                        .endSecretTemplate()
+                    .endSpec()
+                    .build();
+        } else {
+            return new CertificateBuilder(certificate)
+                    .withNewMetadata()
+                        .withName(name)
+                        .withNamespace(namespace)
+                            .withOwnerReferences(ownerReference)
+                    .endMetadata()
+                    .editSpec()
+                        .withSecretName(secretName)
+                        .withNewSecretTemplate()
+                            .withLabels(labels.toMap())
+                        .endSecretTemplate()
+                    .endSpec()
+                    .build();
+        }
+    }
+
+    /**
+     * Builds a clusterCa certificate Secret for the different Strimzi components (TO, UO, KE, ...).
+     * Used when cert-manager has issued the CA Secret.
+     * @param clusterCa The Cluster CA
+     * @param certManagerSecret cert-manager Secret containing the Cluster CA
+     * @param namespace Namspace for the Secret
+     * @param secretName Name of the Secret
+     * @param keyCertName Key under which the certificate will be stored in the new Secret
+     * @param labels Labels
+     * @param ownerReference Owner reference
+     * @return Newly built Secret
+     */
+    public static Secret buildTrustedCertificateSecretFromCertManager(ClusterCa clusterCa, Secret certManagerSecret, String namespace,
+                                                                      String secretName, String keyCertName, Labels labels, OwnerReference ownerReference) {
+        String certHash = getCertificateShortThumbprint(certManagerSecret, "tls.crt");
+        Objects.requireNonNull(certHash);
+
+        return ModelUtils.createSecret(secretName, namespace, labels, ownerReference,
+                Map.of(
+                        Ca.SecretEntry.CRT.asKey(keyCertName), certManagerSecret.getData().get("tls.crt"),
+                        Ca.SecretEntry.KEY.asKey(keyCertName), certManagerSecret.getData().get("tls.key")
+                ),
+                Map.ofEntries(clusterCa.caCertGenerationFullAnnotation(), Map.entry(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH, certHash)),
+                Map.of());
     }
 
     /**
