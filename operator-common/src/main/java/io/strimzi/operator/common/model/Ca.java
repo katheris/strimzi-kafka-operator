@@ -539,10 +539,18 @@ public abstract class Ca {
      * @return Certificate
      */
     public io.fabric8.certmanager.api.model.v1.Certificate getCertManagerCert(String commonName, String organization) {
-        Subject subject = getSubject(commonName, organization);
+        return getCertManagerCert(getSubject(commonName, organization));
+    }
+
+    /**
+     * Get cert-manager Certificate object
+     * @param subject Subject
+     * @return Certificate
+     */
+    protected io.fabric8.certmanager.api.model.v1.Certificate getCertManagerCert(Subject subject) {
         return new CertificateBuilder()
                 .withNewSpec()
-                    .withCommonName(commonName)
+                    .withCommonName(subject.commonName())
                     .withNewPrivateKey()
                         .withAlgorithm("RSA")
                         .withEncoding("PKCS1")

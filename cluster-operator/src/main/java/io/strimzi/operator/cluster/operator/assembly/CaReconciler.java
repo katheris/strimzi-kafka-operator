@@ -21,6 +21,7 @@ import io.strimzi.api.kafka.model.podset.StrimziPodSet;
 import io.strimzi.certs.CertManager;
 import io.strimzi.operator.cluster.ClusterOperatorConfig;
 import io.strimzi.operator.cluster.model.AbstractModel;
+import io.strimzi.operator.cluster.model.CertManagerUtils;
 import io.strimzi.operator.cluster.model.CertUtils;
 import io.strimzi.operator.cluster.model.ClusterCa;
 import io.strimzi.operator.cluster.model.ModelUtils;
@@ -396,15 +397,14 @@ public class CaReconciler {
         if (CertificateManagerType.CERT_MANAGER_IO.equals(clusterCaCertManagerType)) {
             return certManagerCertificateOperator.reconcile(reconciliation, reconciliation.namespace(), KafkaResources.clusterOperatorCertsSecretName(reconciliation.name()),
                     CertUtils.buildCertManagerCertificate(
-                            clusterCa,
                             reconciliation.namespace(),
                             KafkaResources.clusterOperatorCertsSecretName(reconciliation.name()),
-                            "cluster-operator",
+                            clusterCa.getCertManagerCert("cluster-operator", Ca.IO_STRIMZI),
                             clusterOperatorSecretLabels,
                             ownerRef
                     ))
                     .compose(v -> certManagerCertificateOperator.waitForReady(reconciliation, reconciliation.namespace(), KafkaResources.clusterOperatorCertsSecretName(reconciliation.name())))
-                    .compose(v -> secretOperator.getAsync(reconciliation.namespace(), KafkaResources.clusterOperatorCertsSecretName(reconciliation.name()) + "-cm"));
+                    .compose(v -> secretOperator.getAsync(reconciliation.namespace(), CertManagerUtils.certManagerSecretName(KafkaResources.clusterOperatorCertsSecretName(reconciliation.name()))));
         } else {
             return Future.succeededFuture(null);
         }
@@ -428,6 +428,7 @@ public class CaReconciler {
                     }
 
                     if (clusterCaCertManagerType == CertificateManagerType.CERT_MANAGER_IO) {
+                        //TODO should we check whether the new cert is actually trusted? Can we rely on the checks we did earlier? Probably not
                         coSecret = CertUtils.buildTrustedCertificateSecretFromCertManager(
                                 clusterCa,
                                 certManagerSecret,

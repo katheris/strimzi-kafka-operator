@@ -12,6 +12,7 @@ import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.rbac.ClusterRoleBinding;
 import io.fabric8.kubernetes.client.KubernetesClient;
+import io.strimzi.api.kafka.model.common.CertificateManagerType;
 import io.strimzi.api.kafka.model.common.Condition;
 import io.strimzi.api.kafka.model.kafka.Kafka;
 import io.strimzi.api.kafka.model.kafka.KafkaResources;
@@ -50,6 +51,7 @@ import io.strimzi.operator.cluster.operator.resource.KafkaAgentClientProvider;
 import io.strimzi.operator.cluster.operator.resource.KafkaRoller;
 import io.strimzi.operator.cluster.operator.resource.ResourceOperatorSupplier;
 import io.strimzi.operator.cluster.operator.resource.events.KubernetesRestartEventPublisher;
+import io.strimzi.operator.cluster.operator.resource.kubernetes.CertManagerCertificateOperator;
 import io.strimzi.operator.cluster.operator.resource.kubernetes.ClusterRoleBindingOperator;
 import io.strimzi.operator.cluster.operator.resource.kubernetes.ConfigMapOperator;
 import io.strimzi.operator.cluster.operator.resource.kubernetes.CrdOperator;
@@ -152,6 +154,7 @@ public class KafkaReconciler {
     private final NodeOperator nodeOperator;
     private final CrdOperator<KubernetesClient, KafkaNodePool, KafkaNodePoolList> kafkaNodePoolOperator;
     private final KubernetesRestartEventPublisher eventsPublisher;
+    private final CertManagerCertificateOperator certManagerCertificateOperator;
     private final AdminClientProvider adminClientProvider;
     private final KafkaAgentClientProvider kafkaAgentClientProvider;
 
@@ -229,6 +232,7 @@ public class KafkaReconciler {
         this.nodeOperator = supplier.nodeOperator;
         this.kafkaNodePoolOperator = supplier.kafkaNodePoolOperator;
         this.eventsPublisher = supplier.restartEventsPublisher;
+        this.certManagerCertificateOperator = supplier.certManagerCertificateOperator;
 
         this.adminClientProvider = supplier.adminClientProvider;
         this.kafkaAgentClientProvider = supplier.kafkaAgentClientProvider;
@@ -259,6 +263,7 @@ public class KafkaReconciler {
                 .compose(i -> scaleDown())
                 .compose(i -> updateNodePoolStatuses(kafkaStatus))
                 .compose(i -> listeners())
+                .compose(i -> maybeReconcileCertManagerCertificates())
                 .compose(i -> certificateSecrets(clock))
                 .compose(i -> brokerConfigurationConfigMaps())
                 .compose(i -> jmxSecret())
@@ -748,6 +753,26 @@ public class KafkaReconciler {
     }
 
     /**
+     * Manages the Certificate objects that are used when cert-manager is the Certificate issuer
+     *
+     * @return Completes when the Certificate objects were successfully created, deleted or updated
+     */
+    protected Future<Void> maybeReconcileCertManagerCertificates() {
+        if (CertificateManagerType.CERT_MANAGER_IO.equals(clusterCa.getType())) {
+            List<Future<Void>> futures = kafka.generateKafkaNodeCertificateResources(clusterCa, listenerReconciliationResults.bootstrapDnsNames, listenerReconciliationResults.brokerDnsNames)
+                    .stream()
+                    .map(certificate -> {
+                        String certificateName = certificate.getMetadata().getName();
+                        return certManagerCertificateOperator.reconcile(reconciliation, reconciliation.namespace(), certificateName, certificate)
+                                .compose(v -> certManagerCertificateOperator.waitForReady(reconciliation, reconciliation.namespace(), certificateName));
+                    }).toList();
+            return Future.join(futures).mapEmpty();
+        } else {
+            return Future.succeededFuture();
+        }
+    }
+
+    /**
      * Manages the Secrets with the node certificates used by the Kafka nodes.
      *
      * @param clock The clock for supplying the reconciler with the time instant of each reconciliation cycle.
@@ -756,10 +781,11 @@ public class KafkaReconciler {
      * @return      Completes when the Secrets were successfully created, deleted or updated
      */
     protected Future<Void> certificateSecrets(Clock clock) {
+
         return secretOperator.listAsync(reconciliation.namespace(), kafka.getSelectorLabels().withStrimziComponentType(KafkaCluster.COMPONENT_TYPE))
                 .compose(existingSecrets -> {
-                    List<Secret> desiredCertSecrets = kafka.generateCertificatesSecrets(clusterCa, clientsCa, existingSecrets,
-                            listenerReconciliationResults.bootstrapDnsNames, listenerReconciliationResults.brokerDnsNames,
+                    List<Secret> desiredCertSecrets = kafka.generateCertificatesSecrets(clusterCa, clientsCa, coTlsPemIdentity,
+                            existingSecrets, listenerReconciliationResults.bootstrapDnsNames, listenerReconciliationResults.brokerDnsNames,
                             Util.isMaintenanceTimeWindowsSatisfied(reconciliation, maintenanceWindows, clock.instant()));
 
                     List<String> desiredCertSecretNames = desiredCertSecrets.stream().map(secret -> secret.getMetadata().getName()).toList();
