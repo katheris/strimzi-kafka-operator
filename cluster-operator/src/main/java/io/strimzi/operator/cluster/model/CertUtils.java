@@ -145,21 +145,19 @@ public class CertUtils {
     /**
      * Build Certificate object to give to cert-manager to generate certificate
      *
-     * @param clusterCa      Cluster CA
-     * @param namespace      Namespace for the Certificate
-     * @param name           Name for the Certificate
-     * @param commonName     Common name for certificates
-     * @param labels         Labels for Certificate
-     * @param ownerReference Owner reference for Certificate
+     * @param namespace             Namespace for the Certificate
+     * @param name                  Name for the Certificate
+     * @param initialCertificate    Certificate to use as a base
+     * @param labels            Labels for Certificate
+     * @param ownerReference    Owner reference for Certificate
      * @return Certificate object
      */
-    public static Certificate buildCertManagerCertificate(ClusterCa clusterCa, String namespace,
-                                                          String name, String commonName,
+    public static Certificate buildCertManagerCertificate(String namespace,
+                                                          String name, Certificate initialCertificate,
                                                           Labels labels, OwnerReference ownerReference) {
-        Certificate certificate = clusterCa.getCertManagerCert(commonName, Ca.IO_STRIMZI);
-        String secretName = name + "cm";
+        String secretName = CertManagerUtils.certManagerSecretName(name);
         if (ownerReference == null) {
-            return new CertificateBuilder(certificate)
+            return new CertificateBuilder(initialCertificate)
                     .withNewMetadata()
                         .withName(name)
                         .withNamespace(namespace)
@@ -172,7 +170,7 @@ public class CertUtils {
                     .endSpec()
                     .build();
         } else {
-            return new CertificateBuilder(certificate)
+            return new CertificateBuilder(initialCertificate)
                     .withNewMetadata()
                         .withName(name)
                         .withNamespace(namespace)
@@ -202,7 +200,8 @@ public class CertUtils {
      */
     public static Secret buildTrustedCertificateSecretFromCertManager(ClusterCa clusterCa, Secret certManagerSecret, String namespace,
                                                                       String secretName, String keyCertName, Labels labels, OwnerReference ownerReference) {
-        String certHash = getCertificateShortThumbprint(certManagerSecret, "tls.crt");
+        //TODO annotations here for cert gen for clients ca?
+        String certHash = getCertificateThumbprint(certManagerSecret, "tls.crt");
         Objects.requireNonNull(certHash);
 
         return ModelUtils.createSecret(secretName, namespace, labels, ownerReference,
@@ -212,6 +211,21 @@ public class CertUtils {
                 ),
                 Map.ofEntries(clusterCa.caCertGenerationFullAnnotation(), Map.entry(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH, certHash)),
                 Map.of());
+    }
+
+    /**
+     * Checks if the hashes of certs in a cert Secret have changed
+     * @param existingCertSecret existing Secret
+     * @param newCertSecret new Secret
+     * @return whether they've changed
+     */
+    public static boolean certManagerCertUpdated(Secret existingCertSecret, Secret newCertSecret) {
+        String existingCertHash = Annotations.stringAnnotation(existingCertSecret, Annotations.ANNO_STRIMZI_SERVER_CERT_HASH, null);
+        String newCertHash = Annotations.stringAnnotation(newCertSecret, Annotations.ANNO_STRIMZI_SERVER_CERT_HASH, null);
+        if (existingCertHash == null || newCertHash == null) {
+            throw new RuntimeException(String.format("Failed to find server-cert-hash annotation for Secret %s/%s", existingCertSecret.getMetadata().getNamespace(), existingCertSecret.getMetadata().getName()));
+        }
+        return !existingCertHash.equals(newCertHash);
     }
 
     /**
