@@ -883,9 +883,9 @@ public abstract class Ca {
     }
 
     /**
-     * Gets the current CA certificate as an X509Certificate
+     * Gets the current CA certificate as an X509Certificate.
      *
-     * @return The current CA certificate as an X509Certificate
+     * @return The current CA certificate as an X509Certificate.
      */
     public X509Certificate currentCaCertX509() {
         if (caCertData.get(CA_CRT) != null) {
