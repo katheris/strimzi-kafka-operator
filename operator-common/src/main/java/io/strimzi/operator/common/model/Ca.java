@@ -52,6 +52,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
+import java.util.regex.Pattern;
 
 import static java.time.temporal.ChronoField.DAY_OF_MONTH;
 import static java.time.temporal.ChronoField.HOUR_OF_DAY;
@@ -67,6 +68,11 @@ import static java.util.Collections.singletonMap;
  */
 @SuppressWarnings("checkstyle:CyclomaticComplexity")
 public abstract class Ca {
+    /**
+     * Pattern used for the old CA certificate during CA renewal. This pattern is used to recognize this certificate
+     * and delete it when it is not needed anymore.
+     */
+    public static final Pattern OLD_CA_CERT_PATTERN = Pattern.compile("^ca-\\d{4}-\\d{2}-\\d{2}T\\d{2}-\\d{2}-\\d{2}Z.crt$");
 
     /**
      * A certificate entry in a Kubernetes Secret. Used to construct the keys in the Secret data where certificates are stored.
@@ -298,7 +304,7 @@ public abstract class Ca {
     protected final CertManager certManager;
     protected final int validityDays;
     protected final int renewalDays;
-    protected final boolean generateCa;
+    public final boolean generateCa;
     protected String caCertSecretName;
     protected int caCertGeneration;
     protected String caKeySecretName;
@@ -306,7 +312,7 @@ public abstract class Ca {
     protected Map<String, String> caCertData;
     protected Map<String, String> caKeyData;
     protected RenewalType renewalType;
-    protected boolean caCertsRemoved;
+    public boolean caCertsRemoved;
     protected final CertificateExpirationPolicy policy;
 
     /**
@@ -941,7 +947,7 @@ public abstract class Ca {
      * @param predicate predicate to match for removing a certificate
      * @return boolean indicating whether any certs were removed
      */
-    protected boolean removeCerts(Map<String, String> newData, Predicate<Map.Entry<String, String>> predicate) {
+    public boolean removeCerts(Map<String, String> newData, Predicate<Map.Entry<String, String>> predicate) {
         Iterator<Map.Entry<String, String>> iter = newData.entrySet().iterator();
         List<String> removed = new ArrayList<>();
         while (iter.hasNext()) {

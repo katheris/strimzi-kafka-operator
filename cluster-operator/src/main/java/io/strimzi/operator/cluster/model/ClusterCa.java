@@ -100,6 +100,32 @@ public class ClusterCa extends Ca {
     }
 
     /**
+     * Get function to generate the subject for Cruise Control certificates
+     *
+     * @param namespace Namespace of the Kafka cluster
+     * @param clusterName Name of the Kafka cluster
+     *
+     * @return Function that can be used to generate the subject for the Cruise Control certificates
+     */
+    public Function<NodeRef, Subject> ccCertsSubjectFn(String namespace, String clusterName) {
+        DnsNameGenerator ccDnsGenerator = DnsNameGenerator.of(namespace, CruiseControlResources.serviceName(clusterName));
+
+        return node -> {
+            Subject.Builder subject = new Subject.Builder()
+                    .withOrganizationName("io.strimzi")
+                    .withCommonName(CruiseControlResources.serviceName(clusterName));
+
+            subject.addDnsName(CruiseControlResources.serviceName(clusterName));
+            subject.addDnsName(String.format("%s.%s", CruiseControlResources.serviceName(clusterName), namespace));
+            subject.addDnsName(ccDnsGenerator.serviceDnsNameWithoutClusterDomain());
+            subject.addDnsName(ccDnsGenerator.serviceDnsName());
+            subject.addDnsName(CruiseControlResources.serviceName(clusterName));
+            subject.addDnsName("localhost");
+            return subject.build();
+        };
+    }
+
+    /**
      * Prepares the Cruise Control certificate. It either reuses the existing certificate, renews it or generates new
      * certificate if needed.
      *
@@ -113,6 +139,7 @@ public class ClusterCa extends Ca {
      *
      * @throws IOException IOException is thrown when it is raised while working with the certificates
      */
+    //TODO Kate maybe this moves
     protected Map<String, CertAndKey> generateCcCerts(
             String namespace,
             String clusterName,
@@ -120,27 +147,11 @@ public class ClusterCa extends Ca {
             Set<NodeRef> nodes,
             boolean isMaintenanceTimeWindowsSatisfied
     ) throws IOException {
-        DnsNameGenerator ccDnsGenerator = DnsNameGenerator.of(namespace, CruiseControlResources.serviceName(clusterName));
-
-        Function<NodeRef, Subject> subjectFn = node -> {
-            Subject.Builder subject = new Subject.Builder()
-                    .withOrganizationName("io.strimzi")
-                    .withCommonName(CruiseControlResources.serviceName(clusterName));
-
-            subject.addDnsName(CruiseControlResources.serviceName(clusterName));
-            subject.addDnsName(String.format("%s.%s", CruiseControlResources.serviceName(clusterName), namespace));
-            subject.addDnsName(ccDnsGenerator.serviceDnsNameWithoutClusterDomain());
-            subject.addDnsName(ccDnsGenerator.serviceDnsName());
-            subject.addDnsName(CruiseControlResources.serviceName(clusterName));
-            subject.addDnsName("localhost");
-            return subject.build();
-        };
-
         LOGGER.debugCr(reconciliation, "{}: Reconciling Cruise Control certificates", this);
         return maybeCopyOrGenerateCerts(
             reconciliation,
             nodes,
-            subjectFn,
+            ccCertsSubjectFn(namespace, clusterName),
             existingCertificates,
             isMaintenanceTimeWindowsSatisfied,
             false
@@ -148,31 +159,20 @@ public class ClusterCa extends Ca {
     }
 
     /**
-     * Prepares the Kafka broker certificates. It either reuses the existing certificates, renews them or generates new
-     * certificates if needed.
+     * Get function to generate the subject for Kafka node certificates
      *
-     * @param namespace                             Namespace of the Kafka cluster
-     * @param clusterName                           Name of the Kafka cluster
-     * @param existingCertificates                  Existing certificates (or null if they do not exist yet)
-     * @param nodes                                 Nodes that are part of the Kafka cluster
-     * @param externalBootstrapAddresses            List of external bootstrap addresses (used for certificate SANs)
-     * @param externalAddresses                     Map with external listener addresses for the different nodes (used for certificate SANs)
-     * @param isMaintenanceTimeWindowsSatisfied     Flag indicating whether we can do maintenance tasks or not
+     * @param namespace Namespace of the Kafka cluster
+     * @param clusterName Name of the Kafka cluster
+     * @param externalBootstrapAddresses List of external bootstrap addresses (used for certificate SANs)
+     * @param externalAddresses Map with external listener addresses for the different nodes (used for certificate SANs)
      *
-     * @return Map with CertAndKey objects containing the public and private keys for the different brokers
-     *
-     * @throws IOException IOException is thrown when it is raised while working with the certificates
+     * @return Function that can be used to generate the subject for the Kafka node certificates
      */
-    protected Map<String, CertAndKey> generateBrokerCerts(
-            String namespace,
-            String clusterName,
-            Map<String, CertAndKey> existingCertificates,
-            Set<NodeRef> nodes,
-            Set<String> externalBootstrapAddresses,
-            Map<Integer, Set<String>> externalAddresses,
-            boolean isMaintenanceTimeWindowsSatisfied
-    ) throws IOException {
-        Function<NodeRef, Subject> subjectFn = node -> {
+    public Function<NodeRef, Subject> kafkaNodeCertsSubjectFn(String namespace, String clusterName,
+                                                       Set<String> externalBootstrapAddresses,
+                                                       Map<Integer, Set<String>> externalAddresses) {
+
+        return node -> {
             Subject.Builder subject = new Subject.Builder()
                     .withOrganizationName("io.strimzi")
                     .withCommonName(KafkaResources.kafkaComponentName(clusterName));
@@ -209,13 +209,40 @@ public class ClusterCa extends Ca {
 
             return subject.build();
         };
+    }
 
+    /**
+     * Prepares the Kafka broker certificates. It either reuses the existing certificates, renews them or generates new
+     * certificates if needed.
+     *
+     * @param namespace                             Namespace of the Kafka cluster
+     * @param clusterName                           Name of the Kafka cluster
+     * @param existingCertificates                  Existing certificates (or null if they do not exist yet)
+     * @param nodes                                 Nodes that are part of the Kafka cluster
+     * @param externalBootstrapAddresses            List of external bootstrap addresses (used for certificate SANs)
+     * @param externalAddresses                     Map with external listener addresses for the different nodes (used for certificate SANs)
+     * @param isMaintenanceTimeWindowsSatisfied     Flag indicating whether we can do maintenance tasks or not
+     *
+     * @return Map with CertAndKey objects containing the public and private keys for the different brokers
+     *
+     * @throws IOException IOException is thrown when it is raised while working with the certificates
+     */
+    //TODO Kate maybe this moves
+    protected Map<String, CertAndKey> generateBrokerCerts(
+            String namespace,
+            String clusterName,
+            Map<String, CertAndKey> existingCertificates,
+            Set<NodeRef> nodes,
+            Set<String> externalBootstrapAddresses,
+            Map<Integer, Set<String>> externalAddresses,
+            boolean isMaintenanceTimeWindowsSatisfied
+    ) throws IOException {
         LOGGER.debugCr(reconciliation, "{}: Reconciling kafka broker certificates", this);
 
         return maybeCopyOrGenerateCerts(
             reconciliation,
             nodes,
-            subjectFn,
+            kafkaNodeCertsSubjectFn(namespace, clusterName, externalBootstrapAddresses, externalAddresses),
             existingCertificates,
             isMaintenanceTimeWindowsSatisfied,
             true
@@ -241,7 +268,8 @@ public class ClusterCa extends Ca {
      *
      * @throws IOException Throws IOException when working with files fails
      */
-    /* test */ Map<String, CertAndKey> maybeCopyOrGenerateCerts(
+    //TODO Kate remove this
+    private Map<String, CertAndKey> maybeCopyOrGenerateCerts(
             Reconciliation reconciliation,
             Set<NodeRef> nodes,
             Function<NodeRef, Subject> subjectFn,
@@ -347,6 +375,7 @@ public class ClusterCa extends Ca {
      *
      * @return  True if the subjects are different, false otherwise
      */
+    //TODO Kate remove this
     /* test */ boolean certSubjectChanged(CertAndKey certAndKey, Subject desiredSubject, String podName)    {
         Collection<String> desiredAltNames = desiredSubject.subjectAltNames().values();
         Collection<String> currentAltNames = getSubjectAltNames(certAndKey.cert());
@@ -369,6 +398,7 @@ public class ClusterCa extends Ca {
      *
      * @return  List of certificate Subject Alternate Names
      */
+    //TODO Kate remove this
     private List<String> getSubjectAltNames(byte[] certificate) {
         List<String> subjectAltNames = null;
 
