@@ -785,7 +785,7 @@ public class KafkaReconciler {
         return secretOperator.listAsync(reconciliation.namespace(), kafka.getSelectorLabels().withStrimziComponentType(KafkaCluster.COMPONENT_TYPE))
                 .compose(existingSecrets -> collectListenerCustomCerts()
                         .compose(customCertsData -> {
-                            List<Secret> desiredCertSecrets = kafka.generateCertificatesSecrets(clusterCa, coTlsPemIdentity,
+                            List<Secret> desiredCertSecrets = kafka.generateCertificatesSecrets(clusterCa,
                                     existingSecrets, customCertsData, listenerReconciliationResults.bootstrapDnsNames, listenerReconciliationResults.brokerDnsNames,
                                     Util.isMaintenanceTimeWindowsSatisfied(reconciliation, maintenanceWindows, clock.instant()));
 

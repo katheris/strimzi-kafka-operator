@@ -1333,7 +1333,7 @@ public abstract class Ca {
      *
      * @return True if the CA certificate can be used to validate the provided certificate or certificate chain. False otherwise.
      */
-    protected static boolean certIsTrusted(Reconciliation reconciliation, List<X509Certificate> certChainToValidate, X509Certificate caCert) {
+    public static boolean certIsTrusted(Reconciliation reconciliation, List<X509Certificate> certChainToValidate, X509Certificate caCert) {
         CertPathValidator certPathValidator;
         CertPath eeCertPath;
         PKIXParameters pkixParams;

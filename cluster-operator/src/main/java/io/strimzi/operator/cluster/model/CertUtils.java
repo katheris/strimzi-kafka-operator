@@ -13,7 +13,6 @@ import io.fabric8.kubernetes.api.model.VolumeMount;
 import io.strimzi.api.kafka.model.common.CertSecretSource;
 import io.strimzi.certs.CertAndKey;
 import io.strimzi.operator.common.Annotations;
-import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.ReconciliationLogger;
 import io.strimzi.operator.common.Util;
 import io.strimzi.operator.common.model.Ca;
@@ -21,24 +20,13 @@ import io.strimzi.operator.common.model.InvalidResourceException;
 import io.strimzi.operator.common.model.Labels;
 
 import java.math.BigInteger;
-import java.security.InvalidAlgorithmParameterException;
-import java.security.NoSuchAlgorithmException;
-import java.security.cert.CertPath;
-import java.security.cert.CertPathValidator;
-import java.security.cert.CertPathValidatorException;
 import java.security.cert.CertificateEncodingException;
-import java.security.cert.CertificateException;
-import java.security.cert.CertificateFactory;
-import java.security.cert.PKIXParameters;
-import java.security.cert.TrustAnchor;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 
 /**
  * Certificate utility methods
@@ -381,70 +369,6 @@ public class CertUtils {
             return String.join(";", paths);
         } else {
             return null;
-        }
-    }
-
-    /**
-     * Extract pairs of public certificates and private keys from a Secret
-     *
-     * @param secret    Secret to extract certificates and keys from
-     * @param nodes     Set of nodes the Secret contains certificates and keys for
-     *
-     * @return  Map of public certificates and private keys
-     */
-    public static Map<String, CertAndKey> extractCertsAndKeysFromSecret(Secret secret, Set<NodeRef> nodes)    {
-        if (secret == null || secret.getData() == null || secret.getData().isEmpty()) {
-            return null;
-        } else {
-            Map<String, String> certificateData = secret.getData();
-            Map<String, CertAndKey> certsAndKeys = new HashMap<>();
-
-            for (NodeRef node : nodes) {
-                String podName = node.podName();
-                String keyData = certificateData.get(Ca.SecretEntry.KEY.asKey(podName));
-                String certData = certificateData.get(Ca.SecretEntry.CRT.asKey(podName));
-                if (keyData != null && certData != null) {
-                    certsAndKeys.put(podName, new CertAndKey(Util.decodeBytesFromBase64(keyData), Util.decodeBytesFromBase64(certData)));
-                }
-            }
-
-            return certsAndKeys;
-        }
-    }
-
-    /**
-     * Validates whether the provided cert is trusted using the provide CA certificate.
-     *
-     * @param reconciliation Reconciliation marker
-     * @param certToValidate Certificate to validate. Can be a single certificate or a chain of certificates as a single certificate file.
-     * @param caCert Ca certificate to use for validation.
-     *
-     * @return True if the CA certificate can be used to validate the provided certificate or certificate chain. False otherwise.
-     */
-    public static boolean certIsTrusted(Reconciliation reconciliation, X509Certificate certToValidate, X509Certificate caCert) {
-        CertPathValidator certPathValidator;
-        CertPath eeCertPath;
-        PKIXParameters pkixParams;
-        try {
-            certPathValidator = CertPathValidator.getInstance("PKIX");
-            CertificateFactory factory = CertificateFactory.getInstance("X.509");
-            TrustAnchor trustAnchor = new TrustAnchor(caCert, null);
-            pkixParams = new PKIXParameters(Collections.singleton(trustAnchor));
-            pkixParams.setRevocationEnabled(false);
-            eeCertPath = factory.generateCertPath(List.of(certToValidate));
-        } catch (NoSuchAlgorithmException | CertificateException | InvalidAlgorithmParameterException e) {
-            LOGGER.errorCr(reconciliation, "Error constructing objects to validate certificate chain.", e);
-            throw new RuntimeException(e);
-        }
-        try {
-            certPathValidator.validate(eeCertPath, pkixParams);
-            LOGGER.debugCr(reconciliation, "Certificate chain validated using supplied CA cert.");
-            return true;
-        } catch (CertPathValidatorException e) {
-            LOGGER.errorCr(reconciliation, "Certificate chain cannot be validated with supplied CA cert.", e);
-            return false;
-        } catch (InvalidAlgorithmParameterException e) {
-            throw new RuntimeException(e);
         }
     }
 }

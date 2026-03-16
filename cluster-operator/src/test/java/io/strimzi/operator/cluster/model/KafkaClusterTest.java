@@ -263,7 +263,7 @@ public class KafkaClusterTest {
         ClientsCa clientsCa = new ClientsCa(Reconciliation.DUMMY_RECONCILIATION, new OpenSslCertManager(), new PasswordGenerator(10, "a", "a"), null, null, null, null, 365, 30, true, CertificateManagerType.STRIMZI_IO, CertificateExpirationPolicy.RENEW_CERTIFICATE);
         clientsCa.createOrUpdateStrimziManagedCa(true, false, false);
 
-        return KC.generateCertificatesSecrets(clusterCa, null, List.of(), Map.of(), externalBootstrapAddress, externalAddresses, true);
+        return KC.generateCertificatesSecrets(clusterCa, List.of(), Map.of(), externalBootstrapAddress, externalAddresses, true);
     }
 
     //////////
@@ -1483,7 +1483,7 @@ public class KafkaClusterTest {
         ClusterCa clusterCa = new ClusterCa(Reconciliation.DUMMY_RECONCILIATION, new OpenSslCertManager(), new PasswordGenerator(10, "a", "a"), CLUSTER, null, null);
         clusterCa.createOrUpdateStrimziManagedCa(true, false, false);
 
-        List<Secret> secrets = KC.generateCertificatesSecrets(clusterCa, null, List.of(), Map.of("listener1-9999.crt", "cert", "listener1-9999.key", "key"), null, Map.of(), true);
+        List<Secret> secrets = KC.generateCertificatesSecrets(clusterCa, List.of(), Map.of("listener1-9999.crt", "cert", "listener1-9999.key", "key"), null, Map.of(), true);
         secrets.forEach(secret -> {
             assertThat(secret.getData().get("listener1-9999.crt"), is("cert"));
             assertThat(secret.getData().get("listener1-9999.key"), is("key"));

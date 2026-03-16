@@ -500,7 +500,7 @@ public class ClusterCa extends Ca {
         } catch (CertificateException e) {
             throw new RuntimeException(e);
         }
-        if (CertUtils.certIsTrusted(reconciliation, endEntityCertificate, x509CaCert)) {
+        if (Ca.certIsTrusted(reconciliation, List.of(endEntityCertificate), x509CaCert)) {
             // No key replacement
             Map<String, String> newCaCertData = new HashMap<>();
             newCaCertData.put(CA_CRT, caCert);

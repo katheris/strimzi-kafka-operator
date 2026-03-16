@@ -95,7 +95,7 @@ public class PemTrustSet {
      *
      * @return  The list of trusted certificates as X509Certificate.
      */
-    private List<X509Certificate> asX509Certificates() {
+    public List<X509Certificate> asX509Certificates() {
         return trustedCertificateMap.entrySet()
                 .stream()
                 .map(entry -> {

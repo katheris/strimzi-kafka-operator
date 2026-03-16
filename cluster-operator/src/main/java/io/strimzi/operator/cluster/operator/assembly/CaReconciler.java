@@ -462,7 +462,7 @@ public class CaReconciler {
                         if (coSecret == null) {
                             coSecret = newCoSecret;
                         } else if (CertManagerUtils.certManagerCertUpdated(coSecret, newCoSecret)) {
-                            if (CertUtils.certIsTrusted(reconciliation, cert(newCoSecret, "cluster-operator.crt"), clusterCa.currentCaCertX509())) {
+                            if (Ca.certIsTrusted(reconciliation, List.of(cert(newCoSecret, "cluster-operator.crt")), (clusterCa.currentCaCertX509()))) {
                                 LOGGER.infoCr(reconciliation, "New certificate for cluster operator, updating Secret.");
                                 coSecret = newCoSecret;
                             } else {

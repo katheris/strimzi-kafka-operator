@@ -159,7 +159,7 @@ public class KafkaExporterReconciler {
                         Future<Secret> secretFuture;
                         if (CertificateManagerType.CERT_MANAGER_IO.equals(clusterCa.getType())) {
                             secretFuture = ReconcilerUtils.clusterCaPemTrustSet(reconciliation, secretOperator)
-                                    .map(pemTrustSet -> kafkaExporter.generateCertificatesSecretForCertManagerCA(clusterCa, oldSecret, certManagerSecret, pemTrustSet));
+                                    .map(pemTrustSet -> kafkaExporter.generateCertificatesSecretForCertManagerCA(clusterCa, oldSecret, certManagerSecret));
                         } else {
                             secretFuture = Future.succeededFuture(kafkaExporter.generateCertificatesSecretForStrimziCa(clusterCa, oldSecret, Util.isMaintenanceTimeWindowsSatisfied(reconciliation, maintenanceWindows, clock.instant())));
                         }
