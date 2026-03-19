@@ -104,7 +104,12 @@ public class ClusterCa extends Ca {
     }
 
     @Override
-    protected String caName() {
+    public String commonName() {
+        return "cluster-ca";
+    }
+
+    @Override
+    public String caName() {
         return "Cluster CA";
     }
 

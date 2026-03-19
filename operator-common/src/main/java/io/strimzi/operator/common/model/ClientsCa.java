@@ -90,7 +90,12 @@ public class ClientsCa extends Ca {
     }
 
     @Override
-    protected String caName() {
+    public String commonName() {
+        return "clients-ca";
+    }
+
+    @Override
+    public String caName() {
         return "Clients CA";
     }
 }

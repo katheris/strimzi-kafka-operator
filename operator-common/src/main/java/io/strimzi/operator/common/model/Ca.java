@@ -214,11 +214,11 @@ public abstract class Ca {
          */
         NOOP() {
             @Override
-            public String preDescription(String keySecretName, String certSecretName) {
-                return "CA key (in " + keySecretName + ") and certificate (in " + certSecretName + ") already exist and do not need replacing or renewing";
+            public String preDescription(String caName) {
+                return "CA key and certificate (in " + caName + ") already exist and do not need replacing or renewing";
             }
             @Override
-            public String postDescription(String keySecretName, String certSecretName) {
+            public String postDescription(String caName) {
                 return "noop";
             }
         },
@@ -227,11 +227,11 @@ public abstract class Ca {
          */
         POSTPONED() {
             @Override
-            public String preDescription(String keySecretName, String certSecretName) {
+            public String preDescription(String caName) {
                 return "CA operation was postponed and will be done in the next maintenance window";
             }
             @Override
-            public String postDescription(String keySecretName, String certSecretName) {
+            public String postDescription(String caName) {
                 return "postponed";
             }
         },
@@ -240,12 +240,12 @@ public abstract class Ca {
          */
         CREATE() {
             @Override
-            public String preDescription(String keySecretName, String certSecretName) {
-                return "CA key (in " + keySecretName + ") and certificate (in " + certSecretName + ") needs to be created";
+            public String preDescription(String caName) {
+                return "CA key and certificate (in " + caName + ") needs to be created";
             }
             @Override
-            public String postDescription(String keySecretName, String certSecretName) {
-                return "CA key (in " + keySecretName + ") and certificate (in " + certSecretName + ") created";
+            public String postDescription(String caName) {
+                return "CA key and certificate (in " + caName + ") created";
             }
         },
         /**
@@ -253,12 +253,12 @@ public abstract class Ca {
          */
         RENEW_CERT() {
             @Override
-            public String preDescription(String keySecretName, String certSecretName) {
-                return "CA certificate (in " + certSecretName + ") needs to be renewed";
+            public String preDescription(String caName) {
+                return "CA certificate (in " + caName + ") needs to be renewed";
             }
             @Override
-            public String postDescription(String keySecretName, String certSecretName) {
-                return "CA certificate (in " + certSecretName + ") renewed";
+            public String postDescription(String caName) {
+                return "CA certificate (in " + caName + ") renewed";
             }
         },
         /**
@@ -266,12 +266,12 @@ public abstract class Ca {
          */
         REPLACE_KEY() {
             @Override
-            public String preDescription(String keySecretName, String certSecretName) {
-                return "CA key (in " + keySecretName + ") needs to be replaced";
+            public String preDescription(String caName) {
+                return "CA key (in " + caName + ") needs to be replaced";
             }
             @Override
-            public String postDescription(String keySecretName, String certSecretName) {
-                return "CA key (in " + keySecretName + ") replaced";
+            public String postDescription(String caName) {
+                return "CA key (in " + caName + ") replaced";
             }
         };
 
@@ -281,22 +281,20 @@ public abstract class Ca {
         /**
          * Pre-renewal description which is used to log what is going to happen.
          *
-         * @param keySecretName     Name of the Secret
-         * @param certSecretName    Key in the Secret
+         * @param caName     Name of the CA
          *
          * @return  String with the description
          */
-        public abstract String preDescription(String keySecretName, String certSecretName);
+        public abstract String preDescription(String caName);
 
         /**
          * Post-renewal description which is used to log what was just done.
          *
-         * @param keySecretName     Name of the Secret
-         * @param certSecretName    Key in the Secret
+         * @param caName     Name of the CA
          *
          * @return  String with the description
          */
-        public abstract String postDescription(String keySecretName, String certSecretName);
+        public abstract String postDescription(String caName);
     }
 
     protected final String commonName;
@@ -373,7 +371,8 @@ public abstract class Ca {
         this.clock = Clock.systemUTC();
     }
 
-    protected abstract String caName();
+    public abstract String caName();
+    public abstract String commonName();
 
     /**
      * Sets the clock to some specific value. This method is useful in testing. But it has to be public because of how
