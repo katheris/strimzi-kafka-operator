@@ -570,55 +570,12 @@ public abstract class Ca {
      */
     public void createRenewOrReplace(boolean maintenanceWindowSatisfied, boolean forceReplace, boolean forceRenew) {
         if (generateCa) {
-            X509Certificate currentCert = currentCaCertX509();
-            Map<String, String> certData;
-            Map<String, String> keyData;
-            this.renewalType = shouldCreateOrRenew(currentCert, maintenanceWindowSatisfied, forceReplace, forceRenew);
+            this.renewalType = shouldCreateOrRenew(maintenanceWindowSatisfied, forceReplace, forceRenew);
             LOGGER.debugCr(reconciliation, "{} renewalType {}", this, renewalType);
+            CaData updatedCaData = executeCreateOrRenew();
 
-            switch (renewalType) {
-                case CREATE -> {
-                    keyData = new HashMap<>(1);
-                    certData = new HashMap<>(3);
-                    generateCaKeyAndCert(nextCaSubject(caKeyGeneration), keyData, certData);
-                }
-                case REPLACE_KEY -> {
-                    keyData = new HashMap<>(1);
-                    certData = new HashMap<>(caCertData);
-                    if (certData.containsKey(CA_CRT)) {
-                        String notAfterDate = DATE_TIME_FORMATTER.format(currentCert.getNotAfter().toInstant().atZone(ZoneId.of("Z")));
-                        addCertCaToTrustStore("ca-" + notAfterDate + SecretEntry.CRT.suffix, certData);
-                        certData.put("ca-" + notAfterDate + SecretEntry.CRT.suffix, certData.remove(CA_CRT));
-                    }
-                    ++caCertGeneration;
-                    generateCaKeyAndCert(nextCaSubject(++caKeyGeneration), keyData, certData);
-                }
-                case RENEW_CERT -> {
-                    keyData = new HashMap<>(caKeyData);
-                    certData = new HashMap<>(3);
-                    ++caCertGeneration;
-                    renewCaCert(nextCaSubject(caKeyGeneration), certData);
-                }
-                default -> {
-                    keyData = new HashMap<>(caKeyData);
-                    certData = new HashMap<>(caCertData);
-                    // coming from an older version, the secret could not have the CA truststore
-                    if (!certData.containsKey(CA_STORE)) {
-                        addCertCaToTrustStore(CA_CRT, certData);
-                    }
-                }
-            }
-
-            if (removeCerts(certData, this::removeExpiredCert)) {
-                LOGGER.infoCr(reconciliation, "{}: Expired CA certificates removed", this);
-                this.caCertsRemoved = true;
-            }
-
-            if (renewalType != RenewalType.NOOP && renewalType != RenewalType.POSTPONED) {
-                LOGGER.debugCr(reconciliation, "{}: {}", this, renewalType.postDescription(caName()));
-            }
-            caCertData = certData;
-            caKeyData = keyData;
+            caCertData = updatedCaData.certData;
+            caKeyData = updatedCaData.keyData;
         }
     }
 
@@ -657,7 +614,8 @@ public abstract class Ca {
             .withOrganizationName(IO_STRIMZI).build();
     }
 
-    private RenewalType shouldCreateOrRenew(X509Certificate currentCert, boolean maintenanceWindowSatisfied, boolean forceReplace, boolean forceRenew) {
+    private RenewalType shouldCreateOrRenew(boolean maintenanceWindowSatisfied, boolean forceReplace, boolean forceRenew) {
+        X509Certificate x509Certificate;
         String reason = null;
         RenewalType renewalType = RenewalType.NOOP;
         if (caKeyData.get(CA_KEY) == null) {
@@ -682,9 +640,8 @@ public abstract class Ca {
             } else {
                 renewalType = RenewalType.POSTPONED;
             }
-        } else if (currentCert != null
-                && certNeedsRenewal(currentCert)) {
-            reason = "Within renewal period for CA certificate (expires on " + currentCert.getNotAfter() + ")";
+        } else if ((x509Certificate = currentCaCertX509()) != null && certNeedsRenewal(x509Certificate)) {
+            reason = "Within renewal period for CA certificate (expires on " + x509Certificate.getNotAfter() + ")";
 
             if (maintenanceWindowSatisfied) {
                 renewalType = switch (policy) {
@@ -704,6 +661,73 @@ public abstract class Ca {
         }
 
         return renewalType;
+    }
+
+    /**
+     * Executes the correct renewal action based on the renewal type.
+     *
+     * @return CaData containing the updated key and cert data
+     */
+    private CaData executeCreateOrRenew() {
+        Subject subject = nextCaSubject(caKeyGeneration);
+
+        CaData updatedCaData = switch (renewalType) {
+            case CREATE -> {
+                Map<String, String> keyData = new HashMap<>(1);
+                Map<String, String> certData = new HashMap<>(3);
+                generateCaKeyAndCert(subject, keyData, certData);
+                yield new CaData(keyData, certData);
+            }
+            case REPLACE_KEY -> {
+                Map<String, String> keyData = new HashMap<>(1);
+                Map<String, String> certData = new HashMap<>(caCertData);
+                preserveCurrentCertInTruststore(currentCaCertX509(), certData);
+                ++caCertGeneration;
+                generateCaKeyAndCert(nextCaSubject(++caKeyGeneration), keyData, certData);
+                yield new CaData(keyData, certData);
+            }
+            case RENEW_CERT -> {
+                Map<String, String> keyData = new HashMap<>(caKeyData);
+                Map<String, String> certData = new HashMap<>(3);
+                ++caCertGeneration;
+                renewCaCert(subject, certData);
+                yield new CaData(keyData, certData);
+            }
+            case POSTPONED, NOOP -> {
+                Map<String, String> keyData = new HashMap<>(caKeyData);
+                Map<String, String> certData = new HashMap<>(caCertData);
+                // coming from an older version, the secret could not have the CA truststore
+                if (!certData.containsKey(CA_STORE)) {
+                    addCertCaToTrustStore(CA_CRT, certData);
+                }
+                yield new CaData(keyData, certData);
+            }
+        };
+
+        // Remove expired certificates
+        if (removeCerts(updatedCaData.certData, this::removeExpiredCert)) {
+            LOGGER.infoCr(reconciliation, "{}: Expired CA certificates removed", this);
+            this.caCertsRemoved = true;
+        }
+        if (renewalType != RenewalType.NOOP && renewalType != RenewalType.POSTPONED) {
+            LOGGER.debugCr(reconciliation, "{}: {}", this, renewalType.postDescription(caName()));
+        }
+        return updatedCaData;
+    }
+
+    /**
+     * Preserves the current CA certificate in the truststore with a timestamped name before key replacement.
+     * Renames ca.crt to ca-{timestamp}.crt and adds it to the truststore.
+     *
+     * @param currentCert The current CA certificate to extract notAfter date
+     * @param certData The certificate data to update
+     */
+    private void preserveCurrentCertInTruststore(X509Certificate currentCert, Map<String, String> certData) {
+        if (certData.containsKey(CA_CRT)) {
+            String notAfterDate = DATE_TIME_FORMATTER.format(currentCert.getNotAfter().toInstant().atZone(ZoneId.of("Z")));
+            addCertCaToTrustStore("ca-" + notAfterDate + SecretEntry.CRT.suffix, certData);
+            certData.put("ca-" + notAfterDate + SecretEntry.CRT.suffix, certData.remove(CA_CRT));
+        }
     }
 
     /**
@@ -1211,5 +1235,11 @@ public abstract class Ca {
             LOGGER.errorCr(reconciliation, "Error validating the certificate chain.", e);
             throw new RuntimeException(e);
         }
+    }
+
+    /**
+     * Record for CA key and certificate data during renewal operations.
+     */
+    private record CaData(Map<String, String> keyData, Map<String, String> certData) {
     }
 }
