@@ -66,10 +66,12 @@ public class ClusterCa extends Ca {
      * @param clusterCaKey          Secret with the private key
      * @param caConfig              Certificate Authority configuration
      */
-    public ClusterCa(Reconciliation reconciliation, CertManager certManager,
+    public ClusterCa(Reconciliation reconciliation,
+                     CertManager certManager,
                      PasswordGenerator passwordGenerator,
                      Secret clusterCaCert,
-                     Secret clusterCaKey, CaConfig caConfig) {
+                     Secret clusterCaKey,
+                     CaConfig caConfig) {
         super(reconciliation, certManager, passwordGenerator,
                 "cluster-ca",
                 clusterCaCert,
@@ -432,7 +434,7 @@ public class ClusterCa extends Ca {
      */
     public void maybeDeleteOldCerts() {
         // the operator doesn't have to touch Secret provided by the user with his own custom CA certificate
-        if (this.generateCa) {
+        if (this.caConfig.isGenerateCa()) {
             if (removeCerts(this.caCertData, entry -> OLD_CA_CERT_PATTERN.matcher(entry.getKey()).matches())) {
                 LOGGER.infoCr(reconciliation, "{}: Old CA certificates removed", this);
                 this.caCertsRemoved = true;

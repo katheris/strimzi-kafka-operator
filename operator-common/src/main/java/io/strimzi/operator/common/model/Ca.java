@@ -6,7 +6,6 @@ package io.strimzi.operator.common.model;
 
 import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.api.model.Secret;
-import io.strimzi.api.kafka.model.common.CertificateExpirationPolicy;
 import io.strimzi.certs.CertAndKey;
 import io.strimzi.certs.CertManager;
 import io.strimzi.certs.Subject;
@@ -294,16 +293,13 @@ public abstract class Ca {
 
     protected final String commonName;
     protected final CertManager certManager;
-    protected final int validityDays;
-    protected final int renewalDays;
-    protected final boolean generateCa;
     protected int caCertGeneration;
     protected int caKeyGeneration;
     protected Map<String, String> caCertData;
     protected Map<String, String> caKeyData;
     protected RenewalType renewalType;
     protected boolean caCertsRemoved;
-    protected final CertificateExpirationPolicy policy;
+    protected final CaConfig caConfig;
 
     /**
      * Constructs the CA object
@@ -316,9 +312,13 @@ public abstract class Ca {
      * @param caKeySecret           Kubernetes Secret where the CA private key is stored
      * @param caConfig              Certificate Authority configuration
      */
-    public Ca(Reconciliation reconciliation, CertManager certManager, PasswordGenerator passwordGenerator, String commonName,
+    public Ca(Reconciliation reconciliation,
+              CertManager certManager,
+              PasswordGenerator passwordGenerator,
+              String commonName,
               Secret caCertSecret,
-              Secret caKeySecret, CaConfig caConfig) {
+              Secret caKeySecret,
+              CaConfig caConfig) {
         boolean isGenerateCa = caConfig.isGenerateCa();
         if (!isGenerateCa && (caCertSecret == null || caKeySecret == null))   {
             throw new InvalidResourceException(caName() + " should not be generated, but the secrets were not found.");
@@ -332,10 +332,7 @@ public abstract class Ca {
         this.caKeyData = initCaKeyData(isGenerateCa, caKeySecret);
         this.certManager = certManager;
         this.passwordGenerator = passwordGenerator;
-        this.validityDays = caConfig.getValidityDays();
-        this.renewalDays = caConfig.getRenewalDays();
-        this.generateCa = isGenerateCa;
-        this.policy = caConfig.getCertificateExpirationPolicy();
+        this.caConfig = caConfig;
         this.renewalType = RenewalType.NOOP;
         this.clock = Clock.systemUTC();
     }
@@ -457,7 +454,7 @@ public abstract class Ca {
             byte[] caCertBytes = currentCaCertBytes();
             certManager.generateCsr(keyFile, csrFile, subject);
             certManager.generateCert(csrFile, currentCaKey(), caCertBytes,
-                    certFile, subject, validityDays);
+                    certFile, subject, caConfig.getValidityDays());
 
             String keyStorePassword = passwordGenerator.generate();
             certManager.addKeyAndCertToKeyStore(keyFile, certFile, subject.commonName(), keyStoreFile, keyStorePassword);
@@ -566,7 +563,7 @@ public abstract class Ca {
      * @param forceRenew Flag indicating whether to do a force renew
      */
     public void createRenewOrReplace(boolean maintenanceWindowSatisfied, boolean forceReplace, boolean forceRenew) {
-        if (generateCa) {
+        if (caConfig.isGenerateCa()) {
             X509Certificate currentCert = currentCaCertX509();
             Map<String, String> certData;
             Map<String, String> keyData;
@@ -684,7 +681,7 @@ public abstract class Ca {
             reason = "Within renewal period for CA certificate (expires on " + currentCert.getNotAfter() + ")";
 
             if (maintenanceWindowSatisfied) {
-                renewalType = switch (policy) {
+                renewalType = switch (caConfig.getCertificateExpirationPolicy()) {
                     case REPLACE_KEY -> RenewalType.REPLACE_KEY;
                     case RENEW_CERTIFICATE -> RenewalType.RENEW_CERT;
                 };
@@ -958,7 +955,7 @@ public abstract class Ca {
 
     private boolean certNeedsRenewal(X509Certificate cert)  {
         Instant notAfter = cert.getNotAfter().toInstant();
-        Instant renewalPeriodBegin = notAfter.minus(renewalDays, ChronoUnit.DAYS);
+        Instant renewalPeriodBegin = notAfter.minus(caConfig.getRenewalDays(), ChronoUnit.DAYS);
         LOGGER.traceCr(reconciliation, "Certificate {} expires on {} renewal period begins on {}", cert.getSubjectX500Principal(), notAfter, renewalPeriodBegin);
         return this.clock.instant().isAfter(renewalPeriodBegin);
     }
@@ -1064,7 +1061,7 @@ public abstract class Ca {
                         trustStorePassword = passwordGenerator.generate();
                     }
                     try {
-                        certManager.generateSelfSignedCert(keyFile, certFile, subject, validityDays);
+                        certManager.generateSelfSignedCert(keyFile, certFile, subject, caConfig.getValidityDays());
                         certManager.addCertToTrustStore(certFile, CA_CRT, trustStoreFile, trustStorePassword);
                         CertAndKey ca = new CertAndKey(
                                 Files.readAllBytes(keyFile.toPath()),
@@ -1103,7 +1100,7 @@ public abstract class Ca {
                     File trustStoreFile = Files.createTempFile("tls", subject.commonName() + "-truststore").toFile();
                     try {
                         String trustStorePassword = passwordGenerator.generate();
-                        certManager.renewSelfSignedCert(keyFile, certFile, subject, validityDays);
+                        certManager.renewSelfSignedCert(keyFile, certFile, subject, caConfig.getValidityDays());
                         certManager.addCertToTrustStore(certFile, CA_CRT, trustStoreFile, trustStorePassword);
                         CertAndKey ca = new CertAndKey(
                                 bytes,

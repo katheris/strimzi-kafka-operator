@@ -22,8 +22,8 @@ public class ClientsCa extends Ca {
      * @param clientsCaKey          Kubernetes Secret where the Clients CA private key will be stored
      * @param caConfig              Certificate Authority configuration
      */
-    public ClientsCa(Reconciliation reconciliation, CertManager certManager, PasswordGenerator passwordGenerator, Secret clientsCaCert,
-                     Secret clientsCaKey, CaConfig caConfig) {
+    public ClientsCa(Reconciliation reconciliation, CertManager certManager, PasswordGenerator passwordGenerator,
+                     Secret clientsCaCert, Secret clientsCaKey, CaConfig caConfig) {
         super(reconciliation, certManager, passwordGenerator,
                 "clients-ca",
                 clientsCaCert,

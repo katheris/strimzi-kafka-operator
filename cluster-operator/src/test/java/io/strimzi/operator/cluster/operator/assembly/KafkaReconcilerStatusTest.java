@@ -87,7 +87,8 @@ public class KafkaReconcilerStatusTest {
             new OpenSslCertManager(),
             new PasswordGenerator(10, "a", "a"),
             ResourceUtils.createInitialCaCertSecret(NAMESPACE, CLUSTER_NAME, AbstractModel.clusterCaCertSecretName(CLUSTER_NAME), MockCertManager.clusterCaCert(), MockCertManager.clusterCaCertStore(), "123456"),
-            ResourceUtils.createInitialCaKeySecret(NAMESPACE, CLUSTER_NAME, AbstractModel.clusterCaKeySecretName(CLUSTER_NAME), MockCertManager.clusterCaKey()), CaConfig.createDefault()
+            ResourceUtils.createInitialCaKeySecret(NAMESPACE, CLUSTER_NAME, AbstractModel.clusterCaKeySecretName(CLUSTER_NAME), MockCertManager.clusterCaKey()),
+            CaConfig.createDefault()
     );
     private final static Kafka KAFKA = new KafkaBuilder()
                 .withNewMetadata()
