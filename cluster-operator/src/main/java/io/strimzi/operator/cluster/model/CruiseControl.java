@@ -451,9 +451,7 @@ public class CruiseControl extends AbstractModel implements SupportsMetrics, Sup
         try {
             CertAndKey existingCertAndKey = CertUtils.keyStoreCertAndKey(existingSecret, CruiseControl.COMPONENT_TYPE, clusterCa.caCertGenerationAnnotation());
 
-            ccCerts = clusterCa.generateCcCerts(namespace, clusterName, existingCertAndKey,
-                    new NodeRef(CruiseControl.COMPONENT_TYPE, 0, null, false, false),
-                    isMaintenanceTimeWindowsSatisfied);
+            ccCerts = clusterCa.generateCcCerts(namespace, clusterName, existingCertAndKey, isMaintenanceTimeWindowsSatisfied);
         } catch (IOException e) {
             LOGGER.warnCr(reconciliation, "Error while generating certificates", e);
         }

@@ -29,7 +29,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.function.Function;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -96,7 +95,6 @@ public class ClusterCa extends Ca {
      * @param namespace                             Namespace of the Kafka cluster
      * @param clusterName                           Name of the Kafka cluster
      * @param existingCertificate                   Existing certificate (or null if they do not exist yet)
-     * @param ccNode                                Cruise Control node reference
      * @param isMaintenanceTimeWindowsSatisfied     Flag indicating whether we can do maintenance tasks or not
      *
      * @return Map with CertAndKey object containing the public and private key
@@ -107,30 +105,25 @@ public class ClusterCa extends Ca {
             String namespace,
             String clusterName,
             CertAndKey existingCertificate,
-            NodeRef ccNode,
             boolean isMaintenanceTimeWindowsSatisfied
     ) throws IOException {
         DnsNameGenerator ccDnsGenerator = DnsNameGenerator.of(namespace, CruiseControlResources.serviceName(clusterName));
 
-        Function<NodeRef, Subject> subjectFn = node -> {
-            Subject.Builder subject = new Subject.Builder()
-                    .withOrganizationName("io.strimzi")
-                    .withCommonName(CruiseControlResources.serviceName(clusterName));
-
-            subject.addDnsName(CruiseControlResources.serviceName(clusterName));
-            subject.addDnsName(String.format("%s.%s", CruiseControlResources.serviceName(clusterName), namespace));
-            subject.addDnsName(ccDnsGenerator.serviceDnsNameWithoutClusterDomain());
-            subject.addDnsName(ccDnsGenerator.serviceDnsName());
-            subject.addDnsName(CruiseControlResources.serviceName(clusterName));
-            subject.addDnsName("localhost");
-            return subject.build();
-        };
+        Subject subject = new Subject.Builder()
+                .withOrganizationName("io.strimzi")
+                .withCommonName(CruiseControlResources.serviceName(clusterName))
+                .addDnsName(CruiseControlResources.serviceName(clusterName))
+                .addDnsName(String.format("%s.%s", CruiseControlResources.serviceName(clusterName), namespace))
+                .addDnsName(ccDnsGenerator.serviceDnsNameWithoutClusterDomain())
+                .addDnsName(ccDnsGenerator.serviceDnsName())
+                .addDnsName(CruiseControlResources.serviceName(clusterName))
+                .addDnsName("localhost")
+                .build();
 
         LOGGER.debugCr(reconciliation, "{}: Reconciling Cruise Control certificates", this);
         return maybeCopyOrGenerateServerCerts(
             reconciliation,
-            Set.of(ccNode),
-            subjectFn,
+            Map.of(CruiseControl.COMPONENT_TYPE, subject),
             existingCertificate == null ? Map.of() : Map.of(CruiseControl.COMPONENT_TYPE, existingCertificate),
             isMaintenanceTimeWindowsSatisfied,
             false
@@ -162,13 +155,16 @@ public class ClusterCa extends Ca {
             Map<Integer, Set<String>> externalAddresses,
             boolean isMaintenanceTimeWindowsSatisfied
     ) throws IOException {
-        Function<NodeRef, Subject> subjectFn = node -> {
+        Map<String, Subject> subjectMap = new HashMap<>();
+        List<String> bootstrapDnsNames = ModelUtils.generateAllServiceDnsNames(namespace, KafkaResources.bootstrapServiceName(clusterName));
+        List<String> brokerDnsNames = ModelUtils.generateAllServiceDnsNames(namespace, KafkaResources.brokersServiceName(clusterName));
+        for (NodeRef node : nodes) {
             Subject.Builder subject = new Subject.Builder()
                     .withOrganizationName("io.strimzi")
                     .withCommonName(KafkaResources.kafkaComponentName(clusterName));
 
-            subject.addDnsNames(ModelUtils.generateAllServiceDnsNames(namespace, KafkaResources.bootstrapServiceName(clusterName)));
-            subject.addDnsNames(ModelUtils.generateAllServiceDnsNames(namespace, KafkaResources.brokersServiceName(clusterName)));
+            subject.addDnsNames(bootstrapDnsNames);
+            subject.addDnsNames(brokerDnsNames);
 
             subject.addDnsName(DnsNameGenerator.podDnsName(namespace, KafkaResources.brokersServiceName(clusterName), node.podName()));
             subject.addDnsName(DnsNameGenerator.podDnsNameWithoutClusterDomain(namespace, KafkaResources.brokersServiceName(clusterName), node.podName()));
@@ -197,15 +193,14 @@ public class ClusterCa extends Ca {
                 }
             }
 
-            return subject.build();
-        };
+            subjectMap.put(node.podName(), subject.build());
+        }
 
         LOGGER.debugCr(reconciliation, "{}: Reconciling kafka broker certificates", this);
 
         return maybeCopyOrGenerateServerCerts(
             reconciliation,
-            nodes,
-            subjectFn,
+            subjectMap,
             existingCertificates,
             isMaintenanceTimeWindowsSatisfied,
             true
@@ -222,8 +217,7 @@ public class ClusterCa extends Ca {
      * and maybe generate new ones for new replicas (i.e. scale-up).
      *
      * @param reconciliation                        Reconciliation marker
-     * @param nodes                                 List of nodes for which the certificates should be generated
-     * @param subjectFn                             Function to generate certificate subject for given node / pod
+     * @param subjects                              Map of pod name to certificate subject
      * @param existingCertificates                  Existing certificates (or null if they do not exist yet)
      * @param isMaintenanceTimeWindowsSatisfied     Flag indicating if we are inside a maintenance window or not
      *
@@ -233,8 +227,7 @@ public class ClusterCa extends Ca {
      */
     /* test */ Map<String, CertAndKey> maybeCopyOrGenerateServerCerts(
             Reconciliation reconciliation,
-            Set<NodeRef> nodes,
-            Function<NodeRef, Subject> subjectFn,
+            Map<String, Subject> subjects,
             Map<String, CertAndKey> existingCertificates,
             boolean isMaintenanceTimeWindowsSatisfied,
             boolean includeCaChain
@@ -248,9 +241,9 @@ public class ClusterCa extends Ca {
         File brokerCertFile = Files.createTempFile("tls", "broker-cert").toFile();
         File brokerKeyStoreFile = Files.createTempFile("tls", "broker-p12").toFile();
 
-        for (NodeRef node : nodes)  {
-            String podName = node.podName();
-            Subject subject = subjectFn.apply(node);
+        for (Map.Entry<String, Subject> subjectEntry : subjects.entrySet())  {
+            String podName = subjectEntry.getKey();
+            Subject subject = subjectEntry.getValue();
             CertAndKey certAndKey = Optional.ofNullable(existingCertificates)
                     .map(existing -> existing.get(podName))
                     .orElse(null);
@@ -262,8 +255,8 @@ public class ClusterCa extends Ca {
             } else if (hasCaCertGenerationChanged(certAndKey.caCertGeneration(), podName)) {
                 reasons.add("certificate for pod has old cert generation");
             } else {
-                // A certificate for this node already exists, so we will try to reuse it
-                LOGGER.debugCr(reconciliation, "certificate for node {} already exists", node);
+                // A certificate for this pod already exists, so we will try to reuse it
+                LOGGER.debugCr(reconciliation, "certificate for pod {} already exists", podName);
 
                 if (certSubjectChanged(certAndKey, subject, podName))   {
                     reasons.add("DNS names changed");

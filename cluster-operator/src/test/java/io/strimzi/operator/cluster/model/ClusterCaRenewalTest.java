@@ -14,11 +14,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import java.io.File;
 import java.io.IOException;
 import java.util.HashMap;
-import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Function;
 
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.nullValue;
@@ -26,13 +24,13 @@ import static org.hamcrest.MatcherAssert.assertThat;
 
 @ExtendWith(VertxExtension.class)
 public class ClusterCaRenewalTest {
-    private static final Function<NodeRef, Subject> SUBJECT_FN = node -> new Subject.Builder().build();
-    private static final Set<NodeRef> NODES = new LinkedHashSet<>();
-    // LinkedHashSet is used to maintain ordering and have predictable test results
+    private static final Subject SUBJECT = new Subject.Builder().build();
+    private static final Map<String, Subject> SUBJECT_MAP = new LinkedHashMap<>();
+    // LinkedHashMap is used to maintain ordering and have predictable test results
     static {
-        NODES.add(new NodeRef("pod0", 0, null, false, true));
-        NODES.add(new NodeRef("pod1", 1, null, false, true));
-        NODES.add(new NodeRef("pod2", 2, null, false, true));
+        SUBJECT_MAP.put("pod0", SUBJECT);
+        SUBJECT_MAP.put("pod1", SUBJECT);
+        SUBJECT_MAP.put("pod2", SUBJECT);
     }
 
     @Test
@@ -43,8 +41,7 @@ public class ClusterCaRenewalTest {
 
         Map<String, CertAndKey> newCerts = mockedCa.maybeCopyOrGenerateServerCerts(
                 Reconciliation.DUMMY_RECONCILIATION,
-                NODES,
-                SUBJECT_FN,
+                SUBJECT_MAP,
                 null,
                 isMaintenanceTimeWindowsSatisfied,
                 false
@@ -80,8 +77,7 @@ public class ClusterCaRenewalTest {
 
         Map<String, CertAndKey> newCerts = mockedCa.maybeCopyOrGenerateServerCerts(
                 Reconciliation.DUMMY_RECONCILIATION,
-                NODES,
-                SUBJECT_FN,
+                SUBJECT_MAP,
                 initialCerts,
                 isMaintenanceTimeWindowsSatisfied,
                 false
@@ -120,8 +116,7 @@ public class ClusterCaRenewalTest {
 
         Map<String, CertAndKey> newCerts = mockedCa.maybeCopyOrGenerateServerCerts(
                 Reconciliation.DUMMY_RECONCILIATION,
-                NODES,
-                SUBJECT_FN,
+                SUBJECT_MAP,
                 initialCerts,
                 isMaintenanceTimeWindowsSatisfied,
                 false
@@ -163,8 +158,7 @@ public class ClusterCaRenewalTest {
 
         Map<String, CertAndKey> newCerts = mockedCa.maybeCopyOrGenerateServerCerts(
                 Reconciliation.DUMMY_RECONCILIATION,
-                NODES,
-                SUBJECT_FN,
+                SUBJECT_MAP,
                 initialCerts,
                 isMaintenanceTimeWindowsSatisfied,
                 false
@@ -199,8 +193,7 @@ public class ClusterCaRenewalTest {
 
         Map<String, CertAndKey> newCerts = mockedCa.maybeCopyOrGenerateServerCerts(
                 Reconciliation.DUMMY_RECONCILIATION,
-                NODES,
-                SUBJECT_FN,
+                SUBJECT_MAP,
                 initialCerts,
                 isMaintenanceTimeWindowsSatisfied,
                 false
@@ -227,8 +220,7 @@ public class ClusterCaRenewalTest {
 
         Map<String, CertAndKey> newCerts = mockedCa.maybeCopyOrGenerateServerCerts(
                 Reconciliation.DUMMY_RECONCILIATION,
-                NODES,
-                SUBJECT_FN,
+                SUBJECT_MAP,
                 initialCerts,
                 true,
                 false
@@ -253,8 +245,7 @@ public class ClusterCaRenewalTest {
 
         Map<String, CertAndKey> newCerts = mockedCa.maybeCopyOrGenerateServerCerts(
                 Reconciliation.DUMMY_RECONCILIATION,
-                NODES,
-                SUBJECT_FN,
+                SUBJECT_MAP,
                 initialCerts,
                 true,
                 false
@@ -280,8 +271,7 @@ public class ClusterCaRenewalTest {
 
         Map<String, CertAndKey> newCerts = mockedCa.maybeCopyOrGenerateServerCerts(
                 Reconciliation.DUMMY_RECONCILIATION,
-                NODES,
-                SUBJECT_FN,
+                SUBJECT_MAP,
                 initialCerts,
                 true,
                 false
@@ -308,8 +298,7 @@ public class ClusterCaRenewalTest {
 
         Map<String, CertAndKey> newCerts = mockedCa.maybeCopyOrGenerateServerCerts(
                 Reconciliation.DUMMY_RECONCILIATION,
-                Set.of(new NodeRef("pod1", 1, null, false, true)),
-                SUBJECT_FN,
+                Map.of("pod1", SUBJECT),
                 initialCerts,
                 true,
                 false
@@ -335,10 +324,15 @@ public class ClusterCaRenewalTest {
 
         boolean isMaintenanceTimeWindowsSatisfied = true;
 
+        Map<String, Subject> subjectMap = new LinkedHashMap<>();
+        // LinkedHashMap is used to maintain ordering and have predictable test results
+        subjectMap.put("pod0", new Subject.Builder().withCommonName("pod0").build());
+        subjectMap.put("pod1", new Subject.Builder().withCommonName("pod1").build());
+        subjectMap.put("pod2", new Subject.Builder().withCommonName("pod2").build());
+
         Map<String, CertAndKey> newCerts = mockedCa.maybeCopyOrGenerateServerCerts(
                 Reconciliation.DUMMY_RECONCILIATION,
-                NODES,
-                node -> new Subject.Builder().withCommonName(node.podName()).build(),
+                subjectMap,
                 initialCerts,
                 isMaintenanceTimeWindowsSatisfied,
                 false
@@ -361,8 +355,7 @@ public class ClusterCaRenewalTest {
 
         Map<String, CertAndKey> newCerts = mockedCa.maybeCopyOrGenerateServerCerts(
                 Reconciliation.DUMMY_RECONCILIATION,
-                NODES,
-                SUBJECT_FN,
+                SUBJECT_MAP,
                 null,
                 true,
                 true
@@ -384,8 +377,7 @@ public class ClusterCaRenewalTest {
 
         Map<String, CertAndKey> newCerts = mockedCa.maybeCopyOrGenerateServerCerts(
                 Reconciliation.DUMMY_RECONCILIATION,
-                NODES,
-                SUBJECT_FN,
+                SUBJECT_MAP,
                 initialCerts,
                 true,
                 true
