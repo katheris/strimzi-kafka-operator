@@ -67,7 +67,7 @@ class CaTest {
         }
 
         @Override
-        protected String caName() {
+        public String caName() {
             return "Mock CA";
         }
     }

@@ -42,7 +42,7 @@ public class ClientsCa extends Ca {
     }
 
     @Override
-    protected String caName() {
+    public String caName() {
         return "Clients CA";
     }
 }

@@ -16,33 +16,17 @@ import io.strimzi.operator.common.model.Ca;
 import io.strimzi.operator.common.model.CaConfig;
 import io.strimzi.operator.common.model.PasswordGenerator;
 
-import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.security.cert.CertificateException;
-import java.security.cert.X509Certificate;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
-import java.util.function.Function;
-import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 /**
  * Represents the Cluster CA
  */
 public class ClusterCa extends Ca {
-    /**
-     * Pattern used for the old CA certificate during CA renewal. This pattern is used to recognize this certificate
-     * and delete it when it is not needed anymore.
-     */
-    private static final Pattern OLD_CA_CERT_PATTERN = Pattern.compile("^ca-\\d{4}-\\d{2}-\\d{2}T\\d{2}-\\d{2}-\\d{2}Z.crt$");
-
     /**
      * Constructor
      *
@@ -85,7 +69,7 @@ public class ClusterCa extends Ca {
     }
 
     @Override
-    protected String caName() {
+    public String caName() {
         return "Cluster CA";
     }
 
@@ -96,7 +80,6 @@ public class ClusterCa extends Ca {
      * @param namespace                             Namespace of the Kafka cluster
      * @param clusterName                           Name of the Kafka cluster
      * @param existingCertificate                   Existing certificate (or null if they do not exist yet)
-     * @param ccNode                                Cruise Control node reference
      * @param isMaintenanceTimeWindowsSatisfied     Flag indicating whether we can do maintenance tasks or not
      *
      * @return Map with CertAndKey object containing the public and private key
@@ -107,30 +90,27 @@ public class ClusterCa extends Ca {
             String namespace,
             String clusterName,
             CertAndKey existingCertificate,
-            NodeRef ccNode,
             boolean isMaintenanceTimeWindowsSatisfied
     ) throws IOException {
         DnsNameGenerator ccDnsGenerator = DnsNameGenerator.of(namespace, CruiseControlResources.serviceName(clusterName));
 
-        Function<NodeRef, Subject> subjectFn = node -> {
-            Subject.Builder subject = new Subject.Builder()
-                    .withOrganizationName("io.strimzi")
-                    .withCommonName(CruiseControlResources.serviceName(clusterName));
+        Subject.Builder subject = new Subject.Builder()
+                .withOrganizationName("io.strimzi")
+                .withCommonName(CruiseControlResources.serviceName(clusterName));
 
-            subject.addDnsName(CruiseControlResources.serviceName(clusterName));
-            subject.addDnsName(String.format("%s.%s", CruiseControlResources.serviceName(clusterName), namespace));
-            subject.addDnsName(ccDnsGenerator.serviceDnsNameWithoutClusterDomain());
-            subject.addDnsName(ccDnsGenerator.serviceDnsName());
-            subject.addDnsName(CruiseControlResources.serviceName(clusterName));
-            subject.addDnsName("localhost");
-            return subject.build();
-        };
+        subject.addDnsName(CruiseControlResources.serviceName(clusterName));
+        subject.addDnsName(String.format("%s.%s", CruiseControlResources.serviceName(clusterName), namespace));
+        subject.addDnsName(ccDnsGenerator.serviceDnsNameWithoutClusterDomain());
+        subject.addDnsName(ccDnsGenerator.serviceDnsName());
+        subject.addDnsName(CruiseControlResources.serviceName(clusterName));
+        subject.addDnsName("localhost");
+
+        Map<String, Subject> subjectMap = Map.of(CruiseControl.COMPONENT_TYPE, subject.build());
 
         LOGGER.debugCr(reconciliation, "{}: Reconciling Cruise Control certificates", this);
         return maybeCopyOrGenerateServerCerts(
             reconciliation,
-            Set.of(ccNode),
-            subjectFn,
+            subjectMap,
             existingCertificate == null ? Map.of() : Map.of(CruiseControl.COMPONENT_TYPE, existingCertificate),
             isMaintenanceTimeWindowsSatisfied,
             false
@@ -162,13 +142,16 @@ public class ClusterCa extends Ca {
             Map<Integer, Set<String>> externalAddresses,
             boolean isMaintenanceTimeWindowsSatisfied
     ) throws IOException {
-        Function<NodeRef, Subject> subjectFn = node -> {
+        Map<String, Subject> subjectMap = new HashMap<>();
+        List<String> bootstrapDnsNames = ModelUtils.generateAllServiceDnsNames(namespace, KafkaResources.bootstrapServiceName(clusterName));
+        List<String> brokersDnsNames = ModelUtils.generateAllServiceDnsNames(namespace, KafkaResources.brokersServiceName(clusterName));
+        for (NodeRef node : nodes) {
             Subject.Builder subject = new Subject.Builder()
                     .withOrganizationName("io.strimzi")
                     .withCommonName(KafkaResources.kafkaComponentName(clusterName));
 
-            subject.addDnsNames(ModelUtils.generateAllServiceDnsNames(namespace, KafkaResources.bootstrapServiceName(clusterName)));
-            subject.addDnsNames(ModelUtils.generateAllServiceDnsNames(namespace, KafkaResources.brokersServiceName(clusterName)));
+            subject.addDnsNames(bootstrapDnsNames);
+            subject.addDnsNames(brokersDnsNames);
 
             subject.addDnsName(DnsNameGenerator.podDnsName(namespace, KafkaResources.brokersServiceName(clusterName), node.podName()));
             subject.addDnsName(DnsNameGenerator.podDnsNameWithoutClusterDomain(namespace, KafkaResources.brokersServiceName(clusterName), node.podName()));
@@ -196,16 +179,14 @@ public class ClusterCa extends Ca {
                     }
                 }
             }
-
-            return subject.build();
-        };
+            subjectMap.put(clusterName, subject.build());
+        }
 
         LOGGER.debugCr(reconciliation, "{}: Reconciling kafka broker certificates", this);
 
         return maybeCopyOrGenerateServerCerts(
             reconciliation,
-            nodes,
-            subjectFn,
+            subjectMap,
             existingCertificates,
             isMaintenanceTimeWindowsSatisfied,
             true
@@ -218,151 +199,6 @@ public class ClusterCa extends Ca {
     }
 
     /**
-     * Copy already existing certificates from based on number of effective replicas
-     * and maybe generate new ones for new replicas (i.e. scale-up).
-     *
-     * @param reconciliation                        Reconciliation marker
-     * @param nodes                                 List of nodes for which the certificates should be generated
-     * @param subjectFn                             Function to generate certificate subject for given node / pod
-     * @param existingCertificates                  Existing certificates (or null if they do not exist yet)
-     * @param isMaintenanceTimeWindowsSatisfied     Flag indicating if we are inside a maintenance window or not
-     *
-     * @return Returns map with node certificates which can be used to create or update the stored certificates
-     *
-     * @throws IOException Throws IOException when working with files fails
-     */
-    /* test */ Map<String, CertAndKey> maybeCopyOrGenerateServerCerts(
-            Reconciliation reconciliation,
-            Set<NodeRef> nodes,
-            Function<NodeRef, Subject> subjectFn,
-            Map<String, CertAndKey> existingCertificates,
-            boolean isMaintenanceTimeWindowsSatisfied,
-            boolean includeCaChain
-    ) throws IOException {
-        // Maps for storing the certificates => will be used in the new or updated certificate store. This map is filled in this method and returned at the end.
-        Map<String, CertAndKey> certs = new HashMap<>();
-
-        // Temp files used when we need to generate new certificates
-        File brokerCsrFile = Files.createTempFile("tls", "broker-csr").toFile();
-        File brokerKeyFile = Files.createTempFile("tls", "broker-key").toFile();
-        File brokerCertFile = Files.createTempFile("tls", "broker-cert").toFile();
-        File brokerKeyStoreFile = Files.createTempFile("tls", "broker-p12").toFile();
-
-        for (NodeRef node : nodes)  {
-            String podName = node.podName();
-            Subject subject = subjectFn.apply(node);
-            CertAndKey certAndKey = Optional.ofNullable(existingCertificates)
-                    .map(existing -> existing.get(podName))
-                    .orElse(null);
-
-            List<String> reasons = new ArrayList<>();
-
-            if (certAndKey == null) {
-                reasons.add("certificate doesn't exist yet for pod");
-            } else if (hasCaCertGenerationChanged(certAndKey.caCertGeneration(), podName)) {
-                reasons.add("certificate for pod has old cert generation");
-            } else {
-                // A certificate for this node already exists, so we will try to reuse it
-                LOGGER.debugCr(reconciliation, "certificate for node {} already exists", node);
-
-                if (certSubjectChanged(certAndKey, subject, podName))   {
-                    reasons.add("DNS names changed");
-                }
-
-                if (isExpiring(certAndKey.cert()) && isMaintenanceTimeWindowsSatisfied)  {
-                    reasons.add("certificate is expiring");
-                }
-
-                // In Strimzi 0.48 we moved to using the PEM certificates directly instead of PKCS12 in the Kafka brokers.
-                // But that (unintentionally) removed the full CA chain from the server certificates. We added them back
-                // in Strimzi 0.50. But this logic is needed to actually roll out the updated Secrets with the full CA chain.
-                // For more details, see https://github.com/strimzi/strimzi-kafka-operator/issues/12364.
-                //
-                // After some time - after multiple Strimzi releases, once the CA chains are added in all clusters, we
-                // should be able to remove this logic again.
-                if (includeCaChain && !includesCaChain(certAndKey.cert(), currentCaCertBytes())) {
-                    reasons.add("CA chain added");
-                }
-            }
-
-            if (!reasons.isEmpty())  {
-                LOGGER.infoCr(reconciliation, "Certificate for pod {} needs to be regenerated because: {}", podName, String.join(", ", reasons));
-
-                CertAndKey newCertAndKey = generateSignedCert(subject, brokerCsrFile, brokerKeyFile, brokerCertFile, brokerKeyStoreFile, includeCaChain);
-                certs.put(podName, newCertAndKey);
-            }   else {
-                certs.put(podName, certAndKey);
-            }
-        }
-
-        // Delete the temp files used to generate new certificates
-        delete(reconciliation, brokerCsrFile);
-        delete(reconciliation, brokerKeyFile);
-        delete(reconciliation, brokerCertFile);
-        delete(reconciliation, brokerKeyStoreFile);
-
-        return certs;
-    }
-
-    /**
-     * Generates or reuses a single certificate signed by this Cluster CA.
-     * Used for components that only act as clients, like Entity Operators and Kafka Exporter.
-     *
-     * @param reconciliation                        Reconciliation marker
-     * @param commonName                            Common Name for the certificate
-     * @param existingCertAndKey                    Existing certificate (or null if none exists)
-     * @param isMaintenanceTimeWindowsSatisfied     Whether we are in a maintenance window
-     *
-     * @return CertAndKey object containing the certificate and key with CA generation set
-     */
-    public CertAndKey maybeCopyOrGenerateClientCert(
-            Reconciliation reconciliation,
-            String commonName,
-            CertAndKey existingCertAndKey,
-            boolean isMaintenanceTimeWindowsSatisfied
-    ) {
-        List<String> reasons = new ArrayList<>();
-
-        if (existingCertAndKey == null) {
-            reasons.add("certificate doesn't exist yet");
-        } else if (hasCaCertGenerationChanged(existingCertAndKey.caCertGeneration(), commonName)) {
-            reasons.add("certificate has old cert generation");
-        } else {
-            // Certificate exists and CA generation matches - check if renewal is needed
-            if (isExpiring(existingCertAndKey.cert()) && isMaintenanceTimeWindowsSatisfied) {
-                reasons.add("certificate is expiring");
-            }
-        }
-
-        CertAndKey certAndKey = null;
-        if (!reasons.isEmpty()) {
-            LOGGER.infoCr(reconciliation, "Certificate for component {} needs to be regenerated because: {}", commonName, String.join(", ", reasons));
-
-            try {
-                certAndKey = generateSignedCert(commonName, Ca.IO_STRIMZI);
-            } catch (IOException e) {
-                LOGGER.warnCr(reconciliation, "Error while generating certificates", e);
-            }
-
-            LOGGER.debugCr(reconciliation, "End generating certificates");
-        } else {
-            certAndKey = existingCertAndKey;
-        }
-
-        return certAndKey;
-    }
-
-    /**
-     * It checks if the current CA certificate generation is changed compared to the one
-     * that signed the CertAndKey.
-     */
-    private boolean hasCaCertGenerationChanged(int certAndKeyCaCertGeneration, String podName) {
-        LOGGER.debugOp("Pod {} generation anno = {}, current CA generation = {}", podName, certAndKeyCaCertGeneration, caCertGeneration);
-        return certAndKeyCaCertGeneration != caCertGeneration();
-    }
-
-
-    /**
      * Checks if the CA chain is contained at the end of the certificate.
      *
      * @param cert      The server certificate as a byte array
@@ -370,75 +206,13 @@ public class ClusterCa extends Ca {
      *
      * @return  True if the CA chain is included at the end of the certificate, false otherwise.
      */
+    //Tested by ClusterCaTest
     /* test */ static boolean includesCaChain(byte[] cert, byte[] caChain) {
         if (cert == null || caChain == null || cert.length < caChain.length) {
             // The CA chain is definitely not included
             return false;
         } else {
             return Arrays.equals(Arrays.copyOfRange(cert, cert.length - caChain.length, cert.length), caChain);
-        }
-    }
-
-    /**
-     * Checks whether subject alternate names changed and certificate needs a renewal
-     *
-     * @param certAndKey        Current certificate
-     * @param desiredSubject    Desired subject alternate names
-     * @param podName           Name of the pod to which this certificate belongs (used for log messages)
-     *
-     * @return  True if the subjects are different, false otherwise
-     */
-    /* test */ boolean certSubjectChanged(CertAndKey certAndKey, Subject desiredSubject, String podName)    {
-        Collection<String> desiredAltNames = desiredSubject.subjectAltNames().values();
-        Collection<String> currentAltNames = getSubjectAltNames(certAndKey.cert());
-
-        if (currentAltNames != null && desiredAltNames.containsAll(currentAltNames) && currentAltNames.containsAll(desiredAltNames))   {
-            LOGGER.traceCr(reconciliation, "Alternate subjects match. No need to refresh cert for pod {}.", podName);
-            return false;
-        } else {
-            LOGGER.infoCr(reconciliation, "Alternate subjects for pod {} differ", podName);
-            LOGGER.infoCr(reconciliation, "Current alternate subjects: {}", currentAltNames);
-            LOGGER.infoCr(reconciliation, "Desired alternate subjects: {}", desiredAltNames);
-            return true;
-        }
-    }
-
-    /**
-     * Extracts the alternate subject names out of existing certificate
-     *
-     * @param certificate   Existing X509 certificate as a byte array
-     *
-     * @return  List of certificate Subject Alternate Names
-     */
-    private List<String> getSubjectAltNames(byte[] certificate) {
-        List<String> subjectAltNames = null;
-
-        try {
-            X509Certificate cert = x509Certificate(certificate);
-            Collection<List<?>> altNames = cert.getSubjectAlternativeNames();
-            subjectAltNames = altNames.stream()
-                    .filter(name -> name.get(1) instanceof String)
-                    .map(item -> (String) item.get(1))
-                    .collect(Collectors.toList());
-        } catch (CertificateException | RuntimeException e) {
-            // TODO: We should mock the certificates properly so that this doesn't fail in tests (not now => long term :-o)
-            LOGGER.debugCr(reconciliation, "Failed to parse existing certificate", e);
-        }
-
-        return subjectAltNames;
-    }
-
-    /**
-     * Remove old certificates that are stored in the CA Secret matching the "ca-YYYY-MM-DDTHH-MM-SSZ.crt" naming pattern.
-     * NOTE: mostly used when a CA certificate is renewed by replacing the key
-     */
-    public void maybeDeleteOldCerts() {
-        // the operator doesn't have to touch Secret provided by the user with his own custom CA certificate
-        if (this.caConfig.isGenerateCa()) {
-            if (removeCerts(this.caCertData, entry -> OLD_CA_CERT_PATTERN.matcher(entry.getKey()).matches())) {
-                LOGGER.infoCr(reconciliation, "{}: Old CA certificates removed", this);
-                this.caCertsRemoved = true;
-            }
         }
     }
 }

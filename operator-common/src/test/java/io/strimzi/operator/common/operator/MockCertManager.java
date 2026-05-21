@@ -4,6 +4,7 @@
  */
 package io.strimzi.operator.common.operator;
 
+import io.strimzi.certs.CertAndKey;
 import io.strimzi.certs.CertManager;
 import io.strimzi.certs.Subject;
 
@@ -263,6 +264,28 @@ public class MockCertManager implements CertManager {
     // We don't need a real store here.
     private static final String END_ENTITY_KEY_STORE = "key store";
 
+    // Expired cert
+    private static final String EXPIRED_CERT = """
+            -----BEGIN CERTIFICATE-----
+            MIIDKjCCAhKgAwIBAgIJAJBt0u1FFTG+MA0GCSqGSIb3DQEBCwUAMCoxEzARBgNV
+            BAoMCnN0cmltemkuaW8xEzARBgNVBAMMCmNsdXN0ZXItY2EwHhcNMTgxMDIzMTAw
+            MTExWhcNMTgxMDI0MTAwMTExWjAqMRMwEQYDVQQKDApzdHJpbXppLmlvMRMwEQYD
+            VQQDDApjbHVzdGVyLWNhMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA
+            xpuYrNXYHqw3ajwd12aAeuTlAX4rVwVdPuIex6A4NL8J3d2DV+ngXgNTH//RhiF5
+            If5KRWSsLei5BUIrwuQutOUNCQwyACmri9+yrx6+tevligiokAUwhHxcDHZpwC3T
+            +2dzk/BkI++vbSuvjFmBKGQi9gfyoTnStTEQ85KVJUS170hzwDjzaEiJsKpOPx/G
+            +KTdkAopLucoxr4sxhYeO4mQ2PkT0QL+R8Ohs6LD6v/bqalFP+rS8vibolfxjMNm
+            lXQCOd8UfXy8OEOaNoNCvhnn/cT/hbEG/ARbV3hHmUh9COV+TSV5dhsbmS5h4MKw
+            LzP449nGQBmLSkZMu984DQIDAQABo1MwUTAdBgNVHQ4EFgQUOXubcHBZJ7vSzjpi
+            pfXdFSP3dsEwHwYDVR0jBBgwFoAUOXubcHBZJ7vSzjpipfXdFSP3dsEwDwYDVR0T
+            AQH/BAUwAwEB/zANBgkqhkiG9w0BAQsFAAOCAQEAFFPGykbzUREDMzh+33i3a8TF
+            UTQnPMN/SuVbpLfQdpkpLO+aVWjVvJP6qMrI7jRO5zhj4MecAf7YKpe+dyRTTz9B
+            Dy9BZcujHYjCKdcKBnBFQ7B1xQm9tL1bw+a3ABzSTlhLiBcCxhJEawlWy1Gh18ab
+            3x/Kqnz0mk/jt5+n9HwlKHuBQVIxRCsfHWwq+WvIfoxM+N//akV8/29hLUf5TlYH
+            F5CX4G2pA5sSdaDHQ4ekQWuqM6tfvsGLl2KOmEFEgVR4GfaWI4BsUCzlpBNcCGWv
+            V7klZvBxQPG7MVy0cB8yzTDtUpR0jUFUkZOSp5Pr3yWcwPWEgWkaXYfO+FWETA==
+            -----END CERTIFICATE-----
+            """;
 
     static {
         InputStream is = MockCertManager.class.getClassLoader().getResourceAsStream("CLUSTER_CERT.str");
