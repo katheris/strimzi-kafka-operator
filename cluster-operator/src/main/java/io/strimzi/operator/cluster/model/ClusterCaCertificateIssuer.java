@@ -5,27 +5,23 @@
 package io.strimzi.operator.cluster.model;
 
 import io.fabric8.certmanager.api.model.v1.Certificate;
-import io.fabric8.kubernetes.api.model.Secret;
-import io.strimzi.api.kafka.model.common.CertificateManagerType;
-import io.strimzi.api.kafka.model.common.certmanager.IssuerRef;
 import io.strimzi.api.kafka.model.kafka.KafkaResources;
 import io.strimzi.api.kafka.model.kafka.cruisecontrol.CruiseControlResources;
 import io.strimzi.certs.CertAndKey;
-import io.strimzi.certs.CertManager;
 import io.strimzi.certs.IpAndDnsValidation;
 import io.strimzi.certs.Subject;
 import io.strimzi.operator.common.Reconciliation;
-import io.strimzi.operator.common.Util;
+import io.strimzi.operator.common.ReconciliationLogger;
 import io.strimzi.operator.common.model.Ca;
-import io.strimzi.operator.common.model.CaConfig;
-import io.strimzi.operator.common.model.PasswordGenerator;
+import io.strimzi.operator.common.model.CaUtils;
+import io.strimzi.operator.common.model.CertManagerCa;
+import io.strimzi.operator.common.model.InternalCa;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
-import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -35,69 +31,13 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
  * Represents the Cluster CA
  */
-public class ClusterCa extends Ca {
-    /**
-     * Pattern used for the old CA certificate during CA renewal. This pattern is used to recognize this certificate
-     * and delete it when it is not needed anymore.
-     */
-    private static final Pattern OLD_CA_CERT_PATTERN = Pattern.compile("^ca-\\d{4}-\\d{2}-\\d{2}T\\d{2}-\\d{2}-\\d{2}Z.crt$");
-
-    /**
-     * Constructor
-     *
-     * @param reconciliation        Reconciliation marker
-     * @param certManager           Certificate manager instance
-     * @param passwordGenerator     Password generator instance
-     * @param caCertSecret          Name of the CA public key secret
-     * @param caKeySecret           Name of the CA private key secret
-     */
-    public ClusterCa(Reconciliation reconciliation, CertManager certManager, PasswordGenerator passwordGenerator, Secret caCertSecret, Secret caKeySecret) {
-        this(reconciliation, certManager, passwordGenerator, caCertSecret, caKeySecret, CaConfig.createDefault(), null);
-    }
-
-    /**
-     * Constructor
-     *
-     * @param reconciliation        Reconciliation marker
-     * @param certManager           Certificate manager instance
-     * @param passwordGenerator     Password generator instance
-     * @param clusterCaCert         Secret with the public key
-     * @param clusterCaKey          Secret with the private key
-     * @param caConfig              Certificate Authority configuration
-     * @param issuerRef              Reference to issuer for issuing certificates through other services like cert-manager
-     */
-    public ClusterCa(Reconciliation reconciliation,
-                     CertManager certManager,
-                     PasswordGenerator passwordGenerator,
-                     Secret clusterCaCert,
-                     Secret clusterCaKey,
-                     CaConfig caConfig,
-                     IssuerRef issuerRef
-                     ) {
-        super(reconciliation, certManager, passwordGenerator,
-                "cluster-ca",
-                clusterCaCert,
-                clusterCaKey,
-                caConfig,
-                issuerRef);
-    }
-
-    @Override
-    public String toString() {
-        return "cluster-ca";
-    }
-
-    @Override
-    protected String caName() {
-        return "Cluster CA";
-    }
-
+public final class ClusterCaCertificateIssuer {
+    protected static final ReconciliationLogger LOGGER = ReconciliationLogger.create(ClusterCaCertificateIssuer.class);
     /**
      * Prepares the Cruise Control certificate. It either reuses the existing certificate, renews it or generates new
      * certificate if needed.
@@ -112,7 +52,9 @@ public class ClusterCa extends Ca {
      *
      * @throws IOException IOException is thrown when it is raised while working with the certificates
      */
-    protected Map<String, CertAndKey> generateCcCerts(
+    protected static Map<String, CertAndKey> generateCcCerts(
+            Reconciliation reconciliation,
+            InternalCa ca,
             String namespace,
             String clusterName,
             CertAndKey existingCertificate,
@@ -135,9 +77,9 @@ public class ClusterCa extends Ca {
             return subject.build();
         };
 
-        LOGGER.debugCr(reconciliation, "{}: Reconciling Cruise Control certificates", this);
+        LOGGER.debugCr(reconciliation, "Reconciling Cruise Control certificates");
         return maybeCopyOrGenerateServerCerts(
-            reconciliation,
+            reconciliation, ca,
             Set.of(ccNode),
             subjectFn,
             existingCertificate == null ? Map.of() : Map.of(CruiseControl.COMPONENT_TYPE, existingCertificate),
@@ -162,7 +104,9 @@ public class ClusterCa extends Ca {
      *
      * @throws IOException IOException is thrown when it is raised while working with the certificates
      */
-    protected Map<String, CertAndKey> generateBrokerCerts(
+    protected static Map<String, CertAndKey> generateBrokerCerts(
+            Reconciliation reconciliation,
+            Ca ca,
             String namespace,
             String clusterName,
             Map<String, CertAndKey> existingCertificates,
@@ -171,9 +115,10 @@ public class ClusterCa extends Ca {
             Map<Integer, Set<String>> externalAddresses,
             boolean isMaintenanceTimeWindowsSatisfied
     ) throws IOException {
-        LOGGER.debugCr(reconciliation, "{}: Reconciling kafka broker certificates", this);
+        LOGGER.debugCr(reconciliation, "Reconciling kafka broker certificates");
         return maybeCopyOrGenerateServerCerts(
                 reconciliation,
+                ca,
                 nodes,
                 kafkaNodeCertsSubjectFn(namespace, clusterName, externalBootstrapAddresses, externalAddresses),
                 existingCertificates,
@@ -194,17 +139,17 @@ public class ClusterCa extends Ca {
      *
      * @return Map of Certificate resources keyed on the node id
      */
-    public Map<String, Certificate> generateKafkaNodeCertificateResources(String namespace, String clusterName, Set<NodeRef> nodes,
-                                                                          Set<String> externalBootstrapAddresses,
-                                                                          Map<Integer, Set<String>> externalAddresses) {
+    public static Map<String, Certificate> generateKafkaNodeCertificateResources(CertManagerCa ca, String namespace, String clusterName, Set<NodeRef> nodes,
+                                                                                 Set<String> externalBootstrapAddresses,
+                                                                                 Map<Integer, Set<String>> externalAddresses) {
         Map<String, Certificate> certificates = new HashMap<>();
         for (NodeRef node : nodes)  {
-            certificates.put(node.podName(), getCertManagerCert(kafkaNodeCertsSubjectFn(namespace, clusterName, externalBootstrapAddresses, externalAddresses).apply(node)));
+            certificates.put(node.podName(), ca.getCertManagerCert(kafkaNodeCertsSubjectFn(namespace, clusterName, externalBootstrapAddresses, externalAddresses).apply(node)));
         }
         return certificates;
     }
 
-    private Function<NodeRef, Subject> kafkaNodeCertsSubjectFn(String namespace, String clusterName,
+    private static Function<NodeRef, Subject> kafkaNodeCertsSubjectFn(String namespace, String clusterName,
                                                                Set<String> externalBootstrapAddresses,
                                                                Map<Integer, Set<String>> externalAddresses
     ) {
@@ -247,11 +192,6 @@ public class ClusterCa extends Ca {
         };
     }
 
-    @Override
-    protected String caCertGenerationAnnotation() {
-        return ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION;
-    }
-
     /**
      * Copy already existing certificates from based on number of effective replicas
      * and maybe generate new ones for new replicas (i.e. scale-up).
@@ -266,8 +206,9 @@ public class ClusterCa extends Ca {
      *
      * @throws IOException Throws IOException when working with files fails
      */
-    /* test */ Map<String, CertAndKey> maybeCopyOrGenerateServerCerts(
+    /* test */ static Map<String, CertAndKey> maybeCopyOrGenerateServerCerts(
             Reconciliation reconciliation,
+            Ca ca,
             Set<NodeRef> nodes,
             Function<NodeRef, Subject> subjectFn,
             Map<String, CertAndKey> existingCertificates,
@@ -294,19 +235,23 @@ public class ClusterCa extends Ca {
 
             if (certAndKey == null) {
                 reasons.add("certificate doesn't exist yet for pod");
-            } else if (hasCaCertGenerationChanged(certAndKey.caCertGeneration(), podName)) {
+            } else if (hasCaCertGenerationChanged(certAndKey.caCertGeneration(), ca, podName)) {
                 reasons.add("certificate for pod has old cert generation");
             } else {
                 // A certificate for this node already exists, so we will try to reuse it
                 LOGGER.debugCr(reconciliation, "certificate for node {} already exists", node);
 
-                if (certSubjectChanged(certAndKey, subject, podName))   {
+                if (certSubjectChanged(reconciliation, ca, certAndKey, subject, podName))   {
                     reasons.add("DNS names changed");
                 }
 
-                if (isExpiring(certAndKey.cert()) && isMaintenanceTimeWindowsSatisfied)  {
-                    reasons.add("certificate is expiring");
+                //TODO: temporary fix
+                if (ca instanceof InternalCa internalCa) {
+                    if (internalCa.isExpiring(certAndKey.cert()) && isMaintenanceTimeWindowsSatisfied)  {
+                        reasons.add("certificate is expiring");
+                    }
                 }
+
 
                 // In Strimzi 0.48 we moved to using the PEM certificates directly instead of PKCS12 in the Kafka brokers.
                 // But that (unintentionally) removed the full CA chain from the server certificates. We added them back
@@ -315,16 +260,18 @@ public class ClusterCa extends Ca {
                 //
                 // After some time - after multiple Strimzi releases, once the CA chains are added in all clusters, we
                 // should be able to remove this logic again.
-                if (includeCaChain && !includesCaChain(certAndKey.cert(), currentCaCertBytes())) {
+                if (includeCaChain && !includesCaChain(certAndKey.cert(), ca.currentCaCertBytes())) {
                     reasons.add("CA chain added");
                 }
             }
 
             if (!reasons.isEmpty())  {
                 LOGGER.infoCr(reconciliation, "Certificate for pod {} needs to be regenerated because: {}", podName, String.join(", ", reasons));
-
-                CertAndKey newCertAndKey = generateSignedCert(subject, brokerCsrFile, brokerKeyFile, brokerCertFile, brokerKeyStoreFile, includeCaChain);
-                certs.put(podName, newCertAndKey);
+                //TODO: temporary fix
+                if (ca instanceof InternalCa internalCa) {
+                    CertAndKey newCertAndKey = internalCa.generateSignedCert(subject, brokerCsrFile, brokerKeyFile, brokerCertFile, brokerKeyStoreFile, includeCaChain);
+                    certs.put(podName, newCertAndKey);
+                }
             }   else {
                 certs.put(podName, certAndKey);
             }
@@ -337,6 +284,12 @@ public class ClusterCa extends Ca {
         delete(reconciliation, brokerKeyStoreFile);
 
         return certs;
+    }
+
+    private static void delete(Reconciliation reconciliation, File file) {
+        if (file != null && !file.delete()) {
+            LOGGER.warnCr(reconciliation, "{} cannot be deleted", file.getName());
+        }
     }
 
     /**
@@ -353,6 +306,7 @@ public class ClusterCa extends Ca {
     public CertAndKey maybeCopyOrGenerateClientCert(
             Reconciliation reconciliation,
             String commonName,
+            Ca ca,
             CertAndKey existingCertAndKey,
             boolean isMaintenanceTimeWindowsSatisfied
     ) {
@@ -360,12 +314,15 @@ public class ClusterCa extends Ca {
 
         if (existingCertAndKey == null) {
             reasons.add("certificate doesn't exist yet");
-        } else if (hasCaCertGenerationChanged(existingCertAndKey.caCertGeneration(), commonName)) {
+        } else if (hasCaCertGenerationChanged(existingCertAndKey.caCertGeneration(), ca, commonName)) {
             reasons.add("certificate has old cert generation");
         } else {
-            // Certificate exists and CA generation matches - check if renewal is needed
-            if (isExpiring(existingCertAndKey.cert()) && isMaintenanceTimeWindowsSatisfied) {
-                reasons.add("certificate is expiring");
+            //TODO: temporary fix
+            if (ca instanceof InternalCa internalCa) {
+                // Certificate exists and CA generation matches - check if renewal is needed
+                if (internalCa.isExpiring(existingCertAndKey.cert()) && isMaintenanceTimeWindowsSatisfied) {
+                    reasons.add("certificate is expiring");
+                }
             }
         }
 
@@ -374,7 +331,10 @@ public class ClusterCa extends Ca {
             LOGGER.infoCr(reconciliation, "Certificate for component {} needs to be regenerated because: {}", commonName, String.join(", ", reasons));
 
             try {
-                certAndKey = getSignedCert(commonName, Ca.IO_STRIMZI);
+                //TODO: temporary fix
+                if (ca instanceof InternalCa internalCa) {
+                    certAndKey = internalCa.getSignedCert(commonName, InternalCa.IO_STRIMZI);
+                }
             } catch (IOException e) {
                 LOGGER.warnCr(reconciliation, "Error while generating certificates", e);
             }
@@ -391,9 +351,9 @@ public class ClusterCa extends Ca {
      * It checks if the current CA certificate generation is changed compared to the one
      * that signed the CertAndKey.
      */
-    private boolean hasCaCertGenerationChanged(int certAndKeyCaCertGeneration, String podName) {
-        LOGGER.debugOp("Pod {} generation anno = {}, current CA generation = {}", podName, certAndKeyCaCertGeneration, caCertGeneration);
-        return certAndKeyCaCertGeneration != caCertGeneration();
+    private static boolean hasCaCertGenerationChanged(int certAndKeyCaCertGeneration, Ca ca, String podName) {
+        LOGGER.debugOp("Pod {} generation anno = {}, current CA generation = {}", podName, certAndKeyCaCertGeneration, ca.caCertGeneration());
+        return certAndKeyCaCertGeneration != ca.caCertGeneration();
     }
 
 
@@ -423,9 +383,10 @@ public class ClusterCa extends Ca {
      *
      * @return  True if the subjects are different, false otherwise
      */
-    /* test */ boolean certSubjectChanged(CertAndKey certAndKey, Subject desiredSubject, String podName)    {
+    /* test */
+    static boolean certSubjectChanged(Reconciliation reconciliation, Ca ca, CertAndKey certAndKey, Subject desiredSubject, String podName)    {
         Collection<String> desiredAltNames = desiredSubject.subjectAltNames().values();
-        Collection<String> currentAltNames = getSubjectAltNames(certAndKey.cert());
+        Collection<String> currentAltNames = getSubjectAltNames(reconciliation, ca, certAndKey.cert());
 
         if (currentAltNames != null && desiredAltNames.containsAll(currentAltNames) && currentAltNames.containsAll(desiredAltNames))   {
             LOGGER.traceCr(reconciliation, "Alternate subjects match. No need to refresh cert for pod {}.", podName);
@@ -445,11 +406,11 @@ public class ClusterCa extends Ca {
      *
      * @return  List of certificate Subject Alternate Names
      */
-    private List<String> getSubjectAltNames(byte[] certificate) {
+    private static List<String> getSubjectAltNames(Reconciliation reconciliation, Ca ca, byte[] certificate) {
         List<String> subjectAltNames = null;
 
         try {
-            X509Certificate cert = x509Certificate(certificate);
+            X509Certificate cert = CaUtils.x509Certificate(certificate);
             Collection<List<?>> altNames = cert.getSubjectAlternativeNames();
             subjectAltNames = altNames.stream()
                     .filter(name -> name.get(1) instanceof String)
@@ -461,53 +422,5 @@ public class ClusterCa extends Ca {
         }
 
         return subjectAltNames;
-    }
-
-    /**
-     * Remove old certificates that are stored in the CA Secret matching the "ca-YYYY-MM-DDTHH-MM-SSZ.crt" naming pattern.
-     * NOTE: mostly used when a CA certificate is renewed by replacing the key
-     */
-    public void maybeDeleteOldCerts() {
-        // the operator doesn't have to touch Secret provided by the user with his own custom CA certificate
-        if (this.caConfig.isGenerateCa() || CertificateManagerType.CERT_MANAGER_IO.equals(this.caConfig.getCertificateManagerType())) {
-            if (removeCerts(this.caCertData, entry -> OLD_CA_CERT_PATTERN.matcher(entry.getKey()).matches())) {
-                LOGGER.infoCr(reconciliation, "{}: Old CA certificates removed", this);
-                this.caCertsRemoved = true;
-            }
-        }
-    }
-
-    @Override
-    public void updateCertAndIncrementGenerations(String caCert, X509Certificate endEntityCertificate) {
-        if (endEntityCertificate == null) {
-            // Cluster operator certificate is missing, so no cert path validation to perform
-            LOGGER.warnCr(reconciliation, "Strimzi CA cert Secret containing custom cert has been created, but operator Secret is missing");
-            return;
-        }
-        X509Certificate x509CaCert;
-        try {
-            x509CaCert = x509Certificate(Util.decodeBytesFromBase64(caCert));
-        } catch (CertificateException e) {
-            throw new RuntimeException(e);
-        }
-        if (certIsTrusted(reconciliation, List.of(endEntityCertificate), x509CaCert)) {
-            // No key replacement
-            Map<String, String> newCaCertData = new HashMap<>();
-            newCaCertData.put(CA_CRT, caCert);
-            this.caCertData = newCaCertData;
-            renewalType = RenewalType.RENEW_CERT;
-            this.caCertGeneration++;
-        } else {
-            // key replacement
-            X509Certificate currentCert = currentCaCertX509();
-            String notAfterDate = DATE_TIME_FORMATTER.format(currentCert.getNotAfter().toInstant().atZone(ZoneId.of("Z")));
-            Map<String, String> newCaCertData = new HashMap<>();
-            newCaCertData.put(SecretEntry.CRT.asKey("ca-" + notAfterDate), caCertData.get(CA_CRT));
-            newCaCertData.put(CA_CRT, caCert);
-            this.caCertData = newCaCertData;
-            renewalType = RenewalType.REPLACE_KEY;
-            this.caCertGeneration++;
-            this.caKeyGeneration++;
-        }
     }
 }

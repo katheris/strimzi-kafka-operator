@@ -15,9 +15,7 @@ import io.strimzi.certs.CertAndKey;
 import io.strimzi.operator.common.Annotations;
 import io.strimzi.operator.common.ReconciliationLogger;
 import io.strimzi.operator.common.Util;
-import io.strimzi.operator.common.model.Ca;
-import io.strimzi.operator.common.model.InvalidResourceException;
-import io.strimzi.operator.common.model.Labels;
+import io.strimzi.operator.common.model.*;
 
 import java.math.BigInteger;
 import java.security.cert.CertificateEncodingException;
@@ -57,7 +55,7 @@ public class CertUtils {
      */
     public static String getCertificateThumbprint(Secret certSecret, String key) {
         try {
-            var cert = Ca.cert(certSecret, key);
+            var cert = CaUtils.cert(certSecret, key);
             return cert == null ? null : getCertificateThumbprint(cert);
         } catch (CertificateEncodingException e) {
             throw new RuntimeException("Failed to get certificate thumbprint of " + key + " from Secret " + certSecret.getMetadata().getName(), e);
@@ -77,7 +75,7 @@ public class CertUtils {
     /**
      * Build Certificate object to give to cert-manager to generate certificate
      *
-     * @param clusterCa      Cluster CA
+     * @param ca             CertManager CA
      * @param namespace      Namespace for the Certificate
      * @param name           Name for the Certificate
      * @param commonName     Common name for certificates
@@ -85,10 +83,10 @@ public class CertUtils {
      * @param ownerReference Owner reference for Certificate
      * @return Certificate object
      */
-    public static Certificate buildCertManagerCertificate(ClusterCa clusterCa, String namespace,
+    public static Certificate buildCertManagerCertificate(Ca ca, String namespace,
                                                           String name, String commonName,
                                                           Labels labels, OwnerReference ownerReference) {
-        Certificate certificate = clusterCa.getCertManagerCert(commonName, Ca.IO_STRIMZI);
+        Certificate certificate = ca.getCertManagerCert(commonName, InternalCa.IO_STRIMZI);
         String secretName = name + "cm";
         if (ownerReference == null) {
             return new CertificateBuilder(certificate)
@@ -132,7 +130,7 @@ public class CertUtils {
      * @param ownerReference Owner reference
      * @return Newly built Secret
      */
-    public static Secret buildTrustedCertificateSecretFromCertManager(ClusterCa clusterCa, Secret certManagerSecret, String namespace,
+    public static Secret buildTrustedCertificateSecretFromCertManager(CertManagerCa clusterCa, Secret certManagerSecret, String namespace,
                                                                       String secretName, String keyCertName, Labels labels, OwnerReference ownerReference) {
         String certHash = getCertificateShortThumbprint(certManagerSecret, "tls.crt");
         Objects.requireNonNull(certHash);

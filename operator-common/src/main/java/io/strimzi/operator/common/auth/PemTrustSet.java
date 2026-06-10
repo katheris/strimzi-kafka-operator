@@ -6,7 +6,7 @@ package io.strimzi.operator.common.auth;
 
 import io.fabric8.kubernetes.api.model.Secret;
 import io.strimzi.operator.common.Util;
-import io.strimzi.operator.common.model.Ca;
+import io.strimzi.operator.common.model.*;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -59,7 +59,7 @@ public class PemTrustSet {
                 .stream()
                 .map(cert -> {
                     try {
-                        return Ca.x509CertificateToPem(cert);
+                        return CaUtils.x509CertificateToPem(cert);
                     } catch (CertificateEncodingException e) {
                         throw new RuntimeException("Failed to convert X509 certificate to PEM format: " + cert.getSubjectX500Principal().getName(), e);
                     }
@@ -100,7 +100,7 @@ public class PemTrustSet {
                 .stream()
                 .map(entry -> {
                     try {
-                        return Ca.x509Certificate(entry.getValue());
+                        return CaUtils.x509Certificate(entry.getValue());
                     } catch (CertificateException e) {
                         throw new RuntimeException("Bad/corrupt certificate found in data." + entry.getKey() + " of Secret "
                                 + secretName + " in namespace " + secretNamespace);
@@ -119,7 +119,7 @@ public class PemTrustSet {
                 .getData()
                 .entrySet()
                 .stream()
-                .filter(record -> Ca.SecretEntry.CRT.matchesType(record.getKey()))
+                .filter(record -> InternalCa.SecretEntry.CRT.matchesType(record.getKey()))
                 .collect(Collectors.toMap(
                         Map.Entry::getKey,
                         entry -> Util.decodeBytesFromBase64(entry.getValue()))

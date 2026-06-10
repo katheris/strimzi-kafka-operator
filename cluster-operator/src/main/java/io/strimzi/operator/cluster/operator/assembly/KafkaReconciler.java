@@ -36,7 +36,6 @@ import io.strimzi.operator.cluster.ClusterOperatorConfig;
 import io.strimzi.operator.cluster.PlatformFeaturesAvailability;
 import io.strimzi.operator.cluster.model.CertManagerUtils;
 import io.strimzi.operator.cluster.model.CertUtils;
-import io.strimzi.operator.cluster.model.ClusterCa;
 import io.strimzi.operator.cluster.model.ImagePullPolicy;
 import io.strimzi.operator.cluster.model.KafkaCluster;
 import io.strimzi.operator.cluster.model.KafkaConfiguration;
@@ -79,7 +78,8 @@ import io.strimzi.operator.common.ReconciliationLogger;
 import io.strimzi.operator.common.Util;
 import io.strimzi.operator.common.auth.TlsPemIdentity;
 import io.strimzi.operator.common.model.Ca;
-import io.strimzi.operator.common.model.ClientsCa;
+import io.strimzi.operator.common.model.CertManagerCa;
+import io.strimzi.operator.common.model.InternalCa;
 import io.strimzi.operator.common.model.Labels;
 import io.strimzi.operator.common.model.NodeUtils;
 import io.strimzi.operator.common.model.StatusDiff;
@@ -133,8 +133,8 @@ public class KafkaReconciler {
     /* test */ final Reconciliation reconciliation;
     private final KafkaCluster kafka;
     private final List<KafkaNodePool> kafkaNodePoolCrs;
-    private final ClusterCa clusterCa;
-    private final ClientsCa clientsCa;
+    private final Ca clusterCa;
+    private final Ca clientsCa;
 
     // Tools for operating and managing various resources
     private final Vertx vertx;
@@ -192,8 +192,8 @@ public class KafkaReconciler {
             Kafka kafkaCr,
             List<KafkaNodePool> nodePools,
             KafkaCluster kafka,
-            ClusterCa clusterCa,
-            ClientsCa clientsCa,
+            Ca clusterCa,
+            Ca clientsCa,
             ClusterOperatorConfig config,
             ResourceOperatorSupplier supplier,
             PlatformFeaturesAvailability pfa,
@@ -762,8 +762,9 @@ public class KafkaReconciler {
      * @return Completes when the Certificate objects were successfully created, deleted or updated
      */
     protected Future<Void> maybeReconcileCertManagerCertificates() {
-        if (CertificateManagerType.CERT_MANAGER_IO.equals(clusterCa.getType())) {
-            List<Future<Void>> futures = kafka.generateKafkaNodeCertificateResources(clusterCa, listenerReconciliationResults.bootstrapDnsNames, listenerReconciliationResults.brokerDnsNames)
+        //TODO: temporary fix
+        if (clusterCa instanceof  CertManagerCa certManagerCa) {
+            List<Future<Void>> futures = kafka.generateKafkaNodeCertificateResources(certManagerCa, listenerReconciliationResults.bootstrapDnsNames, listenerReconciliationResults.brokerDnsNames)
                     .stream()
                     .map(certificate -> {
                         String certificateName = certificate.getMetadata().getName();
@@ -869,7 +870,7 @@ public class KafkaReconciler {
                                     kafkaServerCertificateHash.put(
                                             ReconcilerUtils.getPodIndexFromPodName(secretName),
                                             CertUtils.getCertificateThumbprint(patchResult.resource(),
-                                                    Ca.SecretEntry.CRT.asKey(secretName)
+                                                    InternalCa.SecretEntry.CRT.asKey(secretName)
                                             ));
                                 }
                                 return Future.succeededFuture();
@@ -912,9 +913,9 @@ public class KafkaReconciler {
      */
     private Map<String, String> podSetPodAnnotations(NodeRef node) {
         Map<String, String> podAnnotations = new LinkedHashMap<>(9);
-        podAnnotations.put(Ca.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, String.valueOf(this.clusterCa.caCertGeneration()));
-        podAnnotations.put(Ca.ANNO_STRIMZI_IO_CLUSTER_CA_KEY_GENERATION, String.valueOf(this.clusterCa.caKeyGeneration()));
-        podAnnotations.put(Ca.ANNO_STRIMZI_IO_CLIENTS_CA_CERT_GENERATION, String.valueOf(this.clientsCa.caCertGeneration()));
+        podAnnotations.put(InternalCa.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, String.valueOf(this.clusterCa.caCertGeneration()));
+        podAnnotations.put(InternalCa.ANNO_STRIMZI_IO_CLUSTER_CA_KEY_GENERATION, String.valueOf(this.clusterCa.caKeyGeneration()));
+        podAnnotations.put(InternalCa.ANNO_STRIMZI_IO_CLIENTS_CA_CERT_GENERATION, String.valueOf(this.clientsCa.caCertGeneration()));
         podAnnotations.put(Annotations.ANNO_STRIMZI_IO_CONFIGURATION_HASH, brokerConfigurationHash.get(node.nodeId()));
         podAnnotations.put(ANNO_STRIMZI_IO_KAFKA_VERSION, kafka.getKafkaVersion().version());
         podAnnotations.put(ANNO_STRIMZI_SERVER_CERT_HASH, kafkaServerCertificateHash.get(node.nodeId())); // Annotation of broker certificate hash

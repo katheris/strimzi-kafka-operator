@@ -114,7 +114,7 @@ public class CertManagerUtils {
      * @param ownerReference    Owner reference
      * @return Newly built Secret
      */
-    public static Secret buildTrustedCertificateSecretFromCertManager(ClusterCa clusterCa, Secret certManagerSecret, String namespace,
+    public static Secret buildTrustedCertificateSecretFromCertManager(Ca clusterCa, Secret certManagerSecret, String namespace,
                                                                       String secretName, String keyCertName, Labels labels,
                                                                       OwnerReference ownerReference) {
         String certHash = CertUtils.getCertificateThumbprint(certManagerSecret, "tls.crt");
