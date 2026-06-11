@@ -296,6 +296,7 @@ public abstract class Ca {
               Secret caKeySecret,
               CaConfig caConfig) {
         this.reconciliation = reconciliation;
+        this.caRole = caRole;
         this.caCertGeneration = initCaCertGeneration(caCertSecret);
         this.caCertData = initCaCertData(caCertSecret);
         this.caKeyGeneration = initCaKeyGeneration(caKeySecret, caCertSecret);
@@ -303,7 +304,6 @@ public abstract class Ca {
         this.caConfig = caConfig;
         this.renewalType = RenewalType.NOOP;
         this.clock = Clock.systemUTC();
-        this.caRole = caRole;
     }
 
     protected String caName() {

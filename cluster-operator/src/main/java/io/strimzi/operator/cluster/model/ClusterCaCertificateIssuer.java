@@ -30,8 +30,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+
+import static io.strimzi.operator.cluster.model.CertManagerUtils.certManagerCertUpdated;
+import static io.strimzi.operator.common.model.CaUtils.certIsTrusted;
+import static io.strimzi.operator.common.model.CaUtils.extractCertChain;
 
 /**
  * Represents the Cluster CA
@@ -224,6 +230,89 @@ public final class ClusterCaCertificateIssuer {
             boolean isMaintenanceTimeWindowsSatisfied,
             boolean includeCaChain
     ) throws IOException {
+        return switch (ca) {
+            case InternalCa internalCa -> maybeCopyOrGenerateServerCertsWithInternalCa(reconciliation, internalCa, nodes, subjectFn, existingCertificates, isMaintenanceTimeWindowsSatisfied, includeCaChain);
+            case CertManagerCa certManagerCa -> maybeCopyOrGenerateServerCertsWithCertManagerCa(reconciliation, certManagerCa, nodes, subjectFn, existingCertificates).toCompletableFuture().get();
+        };
+    }
+
+    /**
+     * Copy already existing certificates from based on number of effective replicas
+     * and maybe generate new ones for new replicas (i.e. scale-up).
+     *
+     * @param reconciliation                        Reconciliation marker
+     * @param ca                                    CA
+     * @param nodes                                 List of nodes for which the certificates should be generated
+     * @param subjectFn                             Function to generate certificate subject for given node / pod
+     * @param existingCertificates                  Existing certificates (or null if they do not exist yet)
+     *
+     * @return Returns map with node certificates which can be used to create or update the stored certificates
+     *
+     * @throws IOException Throws IOException when working with files fails
+     */
+    /* test */ static CompletionStage<Map<String, CertAndKey>> maybeCopyOrGenerateServerCertsWithCertManagerCa(
+            Reconciliation reconciliation,
+            CertManagerCa ca,
+            Set<NodeRef> nodes,
+            Function<NodeRef, Subject> subjectFn,
+            Map<String, CertAndKey> existingCertificates
+    ) {
+        List<CompletableFuture<Map.Entry<String, CertAndKey>>> futureList = new ArrayList<>();
+        for (NodeRef node : nodes) {
+            String podName = node.podName();
+            Subject subject = subjectFn.apply(node);
+            CertAndKey existingCertAndKey = Optional.ofNullable(existingCertificates)
+                    .map(existing -> existing.get(podName))
+                    .orElse(null);
+
+            futureList.add(ca.generateSignedCert(podName, subject)
+                    .thenApply(newCertAndKey -> {
+                        if (existingCertAndKey == null) {
+                            return Map.entry(podName, newCertAndKey);
+                        } else if (certManagerCertUpdated(existingCertAndKey, newCertAndKey)) {
+                            if (certIsTrusted(reconciliation, extractCertChain(podName, newCertAndKey.cert()), ca.currentCaCertX509())) {
+                                LOGGER.infoCr(reconciliation, "New certificate for {}/{}", reconciliation.namespace(), podName);
+                                return Map.entry(podName, newCertAndKey);
+                            } else {
+                                LOGGER.infoCr(reconciliation, "New certificate for {}/{}, but not trusted yet so keeping existing certificate.", reconciliation.namespace(), podName);
+                                return Map.entry(podName, existingCertAndKey);
+                            }
+                        } else {
+                            // Certificate has not changed
+                            return Map.entry(podName, existingCertAndKey);
+                        }
+                    }).toCompletableFuture());
+        }
+        return CompletableFuture.allOf(futureList.toArray(new CompletableFuture[0]))
+                .thenApply(v -> futureList.stream()
+                        .map(CompletableFuture::join)
+                        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue)));
+    }
+
+    /**
+     * Copy already existing certificates from based on number of effective replicas
+     * and maybe generate new ones for new replicas (i.e. scale-up).
+     *
+     * @param reconciliation                        Reconciliation marker
+     * @param ca                                    CA
+     * @param nodes                                 List of nodes for which the certificates should be generated
+     * @param subjectFn                             Function to generate certificate subject for given node / pod
+     * @param existingCertificates                  Existing certificates (or null if they do not exist yet)
+     * @param isMaintenanceTimeWindowsSatisfied     Flag indicating if we are inside a maintenance window or not
+     *
+     * @return Returns map with node certificates which can be used to create or update the stored certificates
+     *
+     * @throws IOException Throws IOException when working with files fails
+     */
+    /* test */ static Map<String, CertAndKey> maybeCopyOrGenerateServerCertsWithInternalCa(
+            Reconciliation reconciliation,
+            InternalCa ca,
+            Set<NodeRef> nodes,
+            Function<NodeRef, Subject> subjectFn,
+            Map<String, CertAndKey> existingCertificates,
+            boolean isMaintenanceTimeWindowsSatisfied,
+            boolean includeCaChain
+    ) throws IOException {
         // Maps for storing the certificates => will be used in the new or updated certificate store. This map is filled in this method and returned at the end.
         Map<String, CertAndKey> certs = new HashMap<>();
 
@@ -254,11 +343,8 @@ public final class ClusterCaCertificateIssuer {
                     reasons.add("DNS names changed");
                 }
 
-                //TODO: temporary fix
-                if (ca instanceof InternalCa internalCa) {
-                    if (internalCa.isExpiring(certAndKey.cert()) && isMaintenanceTimeWindowsSatisfied)  {
-                        reasons.add("certificate is expiring");
-                    }
+                if (ca.isExpiring(certAndKey.cert()) && isMaintenanceTimeWindowsSatisfied)  {
+                    reasons.add("certificate is expiring");
                 }
 
 
@@ -276,11 +362,8 @@ public final class ClusterCaCertificateIssuer {
 
             if (!reasons.isEmpty())  {
                 LOGGER.infoCr(reconciliation, "Certificate for pod {} needs to be regenerated because: {}", podName, String.join(", ", reasons));
-                //TODO: temporary fix
-                if (ca instanceof InternalCa internalCa) {
-                    CertAndKey newCertAndKey = internalCa.generateSignedCert(subject, brokerCsrFile, brokerKeyFile, brokerCertFile, brokerKeyStoreFile, includeCaChain);
-                    certs.put(podName, newCertAndKey);
-                }
+                CertAndKey newCertAndKey = ca.generateSignedCert(subject, brokerCsrFile, brokerKeyFile, brokerCertFile, brokerKeyStoreFile, includeCaChain);
+                certs.put(podName, newCertAndKey);
             }   else {
                 certs.put(podName, certAndKey);
             }

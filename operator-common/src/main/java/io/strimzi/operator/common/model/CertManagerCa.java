@@ -4,15 +4,21 @@
  */
 package io.strimzi.operator.common.model;
 
+import io.fabric8.certmanager.api.model.v1.Certificate;
 import io.fabric8.certmanager.api.model.v1.CertificateBuilder;
+import io.fabric8.kubernetes.api.model.OwnerReference;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.strimzi.api.kafka.model.common.certmanager.IssuerRef;
+import io.strimzi.certs.CertAndKey;
 import io.strimzi.certs.Subject;
 import io.strimzi.operator.common.Annotations;
 import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.Util;
+import io.strimzi.operator.common.operator.resource.concurrent.CertManagerCertificateOperator;
+import io.strimzi.operator.common.operator.resource.concurrent.SecretOperator;
 
 import java.math.BigInteger;
+import java.security.cert.CertificateEncodingException;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
@@ -22,7 +28,13 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.function.Predicate;
+
+import static io.strimzi.operator.common.model.CaUtils.certIsTrusted;
+import static io.strimzi.operator.common.model.CaUtils.extractCertChain;
 
 
 /**
@@ -30,7 +42,11 @@ import java.util.function.Predicate;
  */
 @SuppressWarnings("checkstyle:CyclomaticComplexity")
 public class CertManagerCa extends Ca {
-
+    private static final String CERT_MANAGER_SECRET_SUFFIX = "-cm";
+    private final CertManagerCertificateOperator certManagerCertificateOperator;
+    private final SecretOperator secretOperator;
+    private final OwnerReference ownerReference;
+    private final Labels labels;
     protected final IssuerRef issuerRef;
 
     /**
@@ -41,6 +57,10 @@ public class CertManagerCa extends Ca {
      * @param caCertSecret          Kubernetes Secret where the CA public key is stored
      * @param caKeySecret           Kubernetes Secret where the CA private key is stored
      * @param caConfig              Certificate Authority configuration
+     * @param certManagerCertificateOperator cert-manager Certificate operator
+     * @param secretOperator Secret operator
+     * @param ownerReference Owner reference for Kubernetes resources
+     * @param labels Labels for Kubernetes resources
      * @param issuerRef              Reference to issuer for issuing certificates through other services like cert-manager
      */
     public CertManagerCa(Reconciliation reconciliation,
@@ -48,8 +68,16 @@ public class CertManagerCa extends Ca {
                          Secret caCertSecret,
                          Secret caKeySecret,
                          CaConfig caConfig,
+                         CertManagerCertificateOperator certManagerCertificateOperator,
+                         SecretOperator secretOperator,
+                         OwnerReference ownerReference,
+                         Labels labels,
                          IssuerRef issuerRef) {
         super(reconciliation, caRole, caCertSecret, caKeySecret, caConfig);
+        this.certManagerCertificateOperator = certManagerCertificateOperator;
+        this.secretOperator = secretOperator;
+        this.ownerReference = ownerReference;
+        this.labels = labels;
         this.issuerRef = issuerRef;
     }
 
@@ -247,5 +275,123 @@ public class CertManagerCa extends Ca {
     @Override
     public void maybeDeleteOldCerts() {
         deleteOldCerts();
+    }
+
+    CompletionStage<CertAndKey> maybeCopyOrGenerateCert(String entityName, Subject subject, CertAndKey existingCert) {
+        return generateSignedCert(entityName, subject)
+                .thenApply(newCertAndKey -> {
+                    if (existingCert == null) {
+                        return newCertAndKey;
+                    } else if (certManagerCertUpdated(existingCert, newCertAndKey)) {
+                        if (certIsTrusted(reconciliation, extractCertChain(entityName, newCertAndKey.cert()), currentCaCertX509())) {
+                            LOGGER.infoCr(reconciliation, "New certificate for {}/{}", reconciliation.namespace(), entityName);
+                            return newCertAndKey;
+                        } else {
+                            LOGGER.infoCr(reconciliation, "New certificate for {}/{}, but not trusted yet so keeping existing certificate.", reconciliation.namespace(), entityName);
+                            return existingCert;
+                        }
+                    } else {
+                        // Certificate has not changed
+                        return existingCert;
+                    }
+                });
+    }
+
+    public CompletionStage<CertAndKey> generateSignedCert(String entityName, Subject subject) {
+        Certificate certificate = buildCertificateResource(entityName, subject, caConfig.getValidityDays(), caConfig.getRenewalDays());
+        return certManagerCertificateOperator.reconcile(reconciliation, reconciliation.namespace(), entityName, certificate)
+                .thenCompose(v -> certManagerCertificateOperator.waitForReady(reconciliation, reconciliation.namespace(), entityName))
+                .thenCompose(v -> secretOperator.getAsync(reconciliation.namespace(), certManagerSecretName(entityName)))
+                .thenCompose(certSecret -> {
+                    Objects.requireNonNull(certSecret);
+                    if (certSecret.getData().get("tls.crt") == null || certSecret.getData().get("tls.key") == null) {
+                        return CompletableFuture.failedFuture(new RuntimeException("No certificate data provided"));
+                    }
+                    return CompletableFuture.completedFuture(new CertAndKey(Util.decodeBytesFromBase64(certSecret.getData().get("tls.key")),
+                            Util.decodeBytesFromBase64(certSecret.getData().get("tls.crt")), this.caCertGeneration));
+                });
+    }
+
+    /**
+     * Build Certificate object to give to cert-manager to generate certificate
+     *
+     * @param entityName            Name of the component the Certificate is for
+     * @param subject    Subject for Certificate
+     * @param validityDays         Validity days for Certificate
+     * @param renewalDays        Renewal days for certificate
+     * @return Certificate object
+     */
+    private Certificate buildCertificateResource(String entityName, Subject subject, int validityDays, int renewalDays) {
+        String secretName = certManagerSecretName(entityName);
+        CertificateBuilder certificateBuilder = new CertificateBuilder()
+                .withNewMetadata()
+                    .withName(entityName)
+                    .withNamespace(reconciliation.namespace())
+                .endMetadata()
+                .withNewSpec()
+                .withCommonName(subject.commonName())
+                .withNewPrivateKey()
+                    .withAlgorithm("RSA")
+                    .withEncoding("PKCS8")
+                    .withSize(2048)
+                .endPrivateKey()
+                .withDuration(new io.fabric8.kubernetes.api.model.Duration(Duration.ofDays(validityDays)))
+                .withRenewBefore(new io.fabric8.kubernetes.api.model.Duration(Duration.ofDays(renewalDays)))
+                .withIsCA(false)
+                .withNewSubject()
+                    .withOrganizations(subject.organizationName())
+                .endSubject()
+                .withDnsNames(new ArrayList<>(subject.dnsNames()))
+                .withIpAddresses(new ArrayList<>(subject.ipAddresses()))
+                .withNewIssuerRef()
+                    .withName(issuerRef.getName())
+                    .withKind(issuerRef.getKind().toValue())
+                    .withGroup(issuerRef.getGroup())
+                .endIssuerRef()
+                .withSecretName(secretName)
+                .withNewSecretTemplate()
+                    .withLabels(labels.toMap())
+                .endSecretTemplate()
+                .endSpec();
+        if (ownerReference != null) {
+            certificateBuilder.editMetadata().withOwnerReferences(ownerReference).endMetadata();
+        }
+        return certificateBuilder.build();
+    }
+
+    /**
+     * Get the name of the Secret managed by cert-manager, given a Strimzi managed Secret
+     *
+     * @param strimziSecretName Name of the Secret managed by Strimzi
+     * @return Secret name to use for cert-manager managed Secret
+     */
+    public static String certManagerSecretName(String strimziSecretName) {
+        return strimziSecretName + CERT_MANAGER_SECRET_SUFFIX;
+    }
+
+    /**
+     * Checks if two certs are the same by comparing hashes
+     * @param existingCertAndKey    Existing cert
+     * @param newCertAndKey         New cert
+     * @return Whether the cert has been updated in the new Secret
+     */
+    public static boolean certManagerCertUpdated(CertAndKey existingCertAndKey, CertAndKey newCertAndKey) {
+        try {
+            String existingCertHash = getCertificateThumbprint(CaUtils.x509Certificate(existingCertAndKey.cert()));
+            String newCertHash = getCertificateThumbprint(CaUtils.x509Certificate(newCertAndKey.cert()));
+            return !existingCertHash.equals(newCertHash);
+        } catch (CertificateException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    /**
+     * Generates the full SHA1-hash of the server certificate which is used to track when the certificate changes.
+     *
+     * @param certificate   Certificate to generate the SHA1-hash for
+     * @return              SHA1-Hash of the certificate or null if certSecret contains no valid X509Certificate
+     */
+    private static String getCertificateThumbprint(X509Certificate certificate) throws CertificateEncodingException {
+        return String.format("%040x", new BigInteger(1, Util.sha1Digest(certificate.getEncoded())));
     }
 }

@@ -8,13 +8,18 @@ import io.fabric8.certmanager.api.model.v1.Certificate;
 import io.fabric8.certmanager.api.model.v1.CertificateBuilder;
 import io.fabric8.kubernetes.api.model.OwnerReference;
 import io.fabric8.kubernetes.api.model.Secret;
+import io.strimzi.certs.CertAndKey;
 import io.strimzi.operator.common.Annotations;
 import io.strimzi.operator.common.model.Ca;
+import io.strimzi.operator.common.model.CaUtils;
 import io.strimzi.operator.common.model.Labels;
 
+import java.security.cert.CertificateException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+
+import static io.strimzi.operator.cluster.model.CertUtils.getCertificateThumbprint;
 
 /**
  * cert-manager utility methods
@@ -117,7 +122,7 @@ public class CertManagerUtils {
     public static Secret buildTrustedCertificateSecretFromCertManager(Ca clusterCa, Secret certManagerSecret, String namespace,
                                                                       String secretName, String keyCertName, Labels labels,
                                                                       OwnerReference ownerReference) {
-        String certHash = CertUtils.getCertificateThumbprint(certManagerSecret, "tls.crt");
+        String certHash = getCertificateThumbprint(certManagerSecret, "tls.crt");
         Objects.requireNonNull(certHash);
 
         Map<String, String> annotations = new HashMap<>();
@@ -147,5 +152,21 @@ public class CertManagerUtils {
             throw new RuntimeException(String.format("Failed to find server-cert-hash annotation for Secret %s/%s", existingCertSecret.getMetadata().getNamespace(), existingCertSecret.getMetadata().getName()));
         }
         return !existingCertHash.equals(newCertHash);
+    }
+
+    /**
+     * Checks if two certs are the same by comparing hashes
+     * @param existingCertAndKey    Existing cert
+     * @param newCertAndKey         New cert
+     * @return Whether the cert has been updated in the new Secret
+     */
+    public static boolean certManagerCertUpdated(CertAndKey existingCertAndKey, CertAndKey newCertAndKey) {
+        try {
+            String existingCertHash = getCertificateThumbprint(CaUtils.x509Certificate(existingCertAndKey.cert()));
+            String newCertHash = getCertificateThumbprint(CaUtils.x509Certificate(newCertAndKey.cert()));
+            return !existingCertHash.equals(newCertHash);
+        } catch (CertificateException e) {
+            throw new RuntimeException(e);
+        }
     }
 }
