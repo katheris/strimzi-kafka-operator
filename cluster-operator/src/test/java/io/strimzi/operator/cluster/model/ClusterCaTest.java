@@ -12,6 +12,7 @@ import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.Util;
 import io.strimzi.operator.common.model.Ca;
 import io.strimzi.operator.common.model.CaConfig;
+import io.strimzi.operator.common.model.InternalCa;
 import io.strimzi.operator.common.model.PasswordGenerator;
 import org.junit.jupiter.api.Test;
 
@@ -34,7 +35,7 @@ public class ClusterCaTest {
         String instantExpected = "2022-03-23T09:00:00Z";
         Clock clock = Clock.fixed(Instant.parse(instantExpected), Clock.systemUTC().getZone());
 
-        ClusterCa clusterCa = new ClusterCa(Reconciliation.DUMMY_RECONCILIATION, new OpenSslCertManager(clock), new PasswordGenerator(10, "a", "a"), null, null);
+        InternalCa clusterCa = new InternalCa(Reconciliation.DUMMY_RECONCILIATION, Ca.CaRole.CLUSTER_CA, new OpenSslCertManager(clock), new PasswordGenerator(10, "a", "a"), null, null, CaConfig.createDefault());
         clusterCa.setClock(clock);
         clusterCa.createOrUpdateStrimziManagedCa(true, false, false);
         assertThat(clusterCa.caCertData().size(), is(3));
@@ -43,7 +44,7 @@ public class ClusterCaTest {
         instantExpected = "2022-03-23T11:00:00Z";
         clock = Clock.fixed(Instant.parse(instantExpected), Clock.systemUTC().getZone());
 
-        clusterCa = new ClusterCa(Reconciliation.DUMMY_RECONCILIATION, new OpenSslCertManager(clock), new PasswordGenerator(10, "a", "a"), buildCertSecret(clusterCa), buildKeySecret(clusterCa));
+        clusterCa = new InternalCa(Reconciliation.DUMMY_RECONCILIATION, Ca.CaRole.CLUSTER_CA, new OpenSslCertManager(clock), new PasswordGenerator(10, "a", "a"), buildCertSecret(clusterCa), buildKeySecret(clusterCa), CaConfig.createDefault());
         clusterCa.setClock(clock);
         // force key replacement so certificate renewal ...
         clusterCa.createOrUpdateStrimziManagedCa(true, true, false);
@@ -54,7 +55,7 @@ public class ClusterCaTest {
         instantExpected = "2023-03-23T10:00:00Z";
         clock = Clock.fixed(Instant.parse(instantExpected), Clock.systemUTC().getZone());
 
-        clusterCa = new ClusterCa(Reconciliation.DUMMY_RECONCILIATION, new OpenSslCertManager(), new PasswordGenerator(10, "a", "a"), buildCertSecret(clusterCa), buildKeySecret(clusterCa));
+        clusterCa = new InternalCa(Reconciliation.DUMMY_RECONCILIATION, Ca.CaRole.CLUSTER_CA, new OpenSslCertManager(), new PasswordGenerator(10, "a", "a"), buildCertSecret(clusterCa), buildKeySecret(clusterCa), CaConfig.createDefault());
         clusterCa.setClock(clock);
         clusterCa.createOrUpdateStrimziManagedCa(true, false, false);
         assertThat(clusterCa.caCertData().size(), is(3));
@@ -67,7 +68,7 @@ public class ClusterCaTest {
         String instantExpected = "2022-03-30T09:00:00Z";
         Clock clock = Clock.fixed(Instant.parse(instantExpected), Clock.systemUTC().getZone());
 
-        ClusterCa clusterCa = new ClusterCa(Reconciliation.DUMMY_RECONCILIATION, new OpenSslCertManager(clock), new PasswordGenerator(10, "a", "a"), null, null);
+        InternalCa clusterCa = new InternalCa(Reconciliation.DUMMY_RECONCILIATION, Ca.CaRole.CLUSTER_CA, new OpenSslCertManager(clock), new PasswordGenerator(10, "a", "a"), null, null, CaConfig.createDefault());
         clusterCa.setClock(clock);
         clusterCa.createOrUpdateStrimziManagedCa(true, false, false);
 
@@ -75,13 +76,13 @@ public class ClusterCaTest {
         instantExpected = "2023-02-15T09:00:00Z";
         clock = Clock.fixed(Instant.parse(instantExpected), Clock.systemUTC().getZone());
         clusterCa.setClock(clock);
-        assertThat(clusterCa.isExpiring(buildCertSecret(clusterCa), Ca.CA_CRT), is(false));
+        assertThat(clusterCa.isExpiring(buildCertSecret(clusterCa), InternalCa.CA_CRT), is(false));
 
         // check certificate expiration within the renewal period, certificate is expiring
         instantExpected = "2023-03-15T09:00:00Z";
         clock = Clock.fixed(Instant.parse(instantExpected), Clock.systemUTC().getZone());
         clusterCa.setClock(clock);
-        assertThat(clusterCa.isExpiring(buildCertSecret(clusterCa), Ca.CA_CRT), is(true));
+        assertThat(clusterCa.isExpiring(buildCertSecret(clusterCa), InternalCa.CA_CRT), is(true));
     }
 
     @Test
@@ -90,7 +91,7 @@ public class ClusterCaTest {
         String instantExpected = "2022-03-23T09:00:00Z";
         Clock clock = Clock.fixed(Instant.parse(instantExpected), Clock.systemUTC().getZone());
 
-        ClusterCa clusterCa = new ClusterCa(Reconciliation.DUMMY_RECONCILIATION, new OpenSslCertManager(clock), new PasswordGenerator(10, "a", "a"), null, null);
+        InternalCa clusterCa = new InternalCa(Reconciliation.DUMMY_RECONCILIATION, Ca.CaRole.CLUSTER_CA, new OpenSslCertManager(clock), new PasswordGenerator(10, "a", "a"), null, null, CaConfig.createDefault());
         clusterCa.setClock(clock);
         clusterCa.createOrUpdateStrimziManagedCa(true, false, false);
         assertThat(clusterCa.caCertData().size(), is(3));
@@ -99,7 +100,7 @@ public class ClusterCaTest {
         instantExpected = "2022-03-23T11:00:00Z";
         clock = Clock.fixed(Instant.parse(instantExpected), Clock.systemUTC().getZone());
 
-        clusterCa = new ClusterCa(Reconciliation.DUMMY_RECONCILIATION, new OpenSslCertManager(clock), new PasswordGenerator(10, "a", "a"), buildCertSecret(clusterCa), buildKeySecret(clusterCa));
+        clusterCa = new InternalCa(Reconciliation.DUMMY_RECONCILIATION, Ca.CaRole.CLUSTER_CA, new OpenSslCertManager(clock), new PasswordGenerator(10, "a", "a"), buildCertSecret(clusterCa), buildKeySecret(clusterCa), CaConfig.createDefault());
         clusterCa.setClock(clock);
         // force key replacement so certificate renewal ...
         clusterCa.createOrUpdateStrimziManagedCa(true, true, false);
@@ -164,9 +165,9 @@ public class ClusterCaTest {
                 -----END CERTIFICATE-----
                 """;
         Map<String, String> clusterCaCertData = new HashMap<>();
-        clusterCaCertData.put(Ca.CA_CRT, Base64.getEncoder().encodeToString(newDummyCert.getBytes()));
-        clusterCaCertData.put(Ca.CA_STORE, Base64.getEncoder().encodeToString("dummy-p12".getBytes()));
-        clusterCaCertData.put(Ca.CA_STORE_PASSWORD, Base64.getEncoder().encodeToString("dummy-password".getBytes()));
+        clusterCaCertData.put(InternalCa.CA_CRT, Base64.getEncoder().encodeToString(newDummyCert.getBytes()));
+        clusterCaCertData.put(InternalCa.CA_STORE, Base64.getEncoder().encodeToString("dummy-p12".getBytes()));
+        clusterCaCertData.put(InternalCa.CA_STORE_PASSWORD, Base64.getEncoder().encodeToString("dummy-password".getBytes()));
         // simulate old cert still present
         clusterCaCertData.put("ca-2023-03-23T09-00-00Z.crt", Base64.getEncoder().encodeToString(dummyCert.getBytes()));
 
@@ -178,7 +179,7 @@ public class ClusterCaTest {
                 .build();
 
         Map<String, String> clusterCaKeyData = new HashMap<>();
-        clusterCaKeyData.put(Ca.CA_KEY, Base64.getEncoder().encodeToString("dummy-key".getBytes()));
+        clusterCaKeyData.put(InternalCa.CA_KEY, Base64.getEncoder().encodeToString("dummy-key".getBytes()));
 
         Secret clusterCaKey = new SecretBuilder()
                 .withNewMetadata()
@@ -187,16 +188,16 @@ public class ClusterCaTest {
                 .withData(clusterCaKeyData)
                 .build();
 
-        ClusterCa clusterCa = new ClusterCa(Reconciliation.DUMMY_RECONCILIATION, new OpenSslCertManager(), new PasswordGenerator(10, "a", "a"), clusterCaCert, clusterCaKey, new CaConfig(new CertificateAuthorityBuilder().withGenerateCertificateAuthority(false).build(), true), null);
+        InternalCa clusterCa = new InternalCa(Reconciliation.DUMMY_RECONCILIATION, Ca.CaRole.CLUSTER_CA, new OpenSslCertManager(), new PasswordGenerator(10, "a", "a"), clusterCaCert, clusterCaKey, new CaConfig(new CertificateAuthorityBuilder().withGenerateCertificateAuthority(false).build(), true));
 
         clusterCa.maybeDeleteOldCerts();
 
         // checking that the cluster CA related Secret was not touched by the operator
         Map<String, String> clusterCaCertDataInSecret = clusterCa.caCertData();
         assertThat(clusterCaCertDataInSecret.size(), is(4));
-        assertThat(Util.decodeFromBase64(clusterCaCertDataInSecret.get(Ca.CA_CRT)).equals(newDummyCert), is(true));
-        assertThat(Util.decodeFromBase64(clusterCaCertDataInSecret.get(Ca.CA_STORE)).equals("dummy-p12"), is(true));
-        assertThat(Util.decodeFromBase64(clusterCaCertDataInSecret.get(Ca.CA_STORE_PASSWORD)).equals("dummy-password"), is(true));
+        assertThat(Util.decodeFromBase64(clusterCaCertDataInSecret.get(InternalCa.CA_CRT)).equals(newDummyCert), is(true));
+        assertThat(Util.decodeFromBase64(clusterCaCertDataInSecret.get(InternalCa.CA_STORE)).equals("dummy-p12"), is(true));
+        assertThat(Util.decodeFromBase64(clusterCaCertDataInSecret.get(InternalCa.CA_STORE_PASSWORD)).equals("dummy-password"), is(true));
         assertThat(Util.decodeFromBase64(clusterCaCertDataInSecret.get("ca-2023-03-23T09-00-00Z.crt")).equals(dummyCert), is(true));
     }
 
@@ -207,31 +208,31 @@ public class ClusterCaTest {
         String caChain2 = "CA2CHAIN";
         String certWithChain = cert + caChain;
 
-        assertThat(ClusterCa.includesCaChain(certWithChain.getBytes(StandardCharsets.US_ASCII), caChain.getBytes(StandardCharsets.US_ASCII)), is(true));
-        assertThat(ClusterCa.includesCaChain(cert.getBytes(StandardCharsets.US_ASCII), caChain.getBytes(StandardCharsets.US_ASCII)), is(false));
-        assertThat(ClusterCa.includesCaChain(certWithChain.getBytes(StandardCharsets.US_ASCII), caChain2.getBytes(StandardCharsets.US_ASCII)), is(false));
-        assertThat(ClusterCa.includesCaChain(certWithChain.getBytes(StandardCharsets.US_ASCII), cert.getBytes(StandardCharsets.US_ASCII)), is(false));
-        assertThat(ClusterCa.includesCaChain(null, caChain.getBytes(StandardCharsets.US_ASCII)), is(false));
-        assertThat(ClusterCa.includesCaChain(cert.getBytes(StandardCharsets.US_ASCII), null), is(false));
+        assertThat(ClusterCaCertificateIssuer.includesCaChain(certWithChain.getBytes(StandardCharsets.US_ASCII), caChain.getBytes(StandardCharsets.US_ASCII)), is(true));
+        assertThat(ClusterCaCertificateIssuer.includesCaChain(cert.getBytes(StandardCharsets.US_ASCII), caChain.getBytes(StandardCharsets.US_ASCII)), is(false));
+        assertThat(ClusterCaCertificateIssuer.includesCaChain(certWithChain.getBytes(StandardCharsets.US_ASCII), caChain2.getBytes(StandardCharsets.US_ASCII)), is(false));
+        assertThat(ClusterCaCertificateIssuer.includesCaChain(certWithChain.getBytes(StandardCharsets.US_ASCII), cert.getBytes(StandardCharsets.US_ASCII)), is(false));
+        assertThat(ClusterCaCertificateIssuer.includesCaChain(null, caChain.getBytes(StandardCharsets.US_ASCII)), is(false));
+        assertThat(ClusterCaCertificateIssuer.includesCaChain(cert.getBytes(StandardCharsets.US_ASCII), null), is(false));
     }
 
-    private Secret buildCertSecret(Ca ca) {
+    private Secret buildCertSecret(InternalCa strimziCa) {
         return new SecretBuilder()
                 .withNewMetadata()
                     .withName(AbstractModel.clusterCaCertSecretName(cluster))
-                    .withAnnotations(Map.of(Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION, String.valueOf(ca.caCertGeneration())))
+                    .withAnnotations(Map.of(InternalCa.ANNO_STRIMZI_IO_CA_CERT_GENERATION, String.valueOf(strimziCa.caCertGeneration())))
                 .endMetadata()
-                .withData(ca.caCertData())
+                .withData(strimziCa.caCertData())
                 .build();
     }
 
-    private Secret buildKeySecret(Ca ca) {
+    private Secret buildKeySecret(InternalCa strimziCa) {
         return new SecretBuilder()
                 .withNewMetadata()
                     .withName(AbstractModel.clusterCaKeySecretName(cluster))
-                    .withAnnotations(Map.of(Ca.ANNO_STRIMZI_IO_CA_KEY_GENERATION, String.valueOf(ca.caKeyGeneration())))
+                    .withAnnotations(Map.of(InternalCa.ANNO_STRIMZI_IO_CA_KEY_GENERATION, String.valueOf(strimziCa.caKeyGeneration())))
                 .endMetadata()
-                .withData(ca.caKeyData())
+                .withData(strimziCa.caKeyData())
                 .build();
     }
 }

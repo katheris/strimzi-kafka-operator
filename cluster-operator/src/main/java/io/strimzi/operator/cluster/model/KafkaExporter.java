@@ -37,6 +37,8 @@ import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.Util;
 import io.strimzi.operator.common.auth.PemTrustSet;
 import io.strimzi.operator.common.model.Ca;
+import io.strimzi.operator.common.model.CaUtils;
+import io.strimzi.operator.common.model.CertManagerCa;
 import io.strimzi.plugin.security.profiles.PodSecurityProviderContext;
 
 import java.security.cert.CertificateException;
@@ -47,7 +49,6 @@ import java.util.List;
 import java.util.Map;
 
 import static io.strimzi.api.kafka.model.common.template.DeploymentStrategy.ROLLING_UPDATE;
-import static io.strimzi.operator.common.model.Ca.x509Certificate;
 
 /**
  * Kafka Exporter model
@@ -298,12 +299,17 @@ public class KafkaExporter extends AbstractModel {
      *
      * @return List of Certificate resources
      */
-    public Certificate generateCertificateResource(ClusterCa clusterCa) {
-        return CertManagerUtils.buildCertManagerCertificate(namespace,
-                KafkaExporterResources.secretName(cluster),
-                clusterCa.getCertManagerCert(componentName, Ca.IO_STRIMZI),
-                labels,
-                ownerReference);
+    public Certificate generateCertificateResource(Ca clusterCa) {
+        //TODO: temporary fix
+        if (clusterCa instanceof CertManagerCa certManagerCa) {
+            return CertManagerUtils.buildCertManagerCertificate(namespace,
+                    KafkaExporterResources.secretName(cluster),
+                    certManagerCa.getCertManagerCert(componentName, Ca.IO_STRIMZI),
+                    labels,
+                    ownerReference);
+        } else {
+            return null;
+        }
     }
 
     /**
@@ -318,10 +324,10 @@ public class KafkaExporter extends AbstractModel {
      *
      * @return The generated Secret.
      */
-    public Secret generateCertificatesSecretForStrimziCa(ClusterCa clusterCa, Secret existingSecret, boolean isMaintenanceTimeWindowsSatisfied) {
+    public Secret generateCertificatesSecretForStrimziCa(Ca clusterCa, Secret existingSecret, boolean isMaintenanceTimeWindowsSatisfied) {
         CertAndKey existingCertAndKey = CertUtils.keyStoreCertAndKey(existingSecret, COMPONENT_TYPE, clusterCa.caCertGenerationAnnotation());
 
-        CertAndKey updatedCert = clusterCa.maybeCopyOrGenerateClientCert(reconciliation, componentName, existingCertAndKey, isMaintenanceTimeWindowsSatisfied);
+        CertAndKey updatedCert = ClusterCaCertificateIssuer.maybeCopyOrGenerateClientCert(reconciliation, componentName, clusterCa, existingCertAndKey, isMaintenanceTimeWindowsSatisfied);
 
         Map<String, String> secretData = CertUtils.buildSecretData(COMPONENT_TYPE, updatedCert);
         return ModelUtils.createSecret(
@@ -347,13 +353,13 @@ public class KafkaExporter extends AbstractModel {
      *
      * @return The generated Secret.
      */
-    public Secret generateCertificatesSecretForCertManagerCA(ClusterCa clusterCa, Secret existingSecret, Secret certManagerSecret, PemTrustSet pemTrustSet) {
+    public Secret generateCertificatesSecretForCertManagerCA(Ca clusterCa, Secret existingSecret, Secret certManagerSecret, PemTrustSet pemTrustSet) {
         Secret newSecret = CertManagerUtils.buildTrustedCertificateSecretFromCertManager(clusterCa, certManagerSecret, namespace, KafkaExporterResources.secretName(cluster),
                 COMPONENT_TYPE, labels, ownerReference);
         if (existingSecret == null) {
             return newSecret;
         } else if (CertManagerUtils.certManagerCertUpdated(existingSecret, newSecret)) {
-            if (certManagerSecretNotTrusted(clusterCa, pemTrustSet, existingSecret)) {
+            if (certManagerSecretNotTrusted(pemTrustSet, existingSecret)) {
                 LOGGER.infoCr(reconciliation, "New certificate for Kafka Exporter, but not trusted yet so keeping existing certificate Secret.");
                 return existingSecret;
             } else {
@@ -369,21 +375,20 @@ public class KafkaExporter extends AbstractModel {
     /**
      * Checks if the cert-manager Secret is trusted by the current CA cert
      *
-     * @param clusterCa Cluster CA
      * @param pemTrustSet PemTrustSet to use for checking trust
      * @param certManagerSecret Secret containing cert-manager provided cert
      * @return Whether the cert is trusted
      */
-    private boolean certManagerSecretNotTrusted(Ca clusterCa, PemTrustSet pemTrustSet, Secret certManagerSecret) {
+    private boolean certManagerSecretNotTrusted(PemTrustSet pemTrustSet, Secret certManagerSecret) {
         X509Certificate x509CaCert;
         List<X509Certificate> certManagerCertChain;
         try {
-            x509CaCert = x509Certificate(pemTrustSet.trustedCertificatesPemBytes());
-            certManagerCertChain = clusterCa.extractCertChain("tls.crt", Util.decodeBytesFromBase64(certManagerSecret.getData().get("tls.crt")));
+            x509CaCert = CaUtils.x509Certificate(pemTrustSet.trustedCertificatesPemBytes());
+            certManagerCertChain = CaUtils.extractCertChain("tls.crt", Util.decodeBytesFromBase64(certManagerSecret.getData().get("tls.crt")));
         } catch (CertificateException e) {
             throw new RuntimeException(e);
         }
-        return !Ca.certIsTrusted(reconciliation, certManagerCertChain, x509CaCert);
+        return !CaUtils.certIsTrusted(reconciliation, certManagerCertChain, x509CaCert);
     }
 
     /**

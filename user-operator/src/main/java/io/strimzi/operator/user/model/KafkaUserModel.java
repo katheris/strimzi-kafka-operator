@@ -25,9 +25,9 @@ import io.strimzi.operator.common.Annotations;
 import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.ReconciliationLogger;
 import io.strimzi.operator.common.Util;
-import io.strimzi.operator.common.model.InternalCa;
+import io.strimzi.operator.common.model.Ca;
 import io.strimzi.operator.common.model.CaConfig;
-import io.strimzi.operator.common.model.ClientsCa;
+import io.strimzi.operator.common.model.InternalCa;
 import io.strimzi.operator.common.model.InvalidResourceException;
 import io.strimzi.operator.common.model.Labels;
 import io.strimzi.operator.common.model.PasswordGenerator;
@@ -242,13 +242,14 @@ public class KafkaUserModel {
         int renewalDays = kafkaUserTlsClientAuthentication.getRenewalDays() != null ? kafkaUserTlsClientAuthentication.getRenewalDays() : caRenewalDays;
         validateCACertificates(clientsCaCertSecret, clientsCaKeySecret);
 
-        ClientsCa clientsCa = new ClientsCa(
+        InternalCa clientsCa = new InternalCa(
                 reconciliation,
+                Ca.CaRole.CLIENTS_CA,
                 certManager,
                 passwordGenerator,
                 clientsCaCertSecret,
                 clientsCaKeySecret,
-                new CaConfig(validityDays, renewalDays, false, generatePkcs12Stores, CertificateManagerType.STRIMZI_IO, )
+                new CaConfig(validityDays, renewalDays, false, generatePkcs12Stores, CertificateManagerType.STRIMZI_IO)
         );
         this.caCert = clientsCa.currentCaCertBase64();
 

@@ -30,6 +30,7 @@ import io.strimzi.operator.common.Annotations;
 import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.Util;
 import io.strimzi.operator.common.model.Ca;
+import io.strimzi.operator.common.model.CaUtils;
 import io.strimzi.operator.common.model.InvalidResourceException;
 import io.strimzi.operator.common.model.Labels;
 import io.strimzi.operator.common.model.PasswordGenerator;
@@ -75,10 +76,10 @@ import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-import static io.strimzi.operator.common.model.Ca.CA_CRT;
-import static io.strimzi.operator.common.model.Ca.CA_KEY;
-import static io.strimzi.operator.common.model.Ca.CA_STORE;
-import static io.strimzi.operator.common.model.Ca.CA_STORE_PASSWORD;
+import static io.strimzi.operator.common.model.InternalCa.CA_CRT;
+import static io.strimzi.operator.common.model.InternalCa.CA_KEY;
+import static io.strimzi.operator.common.model.InternalCa.CA_STORE;
+import static io.strimzi.operator.common.model.InternalCa.CA_STORE_PASSWORD;
 import static java.util.Collections.singleton;
 import static org.hamcrest.CoreMatchers.instanceOf;
 import static org.hamcrest.CoreMatchers.is;
@@ -169,7 +170,7 @@ public class CaReconcilerReconcileCasTest {
             Map<String, String> requiredLabels = ((Labels) invocation.getArgument(1)).toMap();
 
             List<Secret> listedSecrets = secrets.stream().filter(s -> {
-                Map<String, String> labels = s.getMetadata().getLabels();
+                Map<String, String> labels = new HashMap<>(s.getMetadata().getLabels());
                 labels.keySet().retainAll(requiredLabels.keySet());
                 return labels.equals(requiredLabels);
             }).collect(Collectors.toList());
@@ -1535,14 +1536,14 @@ public class CaReconcilerReconcileCasTest {
                     Map<String, String> clusterCaAnnotations = clusterCaCert.getValue().getMetadata().getAnnotations();
                     assertThat(clusterCaAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION), is("0"));
                     assertThat(clusterCaAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_KEY_GENERATION), is("0"));
-                    assertThat(clusterCaAnnotations.get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH), is(CertUtils.getCertificateThumbprint(Ca.x509Certificate(initialClusterCa.cert()))));
+                    assertThat(clusterCaAnnotations.get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH), is(CertUtils.getCertificateThumbprint(CaUtils.x509Certificate(initialClusterCa.cert()))));
                     assertThat(clusterCaCert.getValue().getData().get(CA_CRT), is(initialClusterCaCertSecret.getData().get(CA_CRT)));
 
                     assertThat(clientsCaCert.getValue(), is(notNullValue()));
                     Map<String, String> clientsCaAnnotations = clientsCaCert.getValue().getMetadata().getAnnotations();
                     assertThat(clientsCaAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION), is("0"));
                     assertThat(clientsCaAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_KEY_GENERATION), nullValue());
-                    assertThat(clientsCaAnnotations.get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH), is(CertUtils.getCertificateThumbprint(Ca.x509Certificate(initialClientsCa.cert()))));
+                    assertThat(clientsCaAnnotations.get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH), is(CertUtils.getCertificateThumbprint(CaUtils.x509Certificate(initialClientsCa.cert()))));
                     assertThat(clientsCaCert.getValue().getData().get(CA_CRT), is(initialClientsCaCertSecret.getData().get(CA_CRT)));
 
                     async.flag();
@@ -1613,14 +1614,14 @@ public class CaReconcilerReconcileCasTest {
                     Map<String, String> clusterCaAnnotations = clusterCaCert.getValue().getMetadata().getAnnotations();
                     assertThat(clusterCaAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION), is("0"));
                     assertThat(clusterCaAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_KEY_GENERATION), is("0"));
-                    assertThat(clusterCaAnnotations.get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH), is(CertUtils.getCertificateThumbprint(Ca.x509Certificate(initialClusterCa.cert()))));
+                    assertThat(clusterCaAnnotations.get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH), is(CertUtils.getCertificateThumbprint(CaUtils.x509Certificate(initialClusterCa.cert()))));
                     assertThat(clusterCaCert.getValue().getData().get(CA_CRT), is(initialClusterCaCertSecret.getData().get(CA_CRT)));
 
                     assertThat(clientsCaCert.getValue(), is(notNullValue()));
                     Map<String, String> clientsCaAnnotations = clientsCaCert.getValue().getMetadata().getAnnotations();
                     assertThat(clientsCaAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION), is("0"));
                     assertThat(clientsCaAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_KEY_GENERATION), nullValue());
-                    assertThat(clientsCaAnnotations.get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH), is(CertUtils.getCertificateThumbprint(Ca.x509Certificate(initialClientsCa.cert()))));
+                    assertThat(clientsCaAnnotations.get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH), is(CertUtils.getCertificateThumbprint(CaUtils.x509Certificate(initialClientsCa.cert()))));
                     assertThat(clientsCaCert.getValue().getData().get(CA_CRT), is(initialClientsCaCertSecret.getData().get(CA_CRT)));
 
                     async.flag();
@@ -1694,14 +1695,14 @@ public class CaReconcilerReconcileCasTest {
                     Map<String, String> clusterCaAnnotations = clusterCaCert.getValue().getMetadata().getAnnotations();
                     assertThat(clusterCaAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION), is("1"));
                     assertThat(clusterCaAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_KEY_GENERATION), is("0"));
-                    assertThat(clusterCaAnnotations.get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH), is(CertUtils.getCertificateThumbprint(Ca.x509Certificate(renewedClusterCa.cert()))));
+                    assertThat(clusterCaAnnotations.get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH), is(CertUtils.getCertificateThumbprint(CaUtils.x509Certificate(renewedClusterCa.cert()))));
                     assertThat(clusterCaCert.getValue().getData().get(CA_CRT), is(renewedClusterCaCertSecret.getData().get(CA_CRT)));
 
                     assertThat(clientsCaCert.getValue(), is(notNullValue()));
                     Map<String, String> clientsCaAnnotations = clientsCaCert.getValue().getMetadata().getAnnotations();
                     assertThat(clientsCaAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION), is("1"));
                     assertThat(clientsCaAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_KEY_GENERATION), nullValue());
-                    assertThat(clientsCaAnnotations.get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH), is(CertUtils.getCertificateThumbprint(Ca.x509Certificate(renewedClientsCa.cert()))));
+                    assertThat(clientsCaAnnotations.get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH), is(CertUtils.getCertificateThumbprint(CaUtils.x509Certificate(renewedClientsCa.cert()))));
                     assertThat(clientsCaCert.getValue().getData().get(CA_CRT), is(renewedClientsCaCertSecret.getData().get(CA_CRT)));
 
                     async.flag();
@@ -1775,7 +1776,7 @@ public class CaReconcilerReconcileCasTest {
                     Map<String, String> clusterCaAnnotations = clusterCaCert.getValue().getMetadata().getAnnotations();
                     assertThat(clusterCaAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION), is("1"));
                     assertThat(clusterCaAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_KEY_GENERATION), is("1"));
-                    assertThat(clusterCaAnnotations.get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH), is(CertUtils.getCertificateThumbprint(Ca.x509Certificate(renewedClusterCa.cert()))));
+                    assertThat(clusterCaAnnotations.get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH), is(CertUtils.getCertificateThumbprint(CaUtils.x509Certificate(renewedClusterCa.cert()))));
                     Map<String, String> clusterCaCertData = clusterCaCert.getValue().getData();
                     assertThat(clusterCaCertData, is(aMapWithSize(2)));
                     assertThat(clusterCaCert.getValue().getData().get(CA_CRT), is(renewedClusterCaCertSecret.getData().get(CA_CRT)));
@@ -1789,7 +1790,7 @@ public class CaReconcilerReconcileCasTest {
                     Map<String, String> clientsCaAnnotations = clientsCaCert.getValue().getMetadata().getAnnotations();
                     assertThat(clientsCaAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION), is("1"));
                     assertThat(clientsCaAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_KEY_GENERATION), nullValue());
-                    assertThat(clientsCaAnnotations.get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH), is(CertUtils.getCertificateThumbprint(Ca.x509Certificate(renewedClientsCa.cert()))));
+                    assertThat(clientsCaAnnotations.get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH), is(CertUtils.getCertificateThumbprint(CaUtils.x509Certificate(renewedClientsCa.cert()))));
                     assertThat(clientsCaCert.getValue().getData().get(CA_CRT), is(renewedClientsCaCertSecret.getData().get(CA_CRT)));
 
                     async.flag();
@@ -1857,14 +1858,14 @@ public class CaReconcilerReconcileCasTest {
                     Map<String, String> clusterCaAnnotations = clusterCaCert.getValue().getMetadata().getAnnotations();
                     assertThat(clusterCaAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION), is("0"));
                     assertThat(clusterCaAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_KEY_GENERATION), is("0"));
-                    assertThat(clusterCaAnnotations.get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH), is(CertUtils.getCertificateThumbprint(Ca.x509Certificate(initialClusterCa.cert()))));
+                    assertThat(clusterCaAnnotations.get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH), is(CertUtils.getCertificateThumbprint(CaUtils.x509Certificate(initialClusterCa.cert()))));
                     assertThat(clusterCaCert.getValue().getData().get(CA_CRT), is(initialClusterCaCertSecret.getData().get(CA_CRT)));
 
                     assertThat(clientsCaCert.getValue(), is(notNullValue()));
                     Map<String, String> clientsCaAnnotations = clientsCaCert.getValue().getMetadata().getAnnotations();
                     assertThat(clientsCaAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION), is("1"));
                     assertThat(clientsCaAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_KEY_GENERATION), nullValue());
-                    assertThat(clientsCaAnnotations.get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH), is(CertUtils.getCertificateThumbprint(Ca.x509Certificate(renewedClientsCa.cert()))));
+                    assertThat(clientsCaAnnotations.get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH), is(CertUtils.getCertificateThumbprint(CaUtils.x509Certificate(renewedClientsCa.cert()))));
                     assertThat(clientsCaCert.getValue().getData().get(CA_CRT), is(renewedClientsCaCertSecret.getData().get(CA_CRT)));
 
                     async.flag();
@@ -1932,14 +1933,14 @@ public class CaReconcilerReconcileCasTest {
                     Map<String, String> clusterCaAnnotations = clusterCaCert.getValue().getMetadata().getAnnotations();
                     assertThat(clusterCaAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION), is("0"));
                     assertThat(clusterCaAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_KEY_GENERATION), is("0"));
-                    assertThat(clusterCaAnnotations.get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH), is(CertUtils.getCertificateThumbprint(Ca.x509Certificate(initialClusterCa.cert()))));
+                    assertThat(clusterCaAnnotations.get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH), is(CertUtils.getCertificateThumbprint(CaUtils.x509Certificate(initialClusterCa.cert()))));
                     assertThat(clusterCaCert.getValue().getData().get(CA_CRT), is(initialClusterCaCertSecret.getData().get(CA_CRT)));
 
                     assertThat(clientsCaCert.getValue(), is(notNullValue()));
                     Map<String, String> clientsCaAnnotations = clientsCaCert.getValue().getMetadata().getAnnotations();
                     assertThat(clientsCaAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION), is("1"));
                     assertThat(clientsCaAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_KEY_GENERATION), nullValue());
-                    assertThat(clientsCaAnnotations.get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH), is(CertUtils.getCertificateThumbprint(Ca.x509Certificate(renewedClientsCa.cert()))));
+                    assertThat(clientsCaAnnotations.get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH), is(CertUtils.getCertificateThumbprint(CaUtils.x509Certificate(renewedClientsCa.cert()))));
                     assertThat(clientsCaCert.getValue().getData().get(CA_CRT), is(renewedClientsCaCertSecret.getData().get(CA_CRT)));
 
                     async.flag();

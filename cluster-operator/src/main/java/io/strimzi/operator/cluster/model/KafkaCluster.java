@@ -45,7 +45,6 @@ import io.fabric8.kubernetes.api.model.rbac.Subject;
 import io.fabric8.kubernetes.api.model.rbac.SubjectBuilder;
 import io.fabric8.openshift.api.model.Route;
 import io.fabric8.openshift.api.model.RouteBuilder;
-import io.strimzi.api.kafka.model.common.CertificateManagerType;
 import io.strimzi.api.kafka.model.common.Condition;
 import io.strimzi.api.kafka.model.common.Rack;
 import io.strimzi.api.kafka.model.common.TopologyLabelRack;
@@ -91,8 +90,13 @@ import io.strimzi.operator.common.Annotations;
 import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.Util;
 import io.strimzi.operator.common.auth.TlsPemIdentity;
-import io.strimzi.operator.common.model.*;
+import io.strimzi.operator.common.model.Ca;
+import io.strimzi.operator.common.model.CaUtils;
+import io.strimzi.operator.common.model.CertManagerCa;
 import io.strimzi.operator.common.model.InternalCa;
+import io.strimzi.operator.common.model.InvalidResourceException;
+import io.strimzi.operator.common.model.Labels;
+import io.strimzi.operator.common.model.StatusUtils;
 import io.strimzi.plugin.security.profiles.PodSecurityProviderContext;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -1320,7 +1324,7 @@ public class KafkaCluster extends AbstractModel implements SupportsMetrics, Supp
         //TODO: temporary fix
         if (clusterCa instanceof CertManagerCa certManagerCa) {
             return generateCertificateSecretsForCertManagerCA(certManagerCa, tlsPemIdentity, existingSecretWithName);
-        } else if (clusterCa instanceof InternalCa internalCa){
+        } else if (clusterCa instanceof InternalCa internalCa) {
             return generateCertificateSecretsForStrimziOrUserCA(internalCa, existingSecretWithName, customCertsData, externalBootstrapDnsName, externalDnsNames, isMaintenanceTimeWindowsSatisfied);
         }
         return List.of();

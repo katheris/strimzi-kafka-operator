@@ -8,15 +8,21 @@ import io.fabric8.certmanager.api.model.v1.CertificateBuilder;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.strimzi.api.kafka.model.common.certmanager.IssuerRef;
 import io.strimzi.certs.Subject;
-import io.strimzi.operator.common.*;
+import io.strimzi.operator.common.Annotations;
+import io.strimzi.operator.common.Reconciliation;
+import io.strimzi.operator.common.Util;
 
 import java.math.BigInteger;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.time.ZoneId;
-import java.util.*;
-import java.util.function.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Predicate;
 
 
 /**
@@ -31,6 +37,7 @@ public class CertManagerCa extends Ca {
      * Constructs the CA object
      *
      * @param reconciliation        Reconciliation marker
+     * @param caRole                Ca role
      * @param caCertSecret          Kubernetes Secret where the CA public key is stored
      * @param caKeySecret           Kubernetes Secret where the CA private key is stored
      * @param caConfig              Certificate Authority configuration
@@ -234,11 +241,7 @@ public class CertManagerCa extends Ca {
                 removed.add(certName);
             }
         }
-        if (removed.isEmpty()) {
-            return false;
-        } else {
-            return true;
-        }
+        return !removed.isEmpty();
     }
 
     @Override

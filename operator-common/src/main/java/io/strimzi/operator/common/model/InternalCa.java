@@ -64,7 +64,7 @@ public class InternalCa extends Ca {
      * Constructs the CA object
      *
      * @param reconciliation    Reconciliation marker
-     * @param caRole
+     * @param caRole            Ca Role
      * @param certManager       Certificate manager instance
      * @param passwordGenerator Password generator instance
      * @param caCertSecret      Kubernetes Secret where the CA public key is stored
@@ -176,6 +176,17 @@ public class InternalCa extends Ca {
         }
     }
 
+    /**
+     * Generates a certificate signed by this CA
+     *
+     * @param subject The subject of the certificate to be generated.
+     * @param csrFile Certificate sign request file
+     * @param keyFile Key file
+     * @param certFile Certificate file
+     * @param keyStoreFile Keystore file
+     * @param includeCaChain Whether include CA chain
+     * @return The CertAndKey
+     */
     public CertAndKey generateSignedCert(Subject subject,
                                          File csrFile, File keyFile, File certFile, File keyStoreFile, boolean includeCaChain) {
         LOGGER.infoCr(reconciliation, "Generating certificate {}, signed by CA {}", subject, this);
@@ -288,6 +299,11 @@ public class InternalCa extends Ca {
         return certNeedsRenewal(currentCert);
     }
 
+    /**
+     * Whether Ca has been generated
+     *
+     * @return  True when the CA certificate has been generated.
+     */
     public boolean isGenerateCa()  {
         return caConfig.isGenerateCa();
     }
@@ -376,7 +392,7 @@ public class InternalCa extends Ca {
         }
 
         if (renewalType != RenewalType.NOOP && renewalType != RenewalType.POSTPONED) {
-            LOGGER.debugCr(reconciliation, "{}: {}", this, renewalType.postDescription(caName())) ;
+            LOGGER.debugCr(reconciliation, "{}: {}", this, renewalType.postDescription(caName()));
         }
         caCertData = certData;
         caKeyData = keyData;
@@ -431,11 +447,11 @@ public class InternalCa extends Ca {
 
         switch (renewalType) {
             case NOOP ->
-                    LOGGER.debugCr(reconciliation, "{}: {}", this, renewalType.preDescription(caName())) ;
+                    LOGGER.debugCr(reconciliation, "{}: {}", this, renewalType.preDescription(caName()));
             case REPLACE_KEY, RENEW_CERT, CREATE ->
-                    LOGGER.debugCr(reconciliation, "{}: {}: {}", this, renewalType.preDescription(caName()) , reason);
+                    LOGGER.debugCr(reconciliation, "{}: {}: {}", this, renewalType.preDescription(caName()), reason);
             case POSTPONED ->
-                    LOGGER.warnCr(reconciliation, "{}: {}: {}", this, renewalType.preDescription(caName()) , reason);
+                    LOGGER.warnCr(reconciliation, "{}: {}: {}", this, renewalType.preDescription(caName()), reason);
         }
 
         return renewalType;

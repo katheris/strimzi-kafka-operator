@@ -47,7 +47,7 @@ import io.strimzi.operator.common.Annotations;
 import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.TimeoutException;
 import io.strimzi.operator.common.auth.TlsPemIdentity;
-import io.strimzi.operator.common.model.Ca;
+import io.strimzi.operator.common.model.InternalCa;
 import io.strimzi.operator.common.model.Labels;
 import io.strimzi.operator.common.model.PasswordGenerator;
 import io.vertx.core.Future;
@@ -76,7 +76,7 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-import static io.strimzi.operator.common.model.Ca.CA_CRT;
+import static io.strimzi.operator.common.model.InternalCa.CA_CRT;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.aMapWithSize;
@@ -259,10 +259,10 @@ public class CaReconcilerCertManagerTest {
 
         return ModelUtils.createSecret(KafkaResources.clusterOperatorCertsSecretName(NAME), NAMESPACE, Labels.EMPTY, null,
                 Map.of(
-                        Ca.SecretEntry.CRT.asKey("cluster-operator"), certManagerSecret.getData().get("tls.crt"),
-                        Ca.SecretEntry.KEY.asKey("cluster-operator"), certManagerSecret.getData().get("tls.key")
+                        InternalCa.SecretEntry.CRT.asKey("cluster-operator"), certManagerSecret.getData().get("tls.crt"),
+                        InternalCa.SecretEntry.KEY.asKey("cluster-operator"), certManagerSecret.getData().get("tls.key")
                 ),
-                Map.of(Ca.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, certGeneration, Annotations.ANNO_STRIMZI_SERVER_CERT_HASH, certHash),
+                Map.of(InternalCa.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, certGeneration, Annotations.ANNO_STRIMZI_SERVER_CERT_HASH, certHash),
                 Map.of());
     }
 
@@ -319,7 +319,7 @@ public class CaReconcilerCertManagerTest {
 
                     Map<String, String> clusterOperatorCertSecretAnnotations = clusterOperatorCertSecret.getValue().getMetadata().getAnnotations();
                     assertThat(clusterOperatorCertSecretAnnotations, hasEntry(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH, CertUtils.getCertificateThumbprint(clusterOperatorCMSecret, "tls.crt")));
-                    assertThat(clusterOperatorCertSecretAnnotations, hasEntry(Ca.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, "0"));
+                    assertThat(clusterOperatorCertSecretAnnotations, hasEntry(InternalCa.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, "0"));
                     async.flag();
                 })));
     }
@@ -391,9 +391,9 @@ public class CaReconcilerCertManagerTest {
         Secret clientsCaCertSecret = ResourceUtils.createInitialCaCertSecretForCMCa(NAMESPACE, NAME, KafkaResources.clientsCaCertificateSecretName(NAME), clientsCaCertAndKey.certAsBase64String(), false);
 
         Map<String, String> generationAnnotations =
-                Map.of(Ca.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, "0",
-                        Ca.ANNO_STRIMZI_IO_CLUSTER_CA_KEY_GENERATION, "0",
-                        Ca.ANNO_STRIMZI_IO_CLIENTS_CA_CERT_GENERATION, "0");
+                Map.of(InternalCa.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, "0",
+                        InternalCa.ANNO_STRIMZI_IO_CLUSTER_CA_KEY_GENERATION, "0",
+                        InternalCa.ANNO_STRIMZI_IO_CLIENTS_CA_CERT_GENERATION, "0");
 
         Pod controllerPod = podWithNameAndAnnotations("my-cluster-controllers-1", false, true, generationAnnotations);
         Pod brokerPod = podWithNameAndAnnotations("my-cluster-brokers-0", true, false, generationAnnotations);
@@ -432,7 +432,7 @@ public class CaReconcilerCertManagerTest {
 
                     Map<String, String> clusterOperatorCertSecretAnnotations = clusterOperatorCertSecret.getValue().getMetadata().getAnnotations();
                     assertThat(clusterOperatorCertSecretAnnotations, hasEntry(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH, CertUtils.getCertificateThumbprint(renewedClusterOperatorCMSecret, "tls.crt")));
-                    assertThat(clusterOperatorCertSecretAnnotations, hasEntry(Ca.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, "0"));
+                    assertThat(clusterOperatorCertSecretAnnotations, hasEntry(InternalCa.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, "0"));
                     async.flag();
                 })));
     }
@@ -457,9 +457,9 @@ public class CaReconcilerCertManagerTest {
         Secret clientsCaCertSecret = ResourceUtils.createInitialCaCertSecretForCMCa(NAMESPACE, NAME, KafkaResources.clientsCaCertificateSecretName(NAME), clientsCaCertAndKey.certAsBase64String(), false);
 
         Map<String, String> generationAnnotations =
-                Map.of(Ca.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, "0",
-                        Ca.ANNO_STRIMZI_IO_CLUSTER_CA_KEY_GENERATION, "0",
-                        Ca.ANNO_STRIMZI_IO_CLIENTS_CA_CERT_GENERATION, "0");
+                Map.of(InternalCa.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, "0",
+                        InternalCa.ANNO_STRIMZI_IO_CLUSTER_CA_KEY_GENERATION, "0",
+                        InternalCa.ANNO_STRIMZI_IO_CLIENTS_CA_CERT_GENERATION, "0");
 
         Pod controllerPod = podWithNameAndAnnotations("my-cluster-controllers-1", false, true, generationAnnotations);
         Pod brokerPod = podWithNameAndAnnotations("my-cluster-brokers-0", true, false, generationAnnotations);
@@ -498,7 +498,7 @@ public class CaReconcilerCertManagerTest {
 
                     Map<String, String> clusterOperatorCertSecretAnnotations = clusterOperatorCertSecret.getValue().getMetadata().getAnnotations();
                     assertThat(clusterOperatorCertSecretAnnotations, hasEntry(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH, CertUtils.getCertificateThumbprint(renewedClusterOperatorCMSecret, "tls.crt")));
-                    assertThat(clusterOperatorCertSecretAnnotations, hasEntry(Ca.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, "1"));
+                    assertThat(clusterOperatorCertSecretAnnotations, hasEntry(InternalCa.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, "1"));
                     async.flag();
                 })));
     }
@@ -523,9 +523,9 @@ public class CaReconcilerCertManagerTest {
         Secret clientsCaCertSecret = ResourceUtils.createInitialCaCertSecretForCMCa(NAMESPACE, NAME, KafkaResources.clientsCaCertificateSecretName(NAME), clientsCaCertAndKey.certAsBase64String(), false);
 
         Map<String, String> generationAnnotations =
-                Map.of(Ca.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, "0",
-                        Ca.ANNO_STRIMZI_IO_CLUSTER_CA_KEY_GENERATION, "0",
-                        Ca.ANNO_STRIMZI_IO_CLIENTS_CA_CERT_GENERATION, "0");
+                Map.of(InternalCa.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, "0",
+                        InternalCa.ANNO_STRIMZI_IO_CLUSTER_CA_KEY_GENERATION, "0",
+                        InternalCa.ANNO_STRIMZI_IO_CLIENTS_CA_CERT_GENERATION, "0");
 
         Pod controllerPod = podWithNameAndAnnotations("my-cluster-controllers-1", false, true, generationAnnotations);
         Pod brokerPod = podWithNameAndAnnotations("my-cluster-brokers-0", true, false, generationAnnotations);
@@ -551,9 +551,9 @@ public class CaReconcilerCertManagerTest {
                 for (Pod pod : returnedPods) {
                     Map<String, String> podAnnotations = pod.getMetadata().getAnnotations();
                     // Expect that the CA key generation was updated. CA cert generations are updated by component reconcilers
-                    assertThat(podAnnotations, hasEntry(Ca.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, "0"));
-                    assertThat(podAnnotations, hasEntry(Ca.ANNO_STRIMZI_IO_CLUSTER_CA_KEY_GENERATION, "1"));
-                    assertThat(podAnnotations, hasEntry(Ca.ANNO_STRIMZI_IO_CLIENTS_CA_CERT_GENERATION, "0"));
+                    assertThat(podAnnotations, hasEntry(InternalCa.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, "0"));
+                    assertThat(podAnnotations, hasEntry(InternalCa.ANNO_STRIMZI_IO_CLUSTER_CA_KEY_GENERATION, "1"));
+                    assertThat(podAnnotations, hasEntry(InternalCa.ANNO_STRIMZI_IO_CLIENTS_CA_CERT_GENERATION, "0"));
                 }
             });
             async.flag();
@@ -595,8 +595,8 @@ public class CaReconcilerCertManagerTest {
         Secret initialClusterCaCertSecret = ResourceUtils.createInitialCaCertSecretForCMCa(NAMESPACE, NAME, AbstractModel.clusterCaCertSecretName(NAME), newClusterCaCertAndKey.certAsBase64String(), true);
 
         Map<String, String> annotations = initialClusterCaCertSecret.getMetadata().getAnnotations();
-        annotations.put(Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION, "1");
-        annotations.put(Ca.ANNO_STRIMZI_IO_CA_KEY_GENERATION, "1");
+        annotations.put(InternalCa.ANNO_STRIMZI_IO_CA_CERT_GENERATION, "1");
+        annotations.put(InternalCa.ANNO_STRIMZI_IO_CA_KEY_GENERATION, "1");
         Secret clusterCaCertSecret = initialClusterCaCertSecret.edit()
                 .editMetadata()
                 .withAnnotations(annotations)
@@ -620,9 +620,9 @@ public class CaReconcilerCertManagerTest {
 
         // Update annotations as though this is the second reconcile loop after Kafka brokers were rolled
         Map<String, String> generationAnnotations =
-                Map.of(Ca.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, "0",
-                        Ca.ANNO_STRIMZI_IO_CLUSTER_CA_KEY_GENERATION, "1",
-                        Ca.ANNO_STRIMZI_IO_CLIENTS_CA_CERT_GENERATION, "0");
+                Map.of(InternalCa.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, "0",
+                        InternalCa.ANNO_STRIMZI_IO_CLUSTER_CA_KEY_GENERATION, "1",
+                        InternalCa.ANNO_STRIMZI_IO_CLIENTS_CA_CERT_GENERATION, "0");
 
         Pod controllerPod = podWithNameAndAnnotations("my-cluster-controllers-1", false, true, generationAnnotations);
         Pod brokerPod = podWithNameAndAnnotations("my-cluster-brokers-0", true, false, generationAnnotations);
@@ -661,7 +661,7 @@ public class CaReconcilerCertManagerTest {
 
                     Map<String, String> clusterOperatorCertSecretAnnotations = clusterOperatorCertSecret.getValue().getMetadata().getAnnotations();
                     assertThat(clusterOperatorCertSecretAnnotations, hasEntry(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH, CertUtils.getCertificateThumbprint(renewedClusterOperatorCMSecret, "tls.crt")));
-                    assertThat(clusterOperatorCertSecretAnnotations, hasEntry(Ca.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, "1"));
+                    assertThat(clusterOperatorCertSecretAnnotations, hasEntry(InternalCa.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, "1"));
 
                     ArgumentCaptor<Secret> clusterCaCert = ArgumentCaptor.forClass(Secret.class);
                     ArgumentCaptor<Secret> clientsCaCert = ArgumentCaptor.forClass(Secret.class);
@@ -687,8 +687,8 @@ public class CaReconcilerCertManagerTest {
         Secret initialClusterCaCertSecret = ResourceUtils.createInitialCaCertSecretForCMCa(NAMESPACE, NAME, AbstractModel.clusterCaCertSecretName(NAME), clusterCaCertAndKey.certAsBase64String(), true);
 
         Map<String, String> annotations = initialClusterCaCertSecret.getMetadata().getAnnotations();
-        annotations.put(Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION, "1");
-        annotations.put(Ca.ANNO_STRIMZI_IO_CA_KEY_GENERATION, "1");
+        annotations.put(InternalCa.ANNO_STRIMZI_IO_CA_CERT_GENERATION, "1");
+        annotations.put(InternalCa.ANNO_STRIMZI_IO_CA_KEY_GENERATION, "1");
         Secret clusterCaCertSecret = initialClusterCaCertSecret.edit()
                 .editMetadata()
                 .withAnnotations(annotations)
@@ -711,9 +711,9 @@ public class CaReconcilerCertManagerTest {
 
         // Update annotations as though this is the second reconcile loop after Kafka brokers were rolled, and they are presenting certificates that chain with new CA key
         Map<String, String> generationAnnotations =
-                Map.of(Ca.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, "1",
-                        Ca.ANNO_STRIMZI_IO_CLUSTER_CA_KEY_GENERATION, "1",
-                        Ca.ANNO_STRIMZI_IO_CLIENTS_CA_CERT_GENERATION, "0");
+                Map.of(InternalCa.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, "1",
+                        InternalCa.ANNO_STRIMZI_IO_CLUSTER_CA_KEY_GENERATION, "1",
+                        InternalCa.ANNO_STRIMZI_IO_CLIENTS_CA_CERT_GENERATION, "0");
 
         Pod controllerPod = podWithNameAndAnnotations("my-cluster-controllers-1", false, true, generationAnnotations);
         Pod brokerPod = podWithNameAndAnnotations("my-cluster-brokers-0", true, false, generationAnnotations);
@@ -779,9 +779,9 @@ public class CaReconcilerCertManagerTest {
         Secret clientsCaCertSecret = ResourceUtils.createInitialCaCertSecretForCMCa(NAMESPACE, NAME, KafkaResources.clientsCaCertificateSecretName(NAME), clientsCaCertAndKey.certAsBase64String(), false);
 
         Map<String, String> generationAnnotations =
-                Map.of(Ca.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, "0",
-                        Ca.ANNO_STRIMZI_IO_CLUSTER_CA_KEY_GENERATION, "0",
-                        Ca.ANNO_STRIMZI_IO_CLIENTS_CA_CERT_GENERATION, "0");
+                Map.of(InternalCa.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, "0",
+                        InternalCa.ANNO_STRIMZI_IO_CLUSTER_CA_KEY_GENERATION, "0",
+                        InternalCa.ANNO_STRIMZI_IO_CLIENTS_CA_CERT_GENERATION, "0");
 
         Pod controllerPod = podWithNameAndAnnotations("my-cluster-controllers-1", false, true, generationAnnotations);
         Pod brokerPod = podWithNameAndAnnotations("my-cluster-brokers-0", true, false, generationAnnotations);
@@ -820,7 +820,7 @@ public class CaReconcilerCertManagerTest {
 
                     Map<String, String> clusterOperatorCertSecretAnnotations = clusterOperatorCertSecret.getValue().getMetadata().getAnnotations();
                     assertThat(clusterOperatorCertSecretAnnotations, hasEntry(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH, CertUtils.getCertificateThumbprint(initialClusterOperatorCMSecret, "tls.crt")));
-                    assertThat(clusterOperatorCertSecretAnnotations, hasEntry(Ca.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, "0"));
+                    assertThat(clusterOperatorCertSecretAnnotations, hasEntry(InternalCa.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, "0"));
                     async.flag();
                 })));
     }

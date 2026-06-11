@@ -15,7 +15,6 @@ import io.strimzi.api.kafka.model.kafka.Storage;
 import io.strimzi.api.kafka.model.kafka.cruisecontrol.CruiseControlResources;
 import io.strimzi.operator.cluster.ClusterOperatorConfig;
 import io.strimzi.operator.cluster.model.CertUtils;
-import io.strimzi.operator.cluster.model.ClusterCa;
 import io.strimzi.operator.cluster.model.CruiseControl;
 import io.strimzi.operator.cluster.model.ImagePullPolicy;
 import io.strimzi.operator.cluster.model.KafkaVersion;
@@ -49,7 +48,7 @@ import java.util.Set;
 public class CruiseControlReconciler {
     private final Reconciliation reconciliation;
     private final CruiseControl cruiseControl;
-    private final ClusterCa clusterCa;
+    private final Ca clusterCa;
     private final List<String> maintenanceWindows;
     private final long operationTimeoutMs;
     private final String operatorNamespace;
@@ -98,7 +97,7 @@ public class CruiseControlReconciler {
             Set<NodeRef> kafkaBrokerNodes,
             Map<String, Storage> kafkaBrokerStorage,
             Map<String, ResourceRequirements> kafkaBrokerResources,
-            ClusterCa clusterCa
+            Ca clusterCa
     ) {
         this.reconciliation = reconciliation;
         this.cruiseControl = CruiseControl.fromCrd(reconciliation, kafkaAssembly, versions, kafkaBrokerNodes, kafkaBrokerStorage, 

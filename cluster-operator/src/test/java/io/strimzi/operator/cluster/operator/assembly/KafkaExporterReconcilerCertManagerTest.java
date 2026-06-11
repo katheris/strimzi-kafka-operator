@@ -12,7 +12,6 @@ import io.strimzi.api.kafka.model.common.CertificateAuthority;
 import io.strimzi.api.kafka.model.common.CertificateAuthorityBuilder;
 import io.strimzi.api.kafka.model.common.CertificateManagerType;
 import io.strimzi.api.kafka.model.common.certmanager.IssuerKind;
-import io.strimzi.api.kafka.model.common.certmanager.IssuerRefBuilder;
 import io.strimzi.api.kafka.model.kafka.Kafka;
 import io.strimzi.api.kafka.model.kafka.KafkaBuilder;
 import io.strimzi.api.kafka.model.kafka.exporter.KafkaExporterResources;
@@ -26,7 +25,6 @@ import io.strimzi.operator.cluster.ResourceUtils;
 import io.strimzi.operator.cluster.model.AbstractModel;
 import io.strimzi.operator.cluster.model.CertManagerUtils;
 import io.strimzi.operator.cluster.model.CertUtils;
-import io.strimzi.operator.cluster.model.ClusterCa;
 import io.strimzi.operator.cluster.model.KafkaExporter;
 import io.strimzi.operator.cluster.model.KafkaVersion;
 import io.strimzi.operator.cluster.operator.resource.ResourceOperatorSupplier;
@@ -36,6 +34,7 @@ import io.strimzi.operator.common.Annotations;
 import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.model.Ca;
 import io.strimzi.operator.common.model.CaConfig;
+import io.strimzi.operator.common.model.InternalCa;
 import io.strimzi.operator.common.model.PasswordGenerator;
 import io.strimzi.operator.common.operator.MockCertManager;
 import io.vertx.core.Future;
@@ -53,7 +52,7 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.util.Map;
 
-import static io.strimzi.operator.common.model.Ca.CA_CRT;
+import static io.strimzi.operator.common.model.InternalCa.CA_CRT;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.aMapWithSize;
@@ -72,17 +71,14 @@ public class KafkaExporterReconcilerCertManagerTest {
     private final static OpenSslCertManager CERT_MANAGER = new OpenSslCertManager();
     private final static int VALIDITY_DAYS = 100;
     private final static int RENEWAL_DAYS = 10;
-    private final static ClusterCa CLUSTER_CA = new ClusterCa(
+    private final static InternalCa CLUSTER_CA = new InternalCa(
             Reconciliation.DUMMY_RECONCILIATION,
+            Ca.CaRole.CLUSTER_CA,
             new MockCertManager(),
             new PasswordGenerator(10, "a", "a"),
             ResourceUtils.createInitialCaCertSecretForCMCa(NAMESPACE, NAME, AbstractModel.clusterCaCertSecretName(NAME), MockCertManager.clusterCaCert(), true),
             null,
-            new CaConfig(VALIDITY_DAYS, RENEWAL_DAYS, false, false, CertificateManagerType.CERT_MANAGER_IO),
-            new IssuerRefBuilder()
-                    .withName("cm-issuer")
-                    .withKind(IssuerKind.CLUSTER_ISSUER)
-                    .build()
+            new CaConfig(VALIDITY_DAYS, RENEWAL_DAYS, false, false, CertificateManagerType.CERT_MANAGER_IO)
     );
     private final static Kafka KAFKA = new KafkaBuilder()
             .withNewMetadata()
@@ -271,7 +267,7 @@ public class KafkaExporterReconcilerCertManagerTest {
 
                     Map<String, String> clusterOperatorCertSecretAnnotations = kafkaExporterCertSecret.getValue().getMetadata().getAnnotations();
                     assertThat(clusterOperatorCertSecretAnnotations, hasEntry(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH, CertUtils.getCertificateThumbprint(kafkaExporterCMSecret, "tls.crt")));
-                    assertThat(clusterOperatorCertSecretAnnotations, hasEntry(Ca.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, "0"));
+                    assertThat(clusterOperatorCertSecretAnnotations, hasEntry(InternalCa.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, "0"));
                     async.flag();
                 })));
     }

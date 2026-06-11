@@ -37,12 +37,18 @@ import java.util.stream.Collectors;
  * Represents the Cluster CA
  */
 public final class ClusterCaCertificateIssuer {
-    protected static final ReconciliationLogger LOGGER = ReconciliationLogger.create(ClusterCaCertificateIssuer.class);
+    private static final ReconciliationLogger LOGGER = ReconciliationLogger.create(ClusterCaCertificateIssuer.class);
+
+    private ClusterCaCertificateIssuer() {
+       // Utility class - prevent instantiation
+    }
+
     /**
      * Prepares the Cruise Control certificate. It either reuses the existing certificate, renews it or generates new
      * certificate if needed.
      *
      * @param namespace                             Namespace of the Kafka cluster
+     * @param ca                                    CA
      * @param clusterName                           Name of the Kafka cluster
      * @param existingCertificate                   Existing certificate (or null if they do not exist yet)
      * @param ccNode                                Cruise Control node reference
@@ -52,9 +58,9 @@ public final class ClusterCaCertificateIssuer {
      *
      * @throws IOException IOException is thrown when it is raised while working with the certificates
      */
-    protected static Map<String, CertAndKey> generateCcCerts(
+    static Map<String, CertAndKey> generateCcCerts(
             Reconciliation reconciliation,
-            InternalCa ca,
+            Ca ca,
             String namespace,
             String clusterName,
             CertAndKey existingCertificate,
@@ -93,6 +99,7 @@ public final class ClusterCaCertificateIssuer {
      * certificates if needed.
      *
      * @param namespace                             Namespace of the Kafka cluster
+     * @param ca                                    CA
      * @param clusterName                           Name of the Kafka cluster
      * @param existingCertificates                  Existing certificates (or null if they do not exist yet)
      * @param nodes                                 Nodes that are part of the Kafka cluster
@@ -104,7 +111,7 @@ public final class ClusterCaCertificateIssuer {
      *
      * @throws IOException IOException is thrown when it is raised while working with the certificates
      */
-    protected static Map<String, CertAndKey> generateBrokerCerts(
+    static Map<String, CertAndKey> generateBrokerCerts(
             Reconciliation reconciliation,
             Ca ca,
             String namespace,
@@ -131,6 +138,7 @@ public final class ClusterCaCertificateIssuer {
      * Prepares the Certificate objects for the Kafka nodes.
      * Only used when cert-manager is issuing certificates.
      *
+     * @param ca                            CertManager CA
      * @param namespace                     Namespace of the Kafka cluster
      * @param clusterName                   Name of the Kafka cluster
      * @param nodes                         Nodes that are part of the Kafka cluster
@@ -197,6 +205,7 @@ public final class ClusterCaCertificateIssuer {
      * and maybe generate new ones for new replicas (i.e. scale-up).
      *
      * @param reconciliation                        Reconciliation marker
+     * @param ca                                    CA
      * @param nodes                                 List of nodes for which the certificates should be generated
      * @param subjectFn                             Function to generate certificate subject for given node / pod
      * @param existingCertificates                  Existing certificates (or null if they do not exist yet)
@@ -241,7 +250,7 @@ public final class ClusterCaCertificateIssuer {
                 // A certificate for this node already exists, so we will try to reuse it
                 LOGGER.debugCr(reconciliation, "certificate for node {} already exists", node);
 
-                if (certSubjectChanged(reconciliation, ca, certAndKey, subject, podName))   {
+                if (certSubjectChanged(reconciliation, certAndKey, subject, podName))   {
                     reasons.add("DNS names changed");
                 }
 
@@ -298,12 +307,13 @@ public final class ClusterCaCertificateIssuer {
      *
      * @param reconciliation                        Reconciliation marker
      * @param commonName                            Common Name for the certificate
+     * @param ca                                    CA
      * @param existingCertAndKey                    Existing certificate (or null if none exists)
      * @param isMaintenanceTimeWindowsSatisfied     Whether we are in a maintenance window
      *
      * @return CertAndKey object containing the certificate and key with CA generation set
      */
-    public CertAndKey maybeCopyOrGenerateClientCert(
+    public static CertAndKey maybeCopyOrGenerateClientCert(
             Reconciliation reconciliation,
             String commonName,
             Ca ca,
@@ -384,9 +394,9 @@ public final class ClusterCaCertificateIssuer {
      * @return  True if the subjects are different, false otherwise
      */
     /* test */
-    static boolean certSubjectChanged(Reconciliation reconciliation, Ca ca, CertAndKey certAndKey, Subject desiredSubject, String podName)    {
+    static boolean certSubjectChanged(Reconciliation reconciliation, CertAndKey certAndKey, Subject desiredSubject, String podName)    {
         Collection<String> desiredAltNames = desiredSubject.subjectAltNames().values();
-        Collection<String> currentAltNames = getSubjectAltNames(reconciliation, ca, certAndKey.cert());
+        Collection<String> currentAltNames = getSubjectAltNames(reconciliation, certAndKey.cert());
 
         if (currentAltNames != null && desiredAltNames.containsAll(currentAltNames) && currentAltNames.containsAll(desiredAltNames))   {
             LOGGER.traceCr(reconciliation, "Alternate subjects match. No need to refresh cert for pod {}.", podName);
@@ -406,7 +416,7 @@ public final class ClusterCaCertificateIssuer {
      *
      * @return  List of certificate Subject Alternate Names
      */
-    private static List<String> getSubjectAltNames(Reconciliation reconciliation, Ca ca, byte[] certificate) {
+    private static List<String> getSubjectAltNames(Reconciliation reconciliation, byte[] certificate) {
         List<String> subjectAltNames = null;
 
         try {

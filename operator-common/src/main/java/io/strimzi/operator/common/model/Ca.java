@@ -166,8 +166,17 @@ public abstract class Ca {
     protected final Reconciliation reconciliation;
     Clock clock;
 
+    /**
+     * Ca Role
+     */
     public enum CaRole {
+        /**
+         * Cluster Ca
+         */
         CLUSTER_CA,
+        /**
+         * Clients Ca
+         */
         CLIENTS_CA
     }
 
@@ -276,7 +285,7 @@ public abstract class Ca {
      * Constructs the CA object
      *
      * @param reconciliation Reconciliation marker
-     * @param caRole
+     * @param caRole         Ca Role
      * @param caCertSecret   Kubernetes Secret where the CA public key is stored
      * @param caKeySecret    Kubernetes Secret where the CA private key is stored
      * @param caConfig       Certificate Authority configuration
@@ -362,14 +371,6 @@ public abstract class Ca {
                     }
                 });
     }
-
-    /**
-     * @return role of this CA
-     */
-    public CaRole caRole() {
-        return caRole;
-    }
-
 
     /**
      * Gets the CA certificate data, which contains both the current CA cert and also previous, still valid certs.
@@ -575,6 +576,10 @@ public abstract class Ca {
         return caConfig.getCertificateManagerType();
     }
 
+
+    /**
+     * Remove old certificates that are stored in the CA Secret.
+     */
     public abstract void maybeDeleteOldCerts();
 
     /**

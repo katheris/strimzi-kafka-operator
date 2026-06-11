@@ -53,7 +53,8 @@ import io.strimzi.operator.common.MicrometerMetricsProvider;
 import io.strimzi.operator.common.Util;
 import io.strimzi.operator.common.auth.PemAuthIdentity;
 import io.strimzi.operator.common.auth.PemTrustSet;
-import io.strimzi.operator.common.model.Ca;
+import io.strimzi.operator.common.model.CaUtils;
+import io.strimzi.operator.common.model.InternalCa;
 import io.strimzi.operator.common.model.Labels;
 import io.vertx.core.Future;
 import org.apache.kafka.clients.admin.Admin;
@@ -127,7 +128,7 @@ public class ResourceUtils {
                 .withNewMetadata()
                     .withName(secretName)
                     .withNamespace(clusterNamespace)
-                    .addToAnnotations(Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION, "0")
+                    .addToAnnotations(InternalCa.ANNO_STRIMZI_IO_CA_CERT_GENERATION, "0")
                     .withLabels(Labels.forStrimziCluster(clusterName).withStrimziKind(Kafka.RESOURCE_KIND).toMap())
                 .endMetadata()
                 .addToData("ca.crt", caCert)
@@ -140,16 +141,16 @@ public class ResourceUtils {
         X509Certificate x509Certificate;
         String certificateHash;
         try {
-            x509Certificate = Ca.x509Certificate(Util.decodeBytesFromBase64(caCert));
+            x509Certificate = CaUtils.x509Certificate(Util.decodeBytesFromBase64(caCert));
             certificateHash = CertUtils.getCertificateThumbprint(x509Certificate);
         } catch (CertificateException e) {
             throw new RuntimeException("Failed to compute hash of certificate in Secret "  + secretName, e);
         }
         Map<String, String> annotations = new HashMap<>();
-        annotations.put(Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION, "0");
+        annotations.put(InternalCa.ANNO_STRIMZI_IO_CA_CERT_GENERATION, "0");
         annotations.put(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH, certificateHash);
         if (addKeyGeneration) {
-            annotations.put(Ca.ANNO_STRIMZI_IO_CA_KEY_GENERATION, "0");
+            annotations.put(InternalCa.ANNO_STRIMZI_IO_CA_KEY_GENERATION, "0");
         }
 
         return new SecretBuilder()
@@ -168,7 +169,7 @@ public class ResourceUtils {
                 .withNewMetadata()
                     .withName(secretName)
                     .withNamespace(clusterNamespace)
-                    .addToAnnotations(Ca.ANNO_STRIMZI_IO_CA_KEY_GENERATION, "0")
+                    .addToAnnotations(InternalCa.ANNO_STRIMZI_IO_CA_KEY_GENERATION, "0")
                     .withLabels(Labels.forStrimziCluster(clusterName).withStrimziKind(Kafka.RESOURCE_KIND).toMap())
                 .endMetadata()
                 .addToData("ca.key", caKey)
