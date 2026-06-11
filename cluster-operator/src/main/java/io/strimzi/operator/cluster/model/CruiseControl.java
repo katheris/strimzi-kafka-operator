@@ -50,6 +50,7 @@ import io.strimzi.operator.cluster.model.securityprofiles.PodSecurityProviderCon
 import io.strimzi.operator.common.Annotations;
 import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.Util;
+import io.strimzi.operator.common.model.Ca;
 import io.strimzi.operator.common.model.InvalidResourceException;
 import io.strimzi.operator.common.model.Labels;
 import io.strimzi.operator.common.model.cruisecontrol.CruiseControlApiProperties;
@@ -438,20 +439,20 @@ public class CruiseControl extends AbstractModel implements SupportsMetrics, Sup
      *
      * @param namespace                             Namespace in which the Cruise Control cluster runs
      * @param clusterName                           Name of the Kafka cluster (it is used for the SANs in the certificate)
-     * @param clusterCa                             The cluster CA.
+     * @param ca                             The cluster CA.
      * @param existingSecret                        The existing secret with Kafka certificates
      * @param isMaintenanceTimeWindowsSatisfied     Indicates whether we are in the maintenance window or not.
      *                                              This is used for certificate renewals
      *
      * @return The generated Secret.
      */
-    public Secret generateCertificatesSecret(String namespace, String clusterName, ClusterCa clusterCa, Secret existingSecret, boolean isMaintenanceTimeWindowsSatisfied) {
+    public Secret generateCertificatesSecret(String namespace, String clusterName, Ca ca, Secret existingSecret, boolean isMaintenanceTimeWindowsSatisfied) {
         Map<String, CertAndKey> ccCerts = new HashMap<>(4);
         LOGGER.debugCr(reconciliation, "Generating certificates");
         try {
-            CertAndKey existingCertAndKey = CertUtils.keyStoreCertAndKey(existingSecret, CruiseControl.COMPONENT_TYPE, clusterCa.caCertGenerationAnnotation());
+            CertAndKey existingCertAndKey = CertUtils.keyStoreCertAndKey(existingSecret, CruiseControl.COMPONENT_TYPE, ca.caCertGenerationAnnotation());
 
-            ccCerts = clusterCa.generateCcCerts(namespace, clusterName, existingCertAndKey,
+            ccCerts = ClusterCaCertificateIssuer.generateCcCerts(reconciliation, ca, namespace, clusterName, existingCertAndKey,
                     new NodeRef(CruiseControl.COMPONENT_TYPE, 0, null, false, false),
                     isMaintenanceTimeWindowsSatisfied);
         } catch (IOException e) {
@@ -461,7 +462,7 @@ public class CruiseControl extends AbstractModel implements SupportsMetrics, Sup
 
         return ModelUtils.createSecret(CruiseControlResources.secretName(cluster), namespace, labels, ownerReference,
                 CertUtils.buildSecretData(ccCerts),
-                Map.of(clusterCa.caCertGenerationAnnotation(), String.valueOf(ccCerts.get(CruiseControl.COMPONENT_TYPE).caCertGeneration())),
+                Map.of(ca.caCertGenerationAnnotation(), String.valueOf(ccCerts.get(CruiseControl.COMPONENT_TYPE).caCertGeneration())),
                 Map.of());
     }
 

@@ -11,7 +11,6 @@ import io.strimzi.api.kafka.model.common.CertificateAuthority;
 import io.strimzi.api.kafka.model.common.CertificateAuthorityBuilder;
 import io.strimzi.api.kafka.model.common.CertificateManagerType;
 import io.strimzi.api.kafka.model.common.certmanager.IssuerKind;
-import io.strimzi.api.kafka.model.common.certmanager.IssuerRefBuilder;
 import io.strimzi.api.kafka.model.kafka.Kafka;
 import io.strimzi.api.kafka.model.kafka.KafkaBuilder;
 import io.strimzi.api.kafka.model.kafka.KafkaResources;
@@ -32,7 +31,6 @@ import io.strimzi.operator.cluster.PlatformFeaturesAvailability;
 import io.strimzi.operator.cluster.ResourceUtils;
 import io.strimzi.operator.cluster.model.AbstractModel;
 import io.strimzi.operator.cluster.model.CertUtils;
-import io.strimzi.operator.cluster.model.ClusterCa;
 import io.strimzi.operator.cluster.model.KafkaCluster;
 import io.strimzi.operator.cluster.model.KafkaVersion;
 import io.strimzi.operator.cluster.model.ModelUtils;
@@ -47,7 +45,7 @@ import io.strimzi.operator.common.auth.PemTrustSet;
 import io.strimzi.operator.common.auth.TlsPemIdentity;
 import io.strimzi.operator.common.model.Ca;
 import io.strimzi.operator.common.model.CaConfig;
-import io.strimzi.operator.common.model.ClientsCa;
+import io.strimzi.operator.common.model.InternalCa;
 import io.strimzi.operator.common.model.Labels;
 import io.strimzi.operator.common.model.PasswordGenerator;
 import io.strimzi.operator.common.operator.MockCertManager;
@@ -77,7 +75,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
-import static io.strimzi.operator.common.model.Ca.CA_CRT;
+import static io.strimzi.operator.common.model.InternalCa.CA_CRT;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.aMapWithSize;
 import static org.hamcrest.Matchers.containsInAnyOrder;
@@ -102,29 +100,23 @@ public class KafkaReconcilerCertManagerTest {
     private final static ClusterOperatorConfig CO_CONFIG = ResourceUtils.dummyClusterOperatorConfig();
     private final static int VALIDITY_DAYS = 100;
     private final static int RENEWAL_DAYS = 10;
-    private final static ClusterCa CLUSTER_CA = new ClusterCa(
+    private final static InternalCa CLUSTER_CA = new InternalCa(
             Reconciliation.DUMMY_RECONCILIATION,
+            Ca.CaRole.CLUSTER_CA,
             new MockCertManager(),
             new PasswordGenerator(10, "a", "a"),
             ResourceUtils.createInitialCaCertSecretForCMCa(NAMESPACE, NAME, AbstractModel.clusterCaCertSecretName(NAME), MockCertManager.clusterCaCert(), true),
             null,
-            new CaConfig(VALIDITY_DAYS, RENEWAL_DAYS, false, false, CertificateManagerType.CERT_MANAGER_IO),
-            new IssuerRefBuilder()
-                    .withName("cm-issuer")
-                    .withKind(IssuerKind.CLUSTER_ISSUER)
-                    .build()
+            new CaConfig(VALIDITY_DAYS, RENEWAL_DAYS, false, false, CertificateManagerType.CERT_MANAGER_IO)
     );
-    private final static ClientsCa CLIENTS_CA = new ClientsCa(
+    private final static InternalCa CLIENTS_CA = new InternalCa(
             Reconciliation.DUMMY_RECONCILIATION,
+            Ca.CaRole.CLIENTS_CA,
             new MockCertManager(),
             new PasswordGenerator(10, "a", "a"),
             ResourceUtils.createInitialCaCertSecretForCMCa(NAMESPACE, NAME, AbstractModel.clusterCaCertSecretName(NAME), MockCertManager.clusterCaCert(), true),
             null,
-            new CaConfig(VALIDITY_DAYS, RENEWAL_DAYS, false, false, CertificateManagerType.CERT_MANAGER_IO),
-            new IssuerRefBuilder()
-                    .withName("cm-issuer")
-                    .withKind(IssuerKind.CLUSTER_ISSUER)
-                    .build()
+            new CaConfig(VALIDITY_DAYS, RENEWAL_DAYS, false, false, CertificateManagerType.CERT_MANAGER_IO)
     );
     private final static Kafka KAFKA = new KafkaBuilder()
                 .withNewMetadata()
@@ -172,12 +164,13 @@ public class KafkaReconcilerCertManagerTest {
         sharedWorkerExecutor.close();
     }
 
-    private static ClusterCa createClusterCaWithGeneration1() {
+    private static InternalCa createClusterCaWithGeneration1() {
         Secret clusterCaCertSecret = ResourceUtils.createInitialCaCertSecretForCMCa(NAMESPACE, NAME, AbstractModel.clusterCaCertSecretName(NAME), MockCertManager.clusterCaCert(), true);
         Map<String, String> annotations = clusterCaCertSecret.getMetadata().getAnnotations();
-        annotations.put(Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION, "1");
-        return new ClusterCa(
+        annotations.put(InternalCa.ANNO_STRIMZI_IO_CA_CERT_GENERATION, "1");
+        return new InternalCa(
                 Reconciliation.DUMMY_RECONCILIATION,
+                Ca.CaRole.CLUSTER_CA,
                 new MockCertManager(),
                 new PasswordGenerator(10, "a", "a"),
                 clusterCaCertSecret.edit()
@@ -186,11 +179,7 @@ public class KafkaReconcilerCertManagerTest {
                         .endMetadata()
                         .build(),
                 null,
-                new CaConfig(VALIDITY_DAYS, RENEWAL_DAYS, false, false, CertificateManagerType.CERT_MANAGER_IO),
-                new IssuerRefBuilder()
-                        .withName("cm-issuer")
-                        .withKind(IssuerKind.CLUSTER_ISSUER)
-                        .build()
+                new CaConfig(VALIDITY_DAYS, RENEWAL_DAYS, false, false, CertificateManagerType.CERT_MANAGER_IO)
         );
     }
 
@@ -298,10 +287,10 @@ public class KafkaReconcilerCertManagerTest {
 
         return ModelUtils.createSecret(podName, NAMESPACE, Labels.EMPTY, null,
                 Map.of(
-                        Ca.SecretEntry.CRT.asKey(podName), certManagerSecret.getData().get("tls.crt"),
-                        Ca.SecretEntry.KEY.asKey(podName), certManagerSecret.getData().get("tls.key")
+                        InternalCa.SecretEntry.CRT.asKey(podName), certManagerSecret.getData().get("tls.crt"),
+                        InternalCa.SecretEntry.KEY.asKey(podName), certManagerSecret.getData().get("tls.key")
                 ),
-                Map.of(Ca.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, "0", Annotations.ANNO_STRIMZI_SERVER_CERT_HASH, certHash),
+                Map.of(InternalCa.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, "0", Annotations.ANNO_STRIMZI_SERVER_CERT_HASH, certHash),
                 Map.of());
     }
 
@@ -335,7 +324,7 @@ public class KafkaReconcilerCertManagerTest {
                 vertx,
                 KAFKA,
                 List.of(KAFKA_NODE_POOL),
-                Map.of(Ca.SecretEntry.CRT.asKey("ca"), clusterCaCertAndKey.certAsBase64String()));
+                Map.of(InternalCa.SecretEntry.CRT.asKey("ca"), clusterCaCertAndKey.certAsBase64String()));
         reconciler.reconcile(new KafkaStatus(), Clock.systemUTC()).onComplete(context.succeeding(v -> context.verify(() -> {
             // Certificate Objects created
             ArgumentCaptor<Certificate> kafkaNodeCertificate =  ArgumentCaptor.forClass(Certificate.class);
@@ -371,7 +360,7 @@ public class KafkaReconcilerCertManagerTest {
 
                 Map<String, String> clusterOperatorCertSecretAnnotations = secret.getMetadata().getAnnotations();
                 assertThat(clusterOperatorCertSecretAnnotations, hasEntry(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH, CertUtils.getCertificateThumbprint(kafkaNodeCMSecrets.get(cMSecretName), "tls.crt")));
-                assertThat(clusterOperatorCertSecretAnnotations, hasEntry(Ca.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, "0"));
+                assertThat(clusterOperatorCertSecretAnnotations, hasEntry(InternalCa.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, "0"));
             });
             async.flag();
         })));
@@ -459,7 +448,7 @@ public class KafkaReconcilerCertManagerTest {
                 vertx,
                 KAFKA,
                 List.of(KAFKA_NODE_POOL),
-                Map.of(Ca.SecretEntry.CRT.asKey("ca"), clusterCaCertAndKey.certAsBase64String()));
+                Map.of(InternalCa.SecretEntry.CRT.asKey("ca"), clusterCaCertAndKey.certAsBase64String()));
         reconciler.reconcile(new KafkaStatus(), Clock.systemUTC()).onComplete(context.succeeding(v -> context.verify(() -> {
             // Certificate Objects created
             ArgumentCaptor<Certificate> kafkaNodeCertificate =  ArgumentCaptor.forClass(Certificate.class);
@@ -496,7 +485,7 @@ public class KafkaReconcilerCertManagerTest {
 
                     Map<String, String> clusterOperatorCertSecretAnnotations = secret.getMetadata().getAnnotations();
                     assertThat(clusterOperatorCertSecretAnnotations, hasEntry(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH, CertUtils.getCertificateThumbprint(initialKafkaNodeCMSecrets.get(cMSecretName), "tls.crt")));
-                    assertThat(clusterOperatorCertSecretAnnotations, hasEntry(Ca.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, "0"));
+                    assertThat(clusterOperatorCertSecretAnnotations, hasEntry(InternalCa.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, "0"));
                 } else {
                     assertThat(kafkaNodeCertData, aMapWithSize(2));
                     assertThat(kafkaNodeCertData.get(secretName + ".crt"), CoreMatchers.is(renewedKafkaNodeCMSecrets.get(cMSecretName).getData().get("tls.crt")));
@@ -504,7 +493,7 @@ public class KafkaReconcilerCertManagerTest {
 
                     Map<String, String> clusterOperatorCertSecretAnnotations = secret.getMetadata().getAnnotations();
                     assertThat(clusterOperatorCertSecretAnnotations, hasEntry(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH, CertUtils.getCertificateThumbprint(renewedKafkaNodeCMSecrets.get(cMSecretName), "tls.crt")));
-                    assertThat(clusterOperatorCertSecretAnnotations, hasEntry(Ca.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, "0"));
+                    assertThat(clusterOperatorCertSecretAnnotations, hasEntry(InternalCa.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, "0"));
                 }
             });
             async.flag();
@@ -553,7 +542,7 @@ public class KafkaReconcilerCertManagerTest {
                 vertx,
                 KAFKA,
                 List.of(KAFKA_NODE_POOL),
-                Map.of(Ca.SecretEntry.CRT.asKey("ca"), clusterCaCertAndKey.certAsBase64String()),
+                Map.of(InternalCa.SecretEntry.CRT.asKey("ca"), clusterCaCertAndKey.certAsBase64String()),
                 createClusterCaWithGeneration1());
         reconciler.reconcile(new KafkaStatus(), Clock.systemUTC()).onComplete(context.succeeding(v -> context.verify(() -> {
             // Certificate Objects created
@@ -591,7 +580,7 @@ public class KafkaReconcilerCertManagerTest {
 
                     Map<String, String> clusterOperatorCertSecretAnnotations = secret.getMetadata().getAnnotations();
                     assertThat(clusterOperatorCertSecretAnnotations, hasEntry(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH, CertUtils.getCertificateThumbprint(initialKafkaNodeCMSecrets.get(cMSecretName), "tls.crt")));
-                    assertThat(clusterOperatorCertSecretAnnotations, hasEntry(Ca.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, "0"));
+                    assertThat(clusterOperatorCertSecretAnnotations, hasEntry(InternalCa.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, "0"));
                 } else {
                     assertThat(kafkaNodeCertData, aMapWithSize(2));
                     assertThat(kafkaNodeCertData.get(secretName + ".crt"), CoreMatchers.is(renewedKafkaNodeCMSecrets.get(cMSecretName).getData().get("tls.crt")));
@@ -599,7 +588,7 @@ public class KafkaReconcilerCertManagerTest {
 
                     Map<String, String> clusterOperatorCertSecretAnnotations = secret.getMetadata().getAnnotations();
                     assertThat(clusterOperatorCertSecretAnnotations, hasEntry(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH, CertUtils.getCertificateThumbprint(renewedKafkaNodeCMSecrets.get(cMSecretName), "tls.crt")));
-                    assertThat(clusterOperatorCertSecretAnnotations, hasEntry(Ca.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, "1"));
+                    assertThat(clusterOperatorCertSecretAnnotations, hasEntry(InternalCa.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, "1"));
                 }
             });
             async.flag();
@@ -648,8 +637,8 @@ public class KafkaReconcilerCertManagerTest {
                 vertx,
                 KAFKA,
                 List.of(KAFKA_NODE_POOL),
-                Map.of(Ca.SecretEntry.CRT.asKey("ca"), newClusterCaCertAndKey.certAsBase64String(),
-                        Ca.SecretEntry.CRT.asKey("ca-2025-12-15T09-00-00Z.crt"), clusterCaCertAndKey.certAsBase64String()),
+                Map.of(InternalCa.SecretEntry.CRT.asKey("ca"), newClusterCaCertAndKey.certAsBase64String(),
+                        InternalCa.SecretEntry.CRT.asKey("ca-2025-12-15T09-00-00Z.crt"), clusterCaCertAndKey.certAsBase64String()),
                 createClusterCaWithGeneration1());
         reconciler.reconcile(new KafkaStatus(), Clock.systemUTC()).onComplete(context.succeeding(v -> context.verify(() -> {
             // Certificate Objects created
@@ -687,7 +676,7 @@ public class KafkaReconcilerCertManagerTest {
 
                     Map<String, String> clusterOperatorCertSecretAnnotations = secret.getMetadata().getAnnotations();
                     assertThat(clusterOperatorCertSecretAnnotations, hasEntry(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH, CertUtils.getCertificateThumbprint(initialKafkaNodeCMSecrets.get(cMSecretName), "tls.crt")));
-                    assertThat(clusterOperatorCertSecretAnnotations, hasEntry(Ca.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, "0"));
+                    assertThat(clusterOperatorCertSecretAnnotations, hasEntry(InternalCa.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, "0"));
                 } else {
                     assertThat(kafkaNodeCertData, aMapWithSize(2));
                     assertThat(kafkaNodeCertData.get(secretName + ".crt"), CoreMatchers.is(renewedKafkaNodeCMSecrets.get(cMSecretName).getData().get("tls.crt")));
@@ -695,7 +684,7 @@ public class KafkaReconcilerCertManagerTest {
 
                     Map<String, String> clusterOperatorCertSecretAnnotations = secret.getMetadata().getAnnotations();
                     assertThat(clusterOperatorCertSecretAnnotations, hasEntry(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH, CertUtils.getCertificateThumbprint(renewedKafkaNodeCMSecrets.get(cMSecretName), "tls.crt")));
-                    assertThat(clusterOperatorCertSecretAnnotations, hasEntry(Ca.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, "1"));
+                    assertThat(clusterOperatorCertSecretAnnotations, hasEntry(InternalCa.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, "1"));
                 }
             });
             async.flag();
@@ -744,7 +733,7 @@ public class KafkaReconcilerCertManagerTest {
                 vertx,
                 KAFKA,
                 List.of(KAFKA_NODE_POOL),
-                Map.of(Ca.SecretEntry.CRT.asKey("ca"), clusterCaCertAndKey.certAsBase64String()),
+                Map.of(InternalCa.SecretEntry.CRT.asKey("ca"), clusterCaCertAndKey.certAsBase64String()),
                 createClusterCaWithGeneration1());
         reconciler.reconcile(new KafkaStatus(), Clock.systemUTC()).onComplete(context.succeeding(v -> context.verify(() -> {
             // Certificate Objects created
@@ -782,7 +771,7 @@ public class KafkaReconcilerCertManagerTest {
 
                 Map<String, String> clusterOperatorCertSecretAnnotations = secret.getMetadata().getAnnotations();
                 assertThat(clusterOperatorCertSecretAnnotations, hasEntry(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH, CertUtils.getCertificateThumbprint(initialKafkaNodeCMSecrets.get(cMSecretName), "tls.crt")));
-                assertThat(clusterOperatorCertSecretAnnotations, hasEntry(Ca.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, "0"));
+                assertThat(clusterOperatorCertSecretAnnotations, hasEntry(InternalCa.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION, "0"));
             });
             async.flag();
         })));
@@ -810,7 +799,7 @@ public class KafkaReconcilerCertManagerTest {
             this.clusterCaCertData = clusterCaCertData;
         }
 
-        public MockKafkaReconcilerCertManagerTasks(Reconciliation reconciliation, ResourceOperatorSupplier supplier, Vertx vertx, Kafka kafkaCr, List<KafkaNodePool> kafkaNodePools, Map<String, String> clusterCaCertData, ClusterCa clusterCa) {
+        public MockKafkaReconcilerCertManagerTasks(Reconciliation reconciliation, ResourceOperatorSupplier supplier, Vertx vertx, Kafka kafkaCr, List<KafkaNodePool> kafkaNodePools, Map<String, String> clusterCaCertData, Ca clusterCa) {
             super(reconciliation, kafkaCr, null, createKafkaCluster(reconciliation, supplier, kafkaCr, kafkaNodePools), clusterCa, CLIENTS_CA, CO_CONFIG, supplier, PFA, vertx);
             this.clusterCaCertData = clusterCaCertData;
         }

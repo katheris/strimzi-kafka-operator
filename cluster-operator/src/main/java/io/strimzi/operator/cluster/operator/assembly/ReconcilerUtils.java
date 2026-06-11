@@ -37,6 +37,7 @@ import io.strimzi.operator.common.auth.PemAuthIdentity;
 import io.strimzi.operator.common.auth.PemTrustSet;
 import io.strimzi.operator.common.auth.TlsPemIdentity;
 import io.strimzi.operator.common.model.Ca;
+import io.strimzi.operator.common.model.CaUtils;
 import io.strimzi.operator.common.model.InvalidResourceException;
 import io.strimzi.operator.common.model.Labels;
 import io.strimzi.operator.common.operator.resource.ReconcileResult;
@@ -570,7 +571,7 @@ public class ReconcilerUtils {
                         return validatedSecret(namespace, certSecretSource.getSecretName(), secret, certSecretSource.getCertificate())
                                 .compose(validatedSecret -> {
                                     try {
-                                        String pem = Ca.x509CertificateToPem(Ca.x509Certificate(Util.decodeFromBase64(validatedSecret.getData().get(certSecretSource.getCertificate())).getBytes(StandardCharsets.US_ASCII)));
+                                        String pem = CaUtils.x509CertificateToPem(CaUtils.x509Certificate(Util.decodeFromBase64(validatedSecret.getData().get(certSecretSource.getCertificate())).getBytes(StandardCharsets.US_ASCII)));
                                         return Future.succeededFuture(pem);
                                     } catch (CertificateException e) {
                                         throw new RuntimeException("Failed to load certificate from Secret " + certSecretSource.getSecretName() + " from namespace " + namespace, e);
@@ -588,7 +589,7 @@ public class ReconcilerUtils {
                                             .filter(entry -> matcher.matches(Paths.get(entry.getKey())))
                                             .map(entry -> {
                                                 try {
-                                                    return Ca.x509CertificateToPem(Ca.x509Certificate(Util.decodeFromBase64(validatedSecret.getData().get(entry.getKey())).getBytes(StandardCharsets.US_ASCII)));
+                                                    return CaUtils.x509CertificateToPem(CaUtils.x509Certificate(Util.decodeFromBase64(validatedSecret.getData().get(entry.getKey())).getBytes(StandardCharsets.US_ASCII)));
                                                 } catch (CertificateException e) {
                                                     throw new RuntimeException("Failed to load certificate from Secret " + certSecretSource.getSecretName() + " from namespace " + namespace, e);
                                                 }
