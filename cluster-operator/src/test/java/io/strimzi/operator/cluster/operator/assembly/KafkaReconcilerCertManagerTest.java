@@ -819,7 +819,6 @@ public class KafkaReconcilerCertManagerTest {
         public Future<Void> reconcile(KafkaStatus kafkaStatus, Clock clock)    {
             return initClientAuthenticationCertificates()
                     .compose(i -> listeners())
-                    .compose(i -> maybeReconcileCertManagerCertificates())
                     .compose(i -> certificateSecrets(clock))
                     .recover(error -> {
                         LOGGER.errorCr(reconciliation, "Reconciliation failed", error);

@@ -51,7 +51,6 @@ import io.strimzi.operator.cluster.operator.resource.KafkaAgentClientProvider;
 import io.strimzi.operator.cluster.operator.resource.KafkaRoller;
 import io.strimzi.operator.cluster.operator.resource.ResourceOperatorSupplier;
 import io.strimzi.operator.cluster.operator.resource.events.KubernetesRestartEventPublisher;
-import io.strimzi.operator.cluster.operator.resource.kubernetes.CertManagerCertificateOperator;
 import io.strimzi.operator.cluster.operator.resource.kubernetes.ClusterRoleBindingOperator;
 import io.strimzi.operator.cluster.operator.resource.kubernetes.ConfigMapOperator;
 import io.strimzi.operator.cluster.operator.resource.kubernetes.CrdOperator;
@@ -78,7 +77,6 @@ import io.strimzi.operator.common.ReconciliationLogger;
 import io.strimzi.operator.common.Util;
 import io.strimzi.operator.common.auth.TlsPemIdentity;
 import io.strimzi.operator.common.model.Ca;
-import io.strimzi.operator.common.model.CertManagerCa;
 import io.strimzi.operator.common.model.InternalCa;
 import io.strimzi.operator.common.model.Labels;
 import io.strimzi.operator.common.model.NodeUtils;
@@ -157,7 +155,6 @@ public class KafkaReconciler {
     private final NodeOperator nodeOperator;
     private final CrdOperator<KubernetesClient, KafkaNodePool, KafkaNodePoolList> kafkaNodePoolOperator;
     private final KubernetesRestartEventPublisher eventsPublisher;
-    private final CertManagerCertificateOperator certManagerCertificateOperator;
     private final AdminClientProvider adminClientProvider;
     private final KafkaAgentClientProvider kafkaAgentClientProvider;
 
@@ -236,7 +233,6 @@ public class KafkaReconciler {
         this.nodeOperator = supplier.nodeOperator;
         this.kafkaNodePoolOperator = supplier.kafkaNodePoolOperator;
         this.eventsPublisher = supplier.restartEventsPublisher;
-        this.certManagerCertificateOperator = supplier.certManagerCertificateOperator;
 
         this.adminClientProvider = supplier.adminClientProvider;
         this.kafkaAgentClientProvider = supplier.kafkaAgentClientProvider;
@@ -267,7 +263,6 @@ public class KafkaReconciler {
                 .compose(i -> scaleDown())
                 .compose(i -> updateNodePoolStatuses(kafkaStatus))
                 .compose(i -> listeners())
-                .compose(i -> maybeReconcileCertManagerCertificates())
                 .compose(i -> certificateSecrets(clock))
                 .compose(i -> brokerConfigurationConfigMaps())
                 .compose(i -> jmxSecret())
@@ -757,27 +752,6 @@ public class KafkaReconciler {
     }
 
     /**
-     * Manages the Certificate objects that are used when cert-manager is the Certificate issuer
-     *
-     * @return Completes when the Certificate objects were successfully created, deleted or updated
-     */
-    protected Future<Void> maybeReconcileCertManagerCertificates() {
-        //TODO: temporary fix
-        if (clusterCa instanceof  CertManagerCa certManagerCa) {
-            List<Future<Void>> futures = kafka.generateKafkaNodeCertificateResources(certManagerCa, listenerReconciliationResults.bootstrapDnsNames, listenerReconciliationResults.brokerDnsNames)
-                    .stream()
-                    .map(certificate -> {
-                        String certificateName = certificate.getMetadata().getName();
-                        return certManagerCertificateOperator.reconcile(reconciliation, reconciliation.namespace(), certificateName, certificate)
-                                .compose(v -> certManagerCertificateOperator.waitForReady(reconciliation, reconciliation.namespace(), certificateName));
-                    }).toList();
-            return Future.join(futures).mapEmpty();
-        } else {
-            return Future.succeededFuture();
-        }
-    }
-
-    /**
      * Manages the Secrets with the node certificates used by the Kafka nodes.
      *
      * @param clock The clock for supplying the reconciler with the time instant of each reconciliation cycle.
@@ -788,11 +762,14 @@ public class KafkaReconciler {
     protected Future<Void> certificateSecrets(Clock clock) {
         return secretOperator.listAsync(reconciliation.namespace(), kafka.getSelectorLabels().withStrimziComponentType(KafkaCluster.COMPONENT_TYPE))
                 .compose(existingSecrets -> collectListenerCustomCerts()
-                        .compose(customCertsData -> {
-                            List<Secret> desiredCertSecrets = kafka.generateCertificatesSecrets(clusterCa, coTlsPemIdentity,
-                                    existingSecrets, customCertsData, listenerReconciliationResults.bootstrapDnsNames, listenerReconciliationResults.brokerDnsNames,
-                                    Util.isMaintenanceTimeWindowsSatisfied(reconciliation, maintenanceWindows, clock.instant()));
-
+                        .compose(customCertsData -> Future.fromCompletionStage(
+                            kafka.generateCertificatesSecrets(clusterCa,
+                                existingSecrets, 
+                                customCertsData, 
+                                listenerReconciliationResults.bootstrapDnsNames, 
+                                listenerReconciliationResults.brokerDnsNames, 
+                                Util.isMaintenanceTimeWindowsSatisfied(reconciliation, maintenanceWindows, clock.instant()))
+                        ).compose(desiredCertSecrets -> {
                             List<String> desiredCertSecretNames = desiredCertSecrets.stream().map(secret -> secret.getMetadata().getName()).toList();
                             existingSecrets.forEach(secret -> {
                                 String secretName = secret.getMetadata().getName();
@@ -812,7 +789,7 @@ public class KafkaReconciler {
                                 }
                             });
                             return updateCertificateSecrets(desiredCertSecrets);
-                        }).mapEmpty())
+                        })).mapEmpty())
                 .mapEmpty();
     }
 
