@@ -240,17 +240,15 @@ public class CruiseControlReconciler {
     protected Future<Void> certificatesSecret(Clock clock) {
         if (cruiseControl != null) {
             return secretOperator.getAsync(reconciliation.namespace(), CruiseControlResources.secretName(reconciliation.name()))
-                    .compose(oldSecret -> {
-                        Secret newSecret = cruiseControl.generateCertificatesSecret(reconciliation.namespace(), reconciliation.name(), clusterCa, oldSecret, Util.isMaintenanceTimeWindowsSatisfied(reconciliation, maintenanceWindows, clock.instant()));
-
-                        return secretOperator
-                                .reconcile(reconciliation, reconciliation.namespace(), CruiseControlResources.secretName(reconciliation.name()), newSecret)
-                                .compose(i -> {
-                                    certificateHash = CertUtils.getCertificateShortThumbprint(newSecret, Ca.SecretEntry.CRT.asKey(CruiseControl.COMPONENT_TYPE));
-
-                                    return Future.succeededFuture();
-                                });
-                    });
+                    .compose(oldSecret -> Future.fromCompletionStage(
+                        cruiseControl.generateCertificatesSecret(reconciliation.namespace(), reconciliation.name(), clusterCa, oldSecret, Util.isMaintenanceTimeWindowsSatisfied(reconciliation, maintenanceWindows, clock.instant()))))
+                    .compose(newSecret ->
+                        secretOperator.reconcile(reconciliation, reconciliation.namespace(), CruiseControlResources.secretName(reconciliation.name()), newSecret)
+                        .compose(i -> {
+                            certificateHash = CertUtils.getCertificateShortThumbprint(newSecret, Ca.SecretEntry.CRT.asKey(CruiseControl.COMPONENT_TYPE));
+                            return Future.succeededFuture();
+                        })
+                    );
         } else {
             return secretOperator.reconcile(reconciliation, reconciliation.namespace(), CruiseControlResources.secretName(reconciliation.name()), null)
                     .mapEmpty();

@@ -4,7 +4,6 @@
  */
 package io.strimzi.operator.cluster.model;
 
-import io.fabric8.certmanager.api.model.v1.Certificate;
 import io.strimzi.api.kafka.model.kafka.KafkaResources;
 import io.strimzi.api.kafka.model.kafka.cruisecontrol.CruiseControlResources;
 import io.strimzi.certs.CertAndKey;
@@ -16,6 +15,7 @@ import io.strimzi.operator.common.model.Ca;
 import io.strimzi.operator.common.model.CaUtils;
 import io.strimzi.operator.common.model.CertManagerCa;
 import io.strimzi.operator.common.model.InternalCa;
+import io.strimzi.operator.common.model.InvalidResourceException;
 
 import java.io.File;
 import java.io.IOException;
@@ -64,7 +64,7 @@ public final class ClusterCaCertificateIssuer {
      *
      * @throws IOException IOException is thrown when it is raised while working with the certificates
      */
-    static Map<String, CertAndKey> generateCcCerts(
+    static CompletionStage<Map<String, CertAndKey>> generateCcCerts(
             Reconciliation reconciliation,
             Ca ca,
             String namespace,
@@ -117,7 +117,7 @@ public final class ClusterCaCertificateIssuer {
      *
      * @throws IOException IOException is thrown when it is raised while working with the certificates
      */
-    static Map<String, CertAndKey> generateBrokerCerts(
+    static CompletionStage<Map<String, CertAndKey>> generateBrokerCerts(
             Reconciliation reconciliation,
             Ca ca,
             String namespace,
@@ -138,29 +138,6 @@ public final class ClusterCaCertificateIssuer {
                 isMaintenanceTimeWindowsSatisfied,
                 true
         );
-    }
-
-    /**
-     * Prepares the Certificate objects for the Kafka nodes.
-     * Only used when cert-manager is issuing certificates.
-     *
-     * @param ca                            CertManager CA
-     * @param namespace                     Namespace of the Kafka cluster
-     * @param clusterName                   Name of the Kafka cluster
-     * @param nodes                         Nodes that are part of the Kafka cluster
-     * @param externalBootstrapAddresses    List of external bootstrap addresses (used for certificate SANs)
-     * @param externalAddresses             Map with external listener addresses for the different nodes (used for certificate SANs)
-     *
-     * @return Map of Certificate resources keyed on the node id
-     */
-    public static Map<String, Certificate> generateKafkaNodeCertificateResources(CertManagerCa ca, String namespace, String clusterName, Set<NodeRef> nodes,
-                                                                                 Set<String> externalBootstrapAddresses,
-                                                                                 Map<Integer, Set<String>> externalAddresses) {
-        Map<String, Certificate> certificates = new HashMap<>();
-        for (NodeRef node : nodes)  {
-            certificates.put(node.podName(), ca.getCertManagerCert(kafkaNodeCertsSubjectFn(namespace, clusterName, externalBootstrapAddresses, externalAddresses).apply(node)));
-        }
-        return certificates;
     }
 
     private static Function<NodeRef, Subject> kafkaNodeCertsSubjectFn(String namespace, String clusterName,
@@ -214,14 +191,14 @@ public final class ClusterCaCertificateIssuer {
      * @param ca                                    CA
      * @param nodes                                 List of nodes for which the certificates should be generated
      * @param subjectFn                             Function to generate certificate subject for given node / pod
-     * @param existingCertificates                  Existing certificates (or null if they do not exist yet)
+     * @param existingCertificates                Existing certificates (or null if they do not exist yet)
      * @param isMaintenanceTimeWindowsSatisfied     Flag indicating if we are inside a maintenance window or not
      *
      * @return Returns map with node certificates which can be used to create or update the stored certificates
      *
      * @throws IOException Throws IOException when working with files fails
      */
-    /* test */ static Map<String, CertAndKey> maybeCopyOrGenerateServerCerts(
+    /* test */ static CompletionStage<Map<String, CertAndKey>> maybeCopyOrGenerateServerCerts(
             Reconciliation reconciliation,
             Ca ca,
             Set<NodeRef> nodes,
@@ -231,8 +208,9 @@ public final class ClusterCaCertificateIssuer {
             boolean includeCaChain
     ) throws IOException {
         return switch (ca) {
-            case InternalCa internalCa -> maybeCopyOrGenerateServerCertsWithInternalCa(reconciliation, internalCa, nodes, subjectFn, existingCertificates, isMaintenanceTimeWindowsSatisfied, includeCaChain);
-            case CertManagerCa certManagerCa -> maybeCopyOrGenerateServerCertsWithCertManagerCa(reconciliation, certManagerCa, nodes, subjectFn, existingCertificates).toCompletableFuture().get();
+            case InternalCa internalCa -> CompletableFuture.completedFuture(maybeCopyOrGenerateServerCertsWithInternalCa(reconciliation, internalCa, nodes, subjectFn, existingCertificates, isMaintenanceTimeWindowsSatisfied, includeCaChain));
+            case CertManagerCa certManagerCa -> maybeCopyOrGenerateServerCertsWithCertManagerCa(reconciliation, certManagerCa, nodes, subjectFn, existingCertificates);
+            default -> CompletableFuture.failedStage(new InvalidResourceException("Unable to generate server certificate for unknown type of CA {}" + ca));
         };
     }
 
@@ -248,7 +226,6 @@ public final class ClusterCaCertificateIssuer {
      *
      * @return Returns map with node certificates which can be used to create or update the stored certificates
      *
-     * @throws IOException Throws IOException when working with files fails
      */
     /* test */ static CompletionStage<Map<String, CertAndKey>> maybeCopyOrGenerateServerCertsWithCertManagerCa(
             Reconciliation reconciliation,

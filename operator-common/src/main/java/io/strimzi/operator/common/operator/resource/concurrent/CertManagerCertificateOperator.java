@@ -18,6 +18,9 @@ import java.util.Optional;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Executor;
 
+/**
+ * Operations for CertManager resources such as {@code Certificate}.
+ */
 public class CertManagerCertificateOperator extends AbstractNamespacedResourceOperator<KubernetesClient, Certificate, CertificateList, Resource<Certificate>> {
     /**
      * Constructor
