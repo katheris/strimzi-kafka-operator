@@ -91,7 +91,7 @@ public abstract class Ca {
 
     protected static final ReconciliationLogger LOGGER = ReconciliationLogger.create(Ca.class);
 
-    protected static final DateTimeFormatter DATE_TIME_FORMATTER = new DateTimeFormatterBuilder()
+    public static final DateTimeFormatter DATE_TIME_FORMATTER = new DateTimeFormatterBuilder()
             .appendValue(YEAR, 4, 10, SignStyle.EXCEEDS_PAD)
             .appendLiteral('-')
             .appendValue(MONTH_OF_YEAR, 2)
@@ -297,11 +297,11 @@ public abstract class Ca {
               CaConfig caConfig) {
         this.reconciliation = reconciliation;
         this.caRole = caRole;
+        this.caConfig = caConfig;
         this.caCertGeneration = initCaCertGeneration(caCertSecret);
         this.caCertData = initCaCertData(caCertSecret);
         this.caKeyGeneration = initCaKeyGeneration(caKeySecret, caCertSecret);
         this.caKeyData = initCaKeyData(caKeySecret);
-        this.caConfig = caConfig;
         this.renewalType = RenewalType.NOOP;
         this.clock = Clock.systemUTC();
     }
@@ -311,6 +311,14 @@ public abstract class Ca {
             return "Clients CA";
         } else {
             return "Cluster CA";
+        }
+    };
+
+    protected String caCommonName() {
+        if (caRole.equals(CaRole.CLIENTS_CA)) {
+            return "clients-ca";
+        } else {
+            return "cluster-ca";
         }
     };
 

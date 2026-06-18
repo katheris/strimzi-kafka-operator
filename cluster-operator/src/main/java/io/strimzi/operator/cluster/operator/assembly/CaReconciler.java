@@ -275,6 +275,20 @@ public class CaReconciler {
                         }
                     }
 
+                    //New
+//                    CaProvider caProvider;
+//                    if (CertificateManagerType.CERT_MANAGER_IO.equals(clusterCaConfig.getCertificateManagerType())) {
+//                        caProvider = new CertManagerCaSecretProvider()
+//                    } else if (clusterCaConfig.isGenerateCa()) {
+//                        //internal
+//                    } else {
+//                        //user provided
+//                    }
+//                    Ca clusterCa = caProvider.createCa();
+//                    Secret clusterCaCertSecret = caProvider.reconcileCaSecrets();
+
+                    //
+
                     List<Future<ReconcileResult<Secret>>> secretReconciliations = new ArrayList<>(4);
 
                     OwnerReference clusterCaOwnerReference = clusterCaConfig.isGenerateSecretOwnerRef() ? ownerRef : null;
@@ -286,6 +300,10 @@ public class CaReconciler {
                                 existingClusterCaCertSecret,
                                 existingClusterCaKeySecret,
                                 clusterCaConfig,
+                                null,
+                                null,
+                                clusterCaOwnerReference,
+                                null,
                                 issuerRef);
 
                         certManagerClusterCa.createOrUpdateCertManagerCa(clusterCaCertManagerCert,
@@ -327,6 +345,10 @@ public class CaReconciler {
                                 existingClientsCaCertSecret,
                                 existingClientsCaKeySecret,
                                 clientsCaConfig,
+                                null,
+                                null,
+                                clientsCaOwnerReference,
+                                null,
                                 issuerRef);
 
                         certManagerClientsCa.createOrUpdateCertManagerCaWithoutEntityCert(clientsCaCertManagerCert,

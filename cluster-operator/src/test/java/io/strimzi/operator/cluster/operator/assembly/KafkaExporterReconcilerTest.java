@@ -92,6 +92,10 @@ public class KafkaExporterReconcilerTest {
             null,
             null,
             new CaConfig(CertificateAuthority.DEFAULT_CERTS_VALIDITY_DAYS, CertificateAuthority.DEFAULT_CERTS_RENEWAL_DAYS, false, false, CertificateManagerType.CERT_MANAGER_IO),
+            null,
+            null,
+            null,
+            null,
             new IssuerRefBuilder()
                     .withName("cm-issuer")
                     .withKind(IssuerKind.CLUSTER_ISSUER)

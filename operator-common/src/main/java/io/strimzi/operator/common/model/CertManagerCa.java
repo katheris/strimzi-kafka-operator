@@ -220,6 +220,77 @@ public class CertManagerCa extends Ca {
         }
     }
 
+    /**
+     * Create or update CA data when cert-manager is managing CA.
+     * <p>
+     * Store the new data if it doesn't exist already, otherwise check if the certificate has changed
+     * and update the data and generations accordingly.
+     *
+     * @param newCaCert             New CA cert.
+     * @param existingCaCertHash    Existing CA cert hash to determine if the cert has changed.
+     * @param endEntityCertificate  End entity certificate to use for cert path validation.
+     */
+    public void createOrUpdateCa(String newCaCert, String existingCaCertHash, X509Certificate endEntityCertificate) {
+        renewalType = shouldCreateOrUpdateCa(newCaCert, existingCaCertHash, endEntityCertificate);
+        Map<String, String> updatedCertData;
+        switch (renewalType) {
+            case NOOP -> updatedCertData = new HashMap<>(caCertData);
+            case CREATE -> {
+                // No data, so we add it
+                updatedCertData = new HashMap<>();
+                updatedCertData.put(CA_CRT, Util.encodeToBase64(newCaCert));
+            }
+            case RENEW_CERT -> {
+                updatedCertData = new HashMap<>();
+                updatedCertData.put(CA_CRT, Util.encodeToBase64(newCaCert));
+                ++caCertGeneration;
+            }
+            case REPLACE_KEY -> {
+                String notAfterDate = DATE_TIME_FORMATTER.format(currentCaCertX509().getNotAfter().toInstant().atZone(ZoneId.of("Z")));
+                updatedCertData = new HashMap<>();
+                updatedCertData.put(Ca.SecretEntry.CRT.asKey("ca-" + notAfterDate), caCertData.get(CA_CRT));
+                updatedCertData.put(CA_CRT, Util.encodeToBase64(newCaCert));
+                ++caCertGeneration;
+                ++caKeyGeneration;
+            }
+            default -> throw new RuntimeException("Unsupported renewal type: " + renewalType);
+        }
+        caCertData = updatedCertData;
+    }
+
+    private RenewalType shouldCreateOrUpdateCa(String newCaCert, String existingCaCertHash, X509Certificate endEntityCertificate) {
+        if (caCertData.isEmpty()) {
+            return RenewalType.CREATE;
+        }
+
+        X509Certificate x509CaCert;
+        String newCaCertHash;
+        try {
+            x509CaCert = CaUtils.x509Certificate(Util.decodeBytesFromBase64(newCaCert));
+            newCaCertHash = String.format("%040x", new BigInteger(1, Util.sha1Digest(x509CaCert.getEncoded())));
+        } catch (CertificateException e) {
+            throw new RuntimeException(e);
+        }
+
+        if (!existingCaCertHash.equals(newCaCertHash)) {
+            if (endEntityCertificate == null) {
+                // Cluster operator certificate is missing, so no cert path validation to perform
+                // Don't update - wait for operator cert to be available
+                LOGGER.warnCr(reconciliation, "Cluster CA cert has changed, but operator certificate is missing - cannot determine if key changed. Will retry in next reconciliation.");
+                return  RenewalType.NOOP;
+            }
+            if (CaUtils.certIsTrusted(reconciliation, List.of(endEntityCertificate), x509CaCert)) {
+                // No key replacement
+                return RenewalType.RENEW_CERT;
+            } else {
+                // key replacement
+                return RenewalType.REPLACE_KEY;
+            }
+        } else {
+            return RenewalType.NOOP;
+        }
+    }
+
     private void updateCertAndIncrementGenerations(String caCert, X509Certificate endEntityCertificate) {
         if (endEntityCertificate == null) {
             // Cluster operator certificate is missing, so no cert path validation to perform

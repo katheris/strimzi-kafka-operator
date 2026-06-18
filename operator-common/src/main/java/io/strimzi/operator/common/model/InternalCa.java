@@ -402,7 +402,7 @@ public class InternalCa extends Ca {
         return new Subject.Builder()
         // Key replacements does not work if both old and new CA certs have the same subject DN, so include the
         // key generation in the DN so the certificates appear distinct during CA key replacement.
-            .withCommonName(caName() + " v" + version)
+            .withCommonName(caCommonName() + " v" + version)
             .withOrganizationName(IO_STRIMZI).build();
     }
 
