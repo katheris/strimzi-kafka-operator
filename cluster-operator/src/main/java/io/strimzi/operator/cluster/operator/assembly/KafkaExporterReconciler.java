@@ -17,7 +17,6 @@ import io.strimzi.operator.cluster.model.ImagePullPolicy;
 import io.strimzi.operator.cluster.model.KafkaExporter;
 import io.strimzi.operator.cluster.model.KafkaVersion;
 import io.strimzi.operator.cluster.operator.resource.ResourceOperatorSupplier;
-import io.strimzi.operator.cluster.operator.resource.kubernetes.CertManagerCertificateOperator;
 import io.strimzi.operator.cluster.operator.resource.kubernetes.DeploymentOperator;
 import io.strimzi.operator.cluster.operator.resource.kubernetes.NetworkPolicyOperator;
 import io.strimzi.operator.cluster.operator.resource.kubernetes.PodDisruptionBudgetOperator;
@@ -28,12 +27,15 @@ import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.Util;
 import io.strimzi.operator.common.model.Ca;
 import io.strimzi.operator.common.model.InternalCa;
+import io.strimzi.operator.common.operator.resource.concurrent.CertManagerCertificateOperator;
 import io.vertx.core.Future;
+import io.vertx.core.Promise;
 
 import java.time.Clock;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Class used for reconciliation of Kafka Exporter. This class contains both the steps of the Kafka Exporter
@@ -135,9 +137,21 @@ public class KafkaExporterReconciler {
     protected Future<Secret> maybeReconcileCertManagerCertificates() {
         //TODO handle empty reconciles when kafka exporter not enabled
         if (CertificateManagerType.CERT_MANAGER_IO.equals(clusterCa.getType())) {
-            return certManagerCertificateOperator.reconcile(reconciliation, reconciliation.namespace(), KafkaExporterResources.secretName(reconciliation.name()), kafkaExporter.generateCertificateResource(clusterCa))
-                    .compose(v -> certManagerCertificateOperator.waitForReady(reconciliation, reconciliation.namespace(), KafkaExporterResources.secretName(reconciliation.name())))
-                    .compose(v -> secretOperator.getAsync(reconciliation.namespace(), CertManagerUtils.certManagerSecretName(KafkaExporterResources.secretName(reconciliation.name()))));
+            Promise<Secret> promise = Promise.promise();
+            certManagerCertificateOperator.reconcile(reconciliation, reconciliation.namespace(), KafkaExporterResources.secretName(reconciliation.name()), kafkaExporter.generateCertificateResource(clusterCa))
+                    .thenCompose(v -> certManagerCertificateOperator.waitForReady(reconciliation, reconciliation.namespace(), KafkaExporterResources.secretName(reconciliation.name())))
+                    .thenCompose(v -> {
+                        secretOperator.getAsync(reconciliation.namespace(), CertManagerUtils.certManagerSecretName(KafkaExporterResources.secretName(reconciliation.name())))
+                                .onComplete(result -> {
+                                    if (result.succeeded()) {
+                                        promise.complete(result.result());
+                                    } else {
+                                        promise.fail(result.cause());
+                                    }
+                                });
+                        return CompletableFuture.completedStage(null);
+                    });
+            return promise.future();
         } else {
             return Future.succeededFuture();
         }

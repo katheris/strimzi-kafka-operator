@@ -28,7 +28,6 @@ import io.strimzi.operator.cluster.model.CertUtils;
 import io.strimzi.operator.cluster.model.KafkaExporter;
 import io.strimzi.operator.cluster.model.KafkaVersion;
 import io.strimzi.operator.cluster.operator.resource.ResourceOperatorSupplier;
-import io.strimzi.operator.cluster.operator.resource.kubernetes.CertManagerCertificateOperator;
 import io.strimzi.operator.cluster.operator.resource.kubernetes.SecretOperator;
 import io.strimzi.operator.common.Annotations;
 import io.strimzi.operator.common.Reconciliation;
@@ -37,6 +36,7 @@ import io.strimzi.operator.common.model.CaConfig;
 import io.strimzi.operator.common.model.InternalCa;
 import io.strimzi.operator.common.model.PasswordGenerator;
 import io.strimzi.operator.common.operator.MockCertManager;
+import io.strimzi.operator.common.operator.resource.concurrent.CertManagerCertificateOperator;
 import io.vertx.core.Future;
 import io.vertx.junit5.Checkpoint;
 import io.vertx.junit5.VertxExtension;
@@ -51,6 +51,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 import static io.strimzi.operator.common.model.InternalCa.CA_CRT;
 import static org.hamcrest.CoreMatchers.is;
@@ -474,7 +475,7 @@ public class KafkaExporterReconcilerCertManagerTest {
 
         CertManagerCertificateOperator certManagerCertificateOperator = supplier.certManagerCertificateOperator;
 
-        when(certManagerCertificateOperator.reconcile(any(), eq(NAMESPACE), any(), any(Certificate.class))).thenReturn(Future.succeededFuture());
-        when(certManagerCertificateOperator.waitForReady(any(), eq(NAMESPACE), any())).thenReturn(Future.succeededFuture());
+        when(certManagerCertificateOperator.reconcile(any(), eq(NAMESPACE), any(), any(Certificate.class))).thenReturn(CompletableFuture.completedFuture(null));
+        when(certManagerCertificateOperator.waitForReady(any(), eq(NAMESPACE), any())).thenReturn(CompletableFuture.completedFuture(null));
     }
 }

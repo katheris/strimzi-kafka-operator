@@ -17,11 +17,11 @@ import io.strimzi.operator.common.model.PasswordGenerator;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
-public class UserCaSecretProvider extends CaSecretProvider {
+public class UserCaProvider extends CaProvider {
     private final CertManager certManager;
     private final PasswordGenerator passwordGenerator;
 
-    public UserCaSecretProvider(Reconciliation reconciliation, Ca.CaRole caRole, CaConfig caConfig, Kafka kafkaCr, CertManager certManager, PasswordGenerator passwordGenerator, Secret existingCaCert, Secret existingCaKey) {
+    public UserCaProvider(Reconciliation reconciliation, Ca.CaRole caRole, CaConfig caConfig, Kafka kafkaCr, CertManager certManager, PasswordGenerator passwordGenerator, Secret existingCaCert, Secret existingCaKey) {
         super(reconciliation, caRole, caConfig, kafkaCr, existingCaCert, existingCaKey);
         this.certManager = certManager;
         this.passwordGenerator = passwordGenerator;
@@ -41,8 +41,7 @@ public class UserCaSecretProvider extends CaSecretProvider {
 
     @Override
     public CompletionStage<Secret> reconcileCaSecrets() {
-        // No Secrets to reconcile since they are managed by the user
-        return CompletableFuture.completedStage(null);
+        return CompletableFuture.completedStage(caCertSecret);
     }
 
 

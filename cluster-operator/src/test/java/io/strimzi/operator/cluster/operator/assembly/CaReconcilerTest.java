@@ -278,8 +278,10 @@ public class CaReconcilerTest {
                     ArgumentCaptor<Secret> clientsCaCert = ArgumentCaptor.forClass(Secret.class);
 
                     // Cluster CA should be reconciled twice, once initially, then when removing the old cert. Clients CA is only reconciled once
-                    verify(supplier.secretOperations, times(2)).reconcile(any(), eq(NAMESPACE), eq(AbstractModel.clusterCaCertSecretName(NAME)), clusterCaCert.capture());
-                    verify(supplier.secretOperations, times(1)).reconcile(any(), eq(NAMESPACE), eq(KafkaResources.clientsCaCertificateSecretName(NAME)), clientsCaCert.capture());
+                    verify(supplier.secretOperations, times(1)).reconcile(any(), eq(NAMESPACE), eq(AbstractModel.clusterCaCertSecretName(NAME)), clusterCaCert.capture());
+                    verify(supplier.concurrentSecretOperator, times(1)).reconcile(any(), eq(NAMESPACE), eq(AbstractModel.clusterCaCertSecretName(NAME)), clusterCaCert.capture());
+                    verify(supplier.concurrentSecretOperator, times(1)).reconcile(any(), eq(NAMESPACE), eq(KafkaResources.clientsCaCertificateSecretName(NAME)), clientsCaCert.capture());
+
 
                     //getValue() returns the latest captured value
                     Map<String, String> clusterCaCertData = clusterCaCert.getValue().getData();

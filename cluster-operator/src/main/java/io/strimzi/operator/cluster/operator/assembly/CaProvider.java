@@ -28,7 +28,7 @@ import static io.strimzi.operator.common.model.Ca.ANNO_STRIMZI_IO_CA_CERT_GENERA
 import static java.util.Collections.emptyList;
 import static java.util.Collections.singletonList;
 
-public abstract class CaSecretProvider {
+public abstract class CaProvider {
     protected final Reconciliation reconciliation;
     protected final Ca.CaRole caRole;
     protected final CaConfig caConfig;
@@ -40,9 +40,9 @@ public abstract class CaSecretProvider {
     protected Secret caKeySecret;
     protected Ca ca;
 
-    protected static final ReconciliationLogger LOGGER = ReconciliationLogger.create(CaSecretProvider.class);
+    protected static final ReconciliationLogger LOGGER = ReconciliationLogger.create(CaProvider.class);
 
-    public CaSecretProvider(Reconciliation reconciliation, Ca.CaRole caRole, CaConfig caConfig, Kafka kafkaCr, Secret existingCaCertSecret, Secret existingCaKeySecret) {
+    public CaProvider(Reconciliation reconciliation, Ca.CaRole caRole, CaConfig caConfig, Kafka kafkaCr, Secret existingCaCertSecret, Secret existingCaKeySecret) {
         this.reconciliation = reconciliation;
         this.caRole = caRole;
         this.caConfig = caConfig;

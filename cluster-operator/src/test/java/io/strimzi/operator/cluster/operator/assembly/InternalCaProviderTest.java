@@ -67,7 +67,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
-public class InternalCaSecretProviderTest {
+public class InternalCaProviderTest {
     private static final String NAMESPACE = Reconciliation.DUMMY_RECONCILIATION.namespace();
     private static final String NAME = Reconciliation.DUMMY_RECONCILIATION.name();
     private static final Kafka KAFKA = new KafkaBuilder()
@@ -118,7 +118,7 @@ public class InternalCaSecretProviderTest {
     }
 
     private void reconcileCas(Kafka kafka, Clock clock, boolean generatePkcs12Stores, CaSecrets caSecrets) {
-        InternalCaSecretProvider clusterCaProvider = new InternalCaSecretProvider(Reconciliation.DUMMY_RECONCILIATION,
+        InternalCaProvider clusterCaProvider = new InternalCaProvider(Reconciliation.DUMMY_RECONCILIATION,
                 Ca.CaRole.CLUSTER_CA,
                 new CaConfig(kafka.getSpec().getClusterCa(), generatePkcs12Stores),
                 kafka,
@@ -133,7 +133,7 @@ public class InternalCaSecretProviderTest {
         clusterCaProvider.createCa().toCompletableFuture().join();
         clusterCaProvider.reconcileCaSecrets().toCompletableFuture().join();
 
-        InternalCaSecretProvider clientsCaProvider = new InternalCaSecretProvider(Reconciliation.DUMMY_RECONCILIATION,
+        InternalCaProvider clientsCaProvider = new InternalCaProvider(Reconciliation.DUMMY_RECONCILIATION,
                 Ca.CaRole.CLIENTS_CA,
                 new CaConfig(kafka.getSpec().getClientsCa(), generatePkcs12Stores),
                 kafka,

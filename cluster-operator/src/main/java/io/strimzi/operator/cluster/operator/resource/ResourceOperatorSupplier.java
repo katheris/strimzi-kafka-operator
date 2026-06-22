@@ -23,11 +23,11 @@ import io.strimzi.api.kafka.model.rebalance.KafkaRebalanceList;
 import io.strimzi.operator.cluster.PlatformFeaturesAvailability;
 import io.strimzi.operator.cluster.model.DefaultSharedEnvironmentProvider;
 import io.strimzi.operator.cluster.model.SharedEnvironmentProvider;
+import io.strimzi.operator.cluster.operator.VertxUtil;
 import io.strimzi.operator.cluster.operator.assembly.BrokersInUseCheck;
 import io.strimzi.operator.cluster.operator.resource.events.KubernetesRestartEventPublisher;
 import io.strimzi.operator.cluster.operator.resource.kubernetes.BuildConfigOperator;
 import io.strimzi.operator.cluster.operator.resource.kubernetes.BuildOperator;
-import io.strimzi.operator.cluster.operator.resource.kubernetes.CertManagerCertificateOperator;
 import io.strimzi.operator.cluster.operator.resource.kubernetes.ClusterRoleBindingOperator;
 import io.strimzi.operator.cluster.operator.resource.kubernetes.ConfigMapOperator;
 import io.strimzi.operator.cluster.operator.resource.kubernetes.CrdOperator;
@@ -52,7 +52,10 @@ import io.strimzi.operator.common.AdminClientProvider;
 import io.strimzi.operator.common.DefaultAdminClientProvider;
 import io.strimzi.operator.common.MetricsProvider;
 import io.strimzi.operator.common.featuregates.FeatureGates;
+import io.strimzi.operator.common.operator.resource.concurrent.CertManagerCertificateOperator;
 import io.vertx.core.Vertx;
+
+import java.util.concurrent.Executor;
 
 /**
  * Class holding the various resource operator and providers of various clients
@@ -230,6 +233,11 @@ public class ResourceOperatorSupplier {
     public final BrokersInUseCheck brokersInUseCheck;
 
     /**
+     * Concurrent Secret operator
+     */
+    public final io.strimzi.operator.common.operator.resource.concurrent.SecretOperator concurrentSecretOperator;
+
+    /**
      * cert-manager Certificate operator
      */
     public final CertManagerCertificateOperator certManagerCertificateOperator;
@@ -237,6 +245,9 @@ public class ResourceOperatorSupplier {
     /**
      * Constructor
      *
+     * @param asyncExecutor         Executor on which the resource operators run their blocking Kubernetes API calls.
+     *      *                              Created and configured by the caller (see {@code Main}) so that the configured
+     *      *                              operations thread-pool size is applied.
      * @param vertx                 Vert.x instance
      * @param client                Kubernetes Client
      * @param metricsProvider       Metrics provider
@@ -244,8 +255,9 @@ public class ResourceOperatorSupplier {
      * @param operatorName          Name of this operator instance
      * @param featureGates          Feature Gates configuration of operator
      */
-    public ResourceOperatorSupplier(Vertx vertx, KubernetesClient client, MetricsProvider metricsProvider, PlatformFeaturesAvailability pfa, String operatorName, FeatureGates featureGates) {
-        this(vertx,
+    public ResourceOperatorSupplier(Executor asyncExecutor, Vertx vertx, KubernetesClient client, MetricsProvider metricsProvider, PlatformFeaturesAvailability pfa, String operatorName, FeatureGates featureGates) {
+        this(asyncExecutor,
+            vertx,
             client,
             new DefaultAdminClientProvider(),
             new DefaultKafkaAgentClientProvider(),
@@ -272,7 +284,11 @@ public class ResourceOperatorSupplier {
                                     KafkaAgentClientProvider kafkaAgentClientProvider,
                                     MetricsProvider metricsProvider,
                                     PlatformFeaturesAvailability pfa) {
-        this(vertx,
+        // This Vert.x based constructor is used only by tests. The production code creates the executor in Main where
+        // the configured operations thread-pool size is applied. Tests do not need the configured pool size, so the
+        // shared worker pool with its default settings is good enough here.
+        this(VertxUtil.asExecutor(vertx.createSharedWorkerExecutor("kubernetes-ops-pool")),
+                vertx,
                 client,
                 adminClientProvider,
                 kafkaAgentClientProvider,
@@ -282,14 +298,16 @@ public class ResourceOperatorSupplier {
         );
     }
 
-    private ResourceOperatorSupplier(Vertx vertx,
+    private ResourceOperatorSupplier(Executor asyncExecutor,
+                                     Vertx vertx,
                                      KubernetesClient client,
                                      AdminClientProvider adminClientProvider,
                                      KafkaAgentClientProvider kafkaAgentClientProvider,
                                      MetricsProvider metricsProvider,
                                      PlatformFeaturesAvailability pfa,
                                      KubernetesRestartEventPublisher restartEventPublisher) {
-        this(vertx,
+        this(asyncExecutor,
+            vertx,
             client,
             adminClientProvider,
             kafkaAgentClientProvider,
@@ -300,7 +318,8 @@ public class ResourceOperatorSupplier {
         );
     }
 
-    private ResourceOperatorSupplier(Vertx vertx,
+    private ResourceOperatorSupplier(Executor asyncExecutor,
+                                     Vertx vertx,
                                      KubernetesClient client,
                                      AdminClientProvider adminClientProvider,
                                      KafkaAgentClientProvider kafkaAgentClientProvider,
@@ -342,7 +361,8 @@ public class ResourceOperatorSupplier {
                 restartEventPublisher,
                 new DefaultSharedEnvironmentProvider(),
                 new BrokersInUseCheck(),
-                new CertManagerCertificateOperator(vertx, client));
+                new io.strimzi.operator.common.operator.resource.concurrent.SecretOperator(asyncExecutor, client),
+                new CertManagerCertificateOperator(asyncExecutor, client));
     }
 
     /**
@@ -382,6 +402,7 @@ public class ResourceOperatorSupplier {
      * @param restartEventsPublisher                Kubernetes Events publisher
      * @param sharedEnvironmentProvider             Shared environment provider
      * @param brokersInUseCheck                     Broker scale down operations
+     * @param concurrentSecretOperator              Secret Operator for cert-manager
      * @param certManagerCertificateOperator        cert-manager Certificate operator
      */
     @SuppressWarnings({"checkstyle:ParameterNumber"})
@@ -419,6 +440,7 @@ public class ResourceOperatorSupplier {
                                     KubernetesRestartEventPublisher restartEventsPublisher,
                                     SharedEnvironmentProvider sharedEnvironmentProvider,
                                     BrokersInUseCheck brokersInUseCheck,
+                                    io.strimzi.operator.common.operator.resource.concurrent.SecretOperator concurrentSecretOperator,
                                     CertManagerCertificateOperator certManagerCertificateOperator) {
         this.serviceOperations = serviceOperations;
         this.routeOperations = routeOperations;
@@ -454,6 +476,7 @@ public class ResourceOperatorSupplier {
         this.restartEventsPublisher = restartEventsPublisher;
         this.sharedEnvironmentProvider = sharedEnvironmentProvider;
         this.brokersInUseCheck = brokersInUseCheck;
+        this.concurrentSecretOperator = concurrentSecretOperator;
         this.certManagerCertificateOperator = certManagerCertificateOperator;
     }
 }

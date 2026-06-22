@@ -25,7 +25,6 @@ import io.strimzi.operator.cluster.operator.resource.ResourceOperatorSupplier;
 import io.strimzi.operator.cluster.operator.resource.events.KubernetesRestartEventPublisher;
 import io.strimzi.operator.cluster.operator.resource.kubernetes.BuildConfigOperator;
 import io.strimzi.operator.cluster.operator.resource.kubernetes.BuildOperator;
-import io.strimzi.operator.cluster.operator.resource.kubernetes.CertManagerCertificateOperator;
 import io.strimzi.operator.cluster.operator.resource.kubernetes.ClusterRoleBindingOperator;
 import io.strimzi.operator.cluster.operator.resource.kubernetes.ConfigMapOperator;
 import io.strimzi.operator.cluster.operator.resource.kubernetes.CrdOperator;
@@ -56,6 +55,7 @@ import io.strimzi.operator.common.auth.PemTrustSet;
 import io.strimzi.operator.common.model.CaUtils;
 import io.strimzi.operator.common.model.InternalCa;
 import io.strimzi.operator.common.model.Labels;
+import io.strimzi.operator.common.operator.resource.concurrent.CertManagerCertificateOperator;
 import io.vertx.core.Future;
 import org.apache.kafka.clients.admin.Admin;
 import org.apache.kafka.clients.admin.DescribeClientQuotasResult;
@@ -389,6 +389,7 @@ public class ResourceUtils {
                 mock(KubernetesRestartEventPublisher.class),
                 new MockSharedEnvironmentProvider(),
                 mock(BrokersInUseCheck.class),
+                mock(io.strimzi.operator.common.operator.resource.concurrent.SecretOperator.class),
                 mock(CertManagerCertificateOperator.class));
 
         when(supplier.secretOperations.getAsync(any(), any())).thenReturn(Future.succeededFuture());

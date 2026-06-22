@@ -38,7 +38,6 @@ import io.strimzi.operator.cluster.model.RestartReason;
 import io.strimzi.operator.cluster.model.RestartReasons;
 import io.strimzi.operator.cluster.operator.resource.KafkaRoller;
 import io.strimzi.operator.cluster.operator.resource.ResourceOperatorSupplier;
-import io.strimzi.operator.cluster.operator.resource.kubernetes.CertManagerCertificateOperator;
 import io.strimzi.operator.cluster.operator.resource.kubernetes.DeploymentOperator;
 import io.strimzi.operator.cluster.operator.resource.kubernetes.PodOperator;
 import io.strimzi.operator.cluster.operator.resource.kubernetes.SecretOperator;
@@ -50,6 +49,7 @@ import io.strimzi.operator.common.auth.TlsPemIdentity;
 import io.strimzi.operator.common.model.InternalCa;
 import io.strimzi.operator.common.model.Labels;
 import io.strimzi.operator.common.model.PasswordGenerator;
+import io.strimzi.operator.common.operator.resource.concurrent.CertManagerCertificateOperator;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.WorkerExecutor;
@@ -73,6 +73,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -348,7 +349,7 @@ public class CaReconcilerCertManagerTest {
                 List.of());
 
         when(supplier.certManagerCertificateOperator.waitForReady(any(), eq(NAMESPACE), eq(KafkaResources.clusterOperatorCertsSecretName(NAME))))
-                .thenReturn(Future.failedFuture(new TimeoutException("Timed out waiting for resource to be ready")));
+                .thenReturn(CompletableFuture.failedFuture(new TimeoutException("Timed out waiting for resource to be ready")));
 
         Checkpoint async = context.checkpoint();
 
@@ -833,10 +834,12 @@ public class CaReconcilerCertManagerTest {
                                            List<Secret> secrets,
                                            List<Pod> controllerPods,
                                            List<Pod> brokerPods) {
-        SecretOperator secretOps = supplier.secretOperations;
+        io.strimzi.operator.common.operator.resource.concurrent.SecretOperator concurrentSecretOps = supplier.concurrentSecretOperator;
+        when(concurrentSecretOps.getAsync(eq(NAMESPACE), eq(USER_PROVIDED_CLUSTER_CA_SECRET_NAME))).thenReturn(CompletableFuture.completedFuture(userClusterCaCertSecret));
+        when(concurrentSecretOps.getAsync(eq(NAMESPACE), eq(USER_PROVIDED_CLIENTS_CA_SECRET_NAME))).thenReturn(CompletableFuture.completedFuture(userClientsCaCertSecret));
+        when(concurrentSecretOps.reconcile(any(), any(), any(), any(Secret.class))).thenAnswer(i -> CompletableFuture.completedFuture(i.getArgument(3)));
 
-        when(secretOps.getAsync(eq(NAMESPACE), eq(USER_PROVIDED_CLUSTER_CA_SECRET_NAME))).thenReturn(Future.succeededFuture(userClusterCaCertSecret));
-        when(secretOps.getAsync(eq(NAMESPACE), eq(USER_PROVIDED_CLIENTS_CA_SECRET_NAME))).thenReturn(Future.succeededFuture(userClientsCaCertSecret));
+        SecretOperator secretOps = supplier.secretOperations;
         when(secretOps.getAsync(eq(NAMESPACE), eq(KafkaResources.clusterOperatorCertsSecretName(NAME) + "-cm"))).thenReturn(Future.succeededFuture(clusterOperatorCMSecret));
         when(secretOps.getAsync(eq(NAMESPACE), eq(KafkaResources.clusterOperatorCertsSecretName(NAME)))).thenReturn(Future.succeededFuture(clusterOperatorSecret));
         when(secretOps.listAsync(eq(NAMESPACE), any(Labels.class))).thenReturn(Future.succeededFuture(secrets));
@@ -844,8 +847,8 @@ public class CaReconcilerCertManagerTest {
 
         CertManagerCertificateOperator certManagerCertificateOperator = supplier.certManagerCertificateOperator;
 
-        when(certManagerCertificateOperator.reconcile(any(), eq(NAMESPACE), any(), any(Certificate.class))).thenReturn(Future.succeededFuture());
-        when(certManagerCertificateOperator.waitForReady(any(), eq(NAMESPACE), any())).thenReturn(Future.succeededFuture());
+        when(certManagerCertificateOperator.reconcile(any(), eq(NAMESPACE), any(), any(Certificate.class))).thenReturn(CompletableFuture.completedStage(null));
+        when(certManagerCertificateOperator.waitForReady(any(), eq(NAMESPACE), any())).thenReturn(CompletableFuture.completedStage(null));
 
         PodOperator mockPodOps = supplier.podOperations;
         List<Pod> pods = new ArrayList<>(controllerPods);

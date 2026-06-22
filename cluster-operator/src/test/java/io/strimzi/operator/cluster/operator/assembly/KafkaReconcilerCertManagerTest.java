@@ -35,7 +35,6 @@ import io.strimzi.operator.cluster.model.KafkaCluster;
 import io.strimzi.operator.cluster.model.KafkaVersion;
 import io.strimzi.operator.cluster.model.ModelUtils;
 import io.strimzi.operator.cluster.operator.resource.ResourceOperatorSupplier;
-import io.strimzi.operator.cluster.operator.resource.kubernetes.CertManagerCertificateOperator;
 import io.strimzi.operator.cluster.operator.resource.kubernetes.SecretOperator;
 import io.strimzi.operator.common.Annotations;
 import io.strimzi.operator.common.Reconciliation;
@@ -49,6 +48,7 @@ import io.strimzi.operator.common.model.InternalCa;
 import io.strimzi.operator.common.model.Labels;
 import io.strimzi.operator.common.model.PasswordGenerator;
 import io.strimzi.operator.common.operator.MockCertManager;
+import io.strimzi.operator.common.operator.resource.concurrent.CertManagerCertificateOperator;
 import io.strimzi.platform.KubernetesVersion;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
@@ -73,6 +73,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 import static io.strimzi.operator.common.model.InternalCa.CA_CRT;
@@ -375,7 +376,7 @@ public class KafkaReconcilerCertManagerTest {
         initKafkaReconcilerTestMocks(supplier, List.of());
 
         when(supplier.certManagerCertificateOperator.waitForReady(any(), eq(NAMESPACE), startsWith(NAME + "-" + NODE_POOL_NAME)))
-                .thenReturn(Future.failedFuture(new TimeoutException("Timed out waiting for resource to be ready")));
+                .thenReturn(CompletableFuture.failedFuture(new TimeoutException("Timed out waiting for resource to be ready")));
 
         Checkpoint async = context.checkpoint();
         KafkaReconciler reconciler = new MockKafkaReconcilerCertManagerTasks(
@@ -786,8 +787,8 @@ public class KafkaReconcilerCertManagerTest {
 
         CertManagerCertificateOperator certManagerCertificateOperator = supplier.certManagerCertificateOperator;
 
-        when(certManagerCertificateOperator.reconcile(any(), eq(NAMESPACE), any(), any(Certificate.class))).thenReturn(Future.succeededFuture());
-        when(certManagerCertificateOperator.waitForReady(any(), eq(NAMESPACE), any())).thenReturn(Future.succeededFuture());
+        when(certManagerCertificateOperator.reconcile(any(), eq(NAMESPACE), any(), any(Certificate.class))).thenReturn(CompletableFuture.completedFuture(null));
+        when(certManagerCertificateOperator.waitForReady(any(), eq(NAMESPACE), any())).thenReturn(CompletableFuture.completedFuture(null));
     }
 
     static class MockKafkaReconcilerCertManagerTasks extends KafkaReconciler {

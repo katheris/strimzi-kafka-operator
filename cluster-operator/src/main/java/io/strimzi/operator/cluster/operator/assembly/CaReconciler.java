@@ -11,7 +11,6 @@ import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.SecretBuilder;
 import io.strimzi.api.kafka.model.common.CertificateAuthority;
 import io.strimzi.api.kafka.model.common.CertificateManagerType;
-import io.strimzi.api.kafka.model.common.certmanager.IssuerRef;
 import io.strimzi.api.kafka.model.kafka.Kafka;
 import io.strimzi.api.kafka.model.kafka.KafkaResources;
 import io.strimzi.api.kafka.model.kafka.cruisecontrol.CruiseControlResources;
@@ -29,11 +28,11 @@ import io.strimzi.operator.cluster.model.NodeRef;
 import io.strimzi.operator.cluster.model.RestartReason;
 import io.strimzi.operator.cluster.model.RestartReasons;
 import io.strimzi.operator.cluster.model.WorkloadUtils;
+import io.strimzi.operator.cluster.operator.VertxUtil;
 import io.strimzi.operator.cluster.operator.resource.KafkaAgentClientProvider;
 import io.strimzi.operator.cluster.operator.resource.KafkaRoller;
 import io.strimzi.operator.cluster.operator.resource.ResourceOperatorSupplier;
 import io.strimzi.operator.cluster.operator.resource.events.KubernetesRestartEventPublisher;
-import io.strimzi.operator.cluster.operator.resource.kubernetes.CertManagerCertificateOperator;
 import io.strimzi.operator.cluster.operator.resource.kubernetes.DeploymentOperator;
 import io.strimzi.operator.cluster.operator.resource.kubernetes.PodOperator;
 import io.strimzi.operator.cluster.operator.resource.kubernetes.SecretOperator;
@@ -54,17 +53,18 @@ import io.strimzi.operator.common.model.CertManagerCa;
 import io.strimzi.operator.common.model.InternalCa;
 import io.strimzi.operator.common.model.Labels;
 import io.strimzi.operator.common.model.PasswordGenerator;
-import io.strimzi.operator.common.operator.resource.ReconcileResult;
+import io.strimzi.operator.common.operator.resource.concurrent.CertManagerCertificateOperator;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
+import io.vertx.core.Vertx;
 
 import java.security.cert.CertificateEncodingException;
 import java.time.Clock;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 import static io.strimzi.operator.common.model.Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION;
@@ -85,6 +85,7 @@ public class CaReconciler {
     /* test */ final DeploymentOperator deploymentOperator;
     private final StrimziPodSetOperator strimziPodSetOperator;
     private final SecretOperator secretOperator;
+    private final io.strimzi.operator.common.operator.resource.concurrent.SecretOperator concurrentSecretOperator;
     /* test */ final PodOperator podOperator;
     private final AdminClientProvider adminClientProvider;
     private final KafkaAgentClientProvider kafkaAgentClientProvider;
@@ -94,10 +95,13 @@ public class CaReconciler {
     private final CertManagerCertificateOperator certManagerCertificateOperator;
 
     // Fields based on the Kafka CR required for the reconciliation
+    private final Kafka kafkaCr;
     private final List<String> maintenanceWindows;
     private final OwnerReference ownerRef;
     private final CaConfig clusterCaConfig;
+    private io.strimzi.api.kafka.model.common.certmanager.CertManager clusterCaCertManager;
     private final CaConfig clientsCaConfig;
+    private io.strimzi.api.kafka.model.common.certmanager.CertManager clientsCaCertManager;
     private final CertificateAuthority clusterCaAuthority;
     private final CertificateAuthority clientsCaAuthority;
     private final Map<String, String> caLabels;
@@ -139,6 +143,7 @@ public class CaReconciler {
         this.deploymentOperator = supplier.deploymentOperations;
         this.strimziPodSetOperator = supplier.strimziPodSetOperator;
         this.secretOperator = supplier.secretOperations;
+        this.concurrentSecretOperator = supplier.concurrentSecretOperator;
         this.podOperator = supplier.podOperations;
         this.certManagerCertificateOperator = supplier.certManagerCertificateOperator;
 
@@ -150,6 +155,7 @@ public class CaReconciler {
         this.eventPublisher = supplier.restartEventsPublisher;
 
         // Extract required information from the Kafka CR
+        this.kafkaCr = kafkaCr;
         this.maintenanceWindows = kafkaCr.getSpec().getMaintenanceTimeWindows();
         this.ownerRef = new OwnerReferenceBuilder()
                 .withApiVersion(kafkaCr.getApiVersion())
@@ -162,7 +168,13 @@ public class CaReconciler {
         this.clusterCaAuthority = kafkaCr.getSpec().getClusterCa();
         this.clientsCaAuthority = kafkaCr.getSpec().getClientsCa();
         this.clusterCaConfig = new CaConfig(kafkaCr.getSpec().getClusterCa(), config.isPkcs12KeystoreGeneration());
+        if (CertificateManagerType.CERT_MANAGER_IO.equals(clusterCaConfig.getCertificateManagerType())) {
+            this.clusterCaCertManager = kafkaCr.getSpec().getClusterCa().getCertManager();
+        }
         this.clientsCaConfig = new CaConfig(kafkaCr.getSpec().getClientsCa(), config.isPkcs12KeystoreGeneration());
+        if (CertificateManagerType.CERT_MANAGER_IO.equals(clientsCaConfig.getCertificateManagerType())) {
+            this.clientsCaCertManager = kafkaCr.getSpec().getClientsCa().getCertManager();
+        }
         this.caLabels = Labels.generateDefaultLabels(kafkaCr, Labels.APPLICATION_NAME, "certificate-authority", AbstractModel.STRIMZI_CLUSTER_OPERATOR_NAME).toMap();
         this.clusterOperatorSecretLabels = Labels.generateDefaultLabels(kafkaCr, Labels.APPLICATION_NAME, Labels.APPLICATION_NAME, AbstractModel.STRIMZI_CLUSTER_OPERATOR_NAME);
         this.trustBundleLabels = Labels.generateDefaultLabels(kafkaCr, Labels.APPLICATION_NAME, "trust-bundle", AbstractModel.STRIMZI_CLUSTER_OPERATOR_NAME);
@@ -246,15 +258,8 @@ public class CaReconciler {
         String clientsCaKeyName = KafkaResources.clientsCaKeySecretName(reconciliation.name());
         String clusterOperatorName = KafkaResources.clusterOperatorCertsSecretName(reconciliation.name());
 
-        return Future.join(
-                        getCertManagerCaCert(clusterCaAuthority),
-                        getCertManagerCaCert(clientsCaAuthority),
-                        secretOperator.listAsync(reconciliation.namespace(), Labels.EMPTY.withStrimziKind(reconciliation.kind()).withStrimziCluster(reconciliation.name())))
-                .compose(results -> {
-                    String clusterCaCertManagerCert = results.resultAt(0);
-                    String clientsCaCertManagerCert = results.resultAt(1);
-                    List<Secret> clusterSecrets = results.resultAt(2);
-
+        return secretOperator.listAsync(reconciliation.namespace(), Labels.EMPTY.withStrimziKind(reconciliation.kind()).withStrimziCluster(reconciliation.name()))
+                .compose(clusterSecrets -> {
                     Secret existingClusterCaCertSecret = null;
                     Secret existingClusterCaKeySecret = null;
                     Secret existingClientsCaCertSecret = null;
@@ -275,140 +280,64 @@ public class CaReconciler {
                         }
                     }
 
-                    //New
-//                    CaProvider caProvider;
-//                    if (CertificateManagerType.CERT_MANAGER_IO.equals(clusterCaConfig.getCertificateManagerType())) {
-//                        caProvider = new CertManagerCaSecretProvider()
-//                    } else if (clusterCaConfig.isGenerateCa()) {
-//                        //internal
-//                    } else {
-//                        //user provided
-//                    }
-//                    Ca clusterCa = caProvider.createCa();
-//                    Secret clusterCaCertSecret = caProvider.reconcileCaSecrets();
+                    CaProvider clusterCaProvider = getCaProvider(Ca.CaRole.CLUSTER_CA, clusterCaConfig, existingClusterCaCertSecret, existingClusterCaKeySecret, clock);
+                    Future<Void> clusterCaFuture = VertxUtil.toFuture(clusterCaProvider.createCa())
+                            .compose(ca -> {
+                                clusterCa = ca;
+                                return VertxUtil.toFuture(clusterCaProvider.reconcileCaSecrets());
+                            })
+                            .onSuccess(secret -> clusterCaCertSecret = secret)
+                            .mapEmpty();
 
-                    //
-
-                    List<Future<ReconcileResult<Secret>>> secretReconciliations = new ArrayList<>(4);
-
-                    OwnerReference clusterCaOwnerReference = clusterCaConfig.isGenerateSecretOwnerRef() ? ownerRef : null;
-                    if (CertificateManagerType.CERT_MANAGER_IO.equals(clusterCaConfig.getCertificateManagerType())) {
-                        IssuerRef issuerRef = clusterCaAuthority != null && clusterCaAuthority.getCertManager() != null
-                                ? clusterCaAuthority.getCertManager().getIssuerRef() : null;
-
-                        CertManagerCa certManagerClusterCa = new CertManagerCa(reconciliation, Ca.CaRole.CLUSTER_CA,
-                                existingClusterCaCertSecret,
-                                existingClusterCaKeySecret,
-                                clusterCaConfig,
-                                null,
-                                null,
-                                clusterCaOwnerReference,
-                                null,
-                                issuerRef);
-
-                        certManagerClusterCa.createOrUpdateCertManagerCa(clusterCaCertManagerCert,
-                                existingClusterCaCertSecret == null ? null : Annotations.stringAnnotation(existingClusterCaCertSecret, Annotations.ANNO_STRIMZI_SERVER_CERT_HASH, ""),
-                                CaUtils.cert(coSecret, "cluster-operator.crt"));
-                        clusterCa = certManagerClusterCa;
-
-                        clusterCaCertSecret = createCaCertSecret(clusterCaCertName, clusterCaCertLabels, clusterCaCertAnnotations, true, clusterCaOwnerReference, clusterCa, existingClusterCaCertSecret);
-                        secretReconciliations.add(secretOperator.reconcile(reconciliation, reconciliation.namespace(), clusterCaCertName, clusterCaCertSecret));
-
-                    } else {
-                        InternalCa internalClusterCa = new InternalCa(reconciliation, Ca.CaRole.CLUSTER_CA, certManager, passwordGenerator,
-                                existingClusterCaCertSecret,
-                                existingClusterCaKeySecret,
-                                clusterCaConfig);
-
-                        clusterCa = internalClusterCa;
-                        if (clusterCaConfig.isGenerateCa()) {
-                            internalClusterCa.createOrUpdateStrimziManagedCa(Util.isMaintenanceTimeWindowsSatisfied(reconciliation, maintenanceWindows, clock.instant()),
-                                    isForceReplace(existingClusterCaKeySecret),
-                                    isForceRenew(existingClusterCaCertSecret));
-
-                            Secret clusterCaKeySecret = createCaKeySecret(clusterCaKeyName, clusterCaOwnerReference, internalClusterCa, existingClusterCaKeySecret);
-                            secretReconciliations.add(secretOperator.reconcile(reconciliation, reconciliation.namespace(), clusterCaKeyName, clusterCaKeySecret));
-
-                            clusterCaCertSecret = createCaCertSecret(clusterCaCertName, clusterCaCertLabels, clusterCaCertAnnotations, true, clusterCaOwnerReference, clusterCa, existingClusterCaCertSecret);
-                            secretReconciliations.add(secretOperator.reconcile(reconciliation, reconciliation.namespace(), clusterCaCertName, clusterCaCertSecret));
-                        } else {
-                            clusterCaCertSecret = existingClusterCaCertSecret;
-                        }
-                    }
-
-                    OwnerReference clientsCaOwnerReference = clientsCaConfig.isGenerateSecretOwnerRef() ? ownerRef : null;
-                    if (clientsCaConfig.getCertificateManagerType().equals(CertificateManagerType.CERT_MANAGER_IO)) {
-                        IssuerRef issuerRef = clientsCaAuthority != null && clientsCaAuthority.getCertManager() != null
-                                ? clientsCaAuthority.getCertManager().getIssuerRef() : null;
-
-                        CertManagerCa certManagerClientsCa = new CertManagerCa(reconciliation, Ca.CaRole.CLIENTS_CA,
-                                existingClientsCaCertSecret,
-                                existingClientsCaKeySecret,
-                                clientsCaConfig,
-                                null,
-                                null,
-                                clientsCaOwnerReference,
-                                null,
-                                issuerRef);
-
-                        certManagerClientsCa.createOrUpdateCertManagerCaWithoutEntityCert(clientsCaCertManagerCert,
-                                existingClientsCaCertSecret == null ? null : Annotations.stringAnnotation(existingClientsCaCertSecret, Annotations.ANNO_STRIMZI_SERVER_CERT_HASH, ""));
-
-                        clientsCa = certManagerClientsCa;
-                        Secret clientsCaCertSecret = createCaCertSecret(clientsCaCertName, Map.of(), Map.of(), false, clientsCaOwnerReference, clientsCa, existingClientsCaCertSecret);
-                        secretReconciliations.add(secretOperator.reconcile(reconciliation, reconciliation.namespace(), clientsCaCertName, clientsCaCertSecret));
-
-                    } else {
-                        InternalCa internalClientsCa = new InternalCa(reconciliation, Ca.CaRole.CLIENTS_CA, certManager, passwordGenerator,
-                                existingClientsCaCertSecret,
-                                existingClientsCaKeySecret,
-                                clientsCaConfig);
-
-                        clientsCa = internalClientsCa;
-
-                        if (clientsCaConfig.isGenerateCa()) {
-                            internalClientsCa.createOrUpdateStrimziManagedCa(Util.isMaintenanceTimeWindowsSatisfied(reconciliation, maintenanceWindows, clock.instant()),
-                                    isForceReplace(existingClientsCaKeySecret),
-                                    isForceRenew(existingClientsCaCertSecret));
-                            Secret clientsCaKeySecret = createCaKeySecret(clientsCaKeyName, clientsCaOwnerReference, internalClientsCa, existingClientsCaKeySecret);
-                            secretReconciliations.add(secretOperator.reconcile(reconciliation, reconciliation.namespace(), clientsCaKeyName, clientsCaKeySecret));
-
-                            Secret clientsCaCertSecret = createCaCertSecret(clientsCaCertName, Map.of(), Map.of(), false, clientsCaOwnerReference, clientsCa, existingClientsCaCertSecret);
-                            secretReconciliations.add(secretOperator.reconcile(reconciliation, reconciliation.namespace(), clientsCaCertName, clientsCaCertSecret));
-                        }
-                    }
-
-                    Promise<Void> caUpdatePromise = Promise.promise();
-
-                    Future.join(secretReconciliations).onComplete(res -> {
-                        if (res.succeeded())    {
-                            caUpdatePromise.complete();
-                        } else {
-                            caUpdatePromise.fail(res.cause());
-                        }
-                    });
-
-                    return caUpdatePromise.future();
+                    CaProvider clientsCaProvider = getCaProvider(Ca.CaRole.CLIENTS_CA, clientsCaConfig, existingClientsCaCertSecret, existingClientsCaKeySecret, clock);
+                    Future<Void> clientsCaFuture = VertxUtil.toFuture(clientsCaProvider.createCa())
+                            .compose(ca -> {
+                                clientsCa = ca;
+                                return VertxUtil.toFuture(clientsCaProvider.reconcileCaSecrets());
+                            }).mapEmpty();
+                    return Future.join(clusterCaFuture, clientsCaFuture).mapEmpty();
                 });
     }
 
-    Future<String> getCertManagerCaCert(CertificateAuthority caConfig) {
-        if (caConfig != null && caConfig.getType().equals(CertificateManagerType.CERT_MANAGER_IO)) {
-            String certManagerSecretName = caConfig.getCertManager().getCaCert().getSecretName();
-            String certManagerSecretKey = caConfig.getCertManager().getCaCert().getCertificate();
-            return secretOperator.getAsync(reconciliation.namespace(), certManagerSecretName)
-                    .compose(secret -> {
-                        if (secret == null) {
-                            return Future.failedFuture("CA public certificate Secret " + certManagerSecretName + " missing.");
-                        } else if (secret.getData().get(certManagerSecretKey) == null) {
-                            return Future.failedFuture("CA public certificate Secret " + certManagerSecretName + " missing key " + certManagerSecretKey);
-                        } else {
-                            return Future.succeededFuture(secret.getData().get(certManagerSecretKey));
-                        }
-                    });
+    private CaProvider getCaProvider(Ca.CaRole caRole, CaConfig caConfig, Secret existingCaCertSecret, Secret existingCaKeySecret, Clock clock) {
+        CaProvider caProvider;
+        if (CertificateManagerType.CERT_MANAGER_IO.equals(caConfig.getCertificateManagerType())) {
+            caProvider = new CertManagerCaProvider(
+                    reconciliation,
+                    caRole,
+                    caConfig,
+                    kafkaCr,
+                    existingCaCertSecret,
+                    concurrentSecretOperator,
+                    coSecret,
+                    clusterCaCertManager,
+                    certManagerCertificateOperator
+            );
+        } else if (caConfig.isGenerateCa()) {
+            caProvider = new InternalCaProvider(
+                    reconciliation,
+                    caRole,
+                    caConfig,
+                    kafkaCr,
+                    concurrentSecretOperator,
+                    certManager,
+                    passwordGenerator,
+                    clock,
+                    existingCaCertSecret,
+                    existingCaKeySecret
+            );
         } else {
-            return Future.succeededFuture(null);
+            caProvider = new UserCaProvider(
+                    reconciliation,
+                    caRole,
+                    caConfig,
+                    kafkaCr,
+                    certManager,
+                    passwordGenerator,
+                    existingCaCertSecret,
+                    existingCaKeySecret);
         }
+        return caProvider;
     }
 
     /**
@@ -437,9 +366,10 @@ public class CaReconciler {
      * This method also waits for the Certificate to be ready.
      */
     private Future<Secret> maybeReconcileClusterOperatorCMCertificate() {
-        //TODO: temporary fix
+        //TODO Kate/Tina: can be removed
         if (clientsCa instanceof CertManagerCa certManagerCa) {
-            return certManagerCertificateOperator.reconcile(reconciliation, reconciliation.namespace(), KafkaResources.clusterOperatorCertsSecretName(reconciliation.name()),
+            Promise<Secret> promise = Promise.promise();
+            certManagerCertificateOperator.reconcile(reconciliation, reconciliation.namespace(), KafkaResources.clusterOperatorCertsSecretName(reconciliation.name()),
                     CertManagerUtils.buildCertManagerCertificate(
                             reconciliation.namespace(),
                             KafkaResources.clusterOperatorCertsSecretName(reconciliation.name()),
@@ -447,8 +377,19 @@ public class CaReconciler {
                             clusterOperatorSecretLabels,
                             ownerRef
                     ))
-                    .compose(v -> certManagerCertificateOperator.waitForReady(reconciliation, reconciliation.namespace(), KafkaResources.clusterOperatorCertsSecretName(reconciliation.name())))
-                    .compose(v -> secretOperator.getAsync(reconciliation.namespace(), CertManagerUtils.certManagerSecretName(KafkaResources.clusterOperatorCertsSecretName(reconciliation.name()))));
+                    .thenCompose(v -> certManagerCertificateOperator.waitForReady(reconciliation, reconciliation.namespace(), KafkaResources.clusterOperatorCertsSecretName(reconciliation.name())))
+                    .thenCompose(v -> {
+                        secretOperator.getAsync(reconciliation.namespace(), CertManagerUtils.certManagerSecretName(KafkaResources.clusterOperatorCertsSecretName(reconciliation.name())))
+                                .onComplete(result -> {
+                                    if (result.succeeded()) {
+                                        promise.complete(result.result());
+                                    } else {
+                                        promise.fail(result.cause());
+                                    }
+                                });
+                        return CompletableFuture.completedStage(null);
+                    });
+                    return promise.future();
         } else {
             return Future.succeededFuture(null);
         }
@@ -462,6 +403,7 @@ public class CaReconciler {
      * @param clock    The clock for supplying the reconciler with the time instant of each reconciliation cycle.
      *                 That time is used for checking maintenance windows
      */
+    //TODO Kate/Tina: call single method  ClusterCaCertificateIssuer.maybeCopyOrGenerateClientCert in both cases
     Future<Void> reconcileClusterOperatorSecret(Clock clock, Secret certManagerSecret) {
         return secretOperator.getAsync(reconciliation.namespace(), KafkaResources.clusterOperatorCertsSecretName(reconciliation.name()))
                 .compose(oldSecret -> {

@@ -226,30 +226,30 @@ public class CertManagerCa extends Ca {
      * Store the new data if it doesn't exist already, otherwise check if the certificate has changed
      * and update the data and generations accordingly.
      *
-     * @param newCaCert             New CA cert.
+     * @param newCaCertAsBase64             New CA cert.
      * @param existingCaCertHash    Existing CA cert hash to determine if the cert has changed.
      * @param endEntityCertificate  End entity certificate to use for cert path validation.
      */
-    public void createOrUpdateCa(String newCaCert, String existingCaCertHash, X509Certificate endEntityCertificate) {
-        renewalType = shouldCreateOrUpdateCa(newCaCert, existingCaCertHash, endEntityCertificate);
+    public void createOrUpdateCa(String newCaCertAsBase64, String existingCaCertHash, X509Certificate endEntityCertificate) {
+        renewalType = shouldCreateOrUpdateCa(newCaCertAsBase64, existingCaCertHash, endEntityCertificate);
         Map<String, String> updatedCertData;
         switch (renewalType) {
             case NOOP -> updatedCertData = new HashMap<>(caCertData);
             case CREATE -> {
                 // No data, so we add it
                 updatedCertData = new HashMap<>();
-                updatedCertData.put(CA_CRT, Util.encodeToBase64(newCaCert));
+                updatedCertData.put(CA_CRT, newCaCertAsBase64);
             }
             case RENEW_CERT -> {
                 updatedCertData = new HashMap<>();
-                updatedCertData.put(CA_CRT, Util.encodeToBase64(newCaCert));
+                updatedCertData.put(CA_CRT, newCaCertAsBase64);
                 ++caCertGeneration;
             }
             case REPLACE_KEY -> {
                 String notAfterDate = DATE_TIME_FORMATTER.format(currentCaCertX509().getNotAfter().toInstant().atZone(ZoneId.of("Z")));
                 updatedCertData = new HashMap<>();
                 updatedCertData.put(Ca.SecretEntry.CRT.asKey("ca-" + notAfterDate), caCertData.get(CA_CRT));
-                updatedCertData.put(CA_CRT, Util.encodeToBase64(newCaCert));
+                updatedCertData.put(CA_CRT, newCaCertAsBase64);
                 ++caCertGeneration;
                 ++caKeyGeneration;
             }
@@ -258,7 +258,7 @@ public class CertManagerCa extends Ca {
         caCertData = updatedCertData;
     }
 
-    private RenewalType shouldCreateOrUpdateCa(String newCaCert, String existingCaCertHash, X509Certificate endEntityCertificate) {
+    private RenewalType shouldCreateOrUpdateCa(String newCaCertAsBase64, String existingCaCertHash, X509Certificate endEntityCertificate) {
         if (caCertData.isEmpty()) {
             return RenewalType.CREATE;
         }
@@ -266,7 +266,7 @@ public class CertManagerCa extends Ca {
         X509Certificate x509CaCert;
         String newCaCertHash;
         try {
-            x509CaCert = CaUtils.x509Certificate(Util.decodeBytesFromBase64(newCaCert));
+            x509CaCert = CaUtils.x509Certificate(Util.decodeBytesFromBase64(newCaCertAsBase64));
             newCaCertHash = String.format("%040x", new BigInteger(1, Util.sha1Digest(x509CaCert.getEncoded())));
         } catch (CertificateException e) {
             throw new RuntimeException(e);

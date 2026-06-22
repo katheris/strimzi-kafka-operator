@@ -27,13 +27,13 @@ import java.util.concurrent.CompletionStage;
 
 import static io.strimzi.operator.common.model.Ca.ANNO_STRIMZI_IO_CA_KEY_GENERATION;
 
-public class InternalCaSecretProvider extends CaSecretProvider {
+public class InternalCaProvider extends CaProvider {
     private final SecretOperator secretOperator;
     private final CertManager certManager;
     private final PasswordGenerator passwordGenerator;
     private final Clock clock;
 
-    public InternalCaSecretProvider(Reconciliation reconciliation, Ca.CaRole caRole, CaConfig caConfig, Kafka kafkaCr, SecretOperator secretOperator, CertManager certManager, PasswordGenerator passwordGenerator, Clock clock, Secret existingCaCertSecret, Secret existingCaKeySecret) {
+    public InternalCaProvider(Reconciliation reconciliation, Ca.CaRole caRole, CaConfig caConfig, Kafka kafkaCr, SecretOperator secretOperator, CertManager certManager, PasswordGenerator passwordGenerator, Clock clock, Secret existingCaCertSecret, Secret existingCaKeySecret) {
         super(reconciliation, caRole, caConfig, kafkaCr, existingCaCertSecret, existingCaKeySecret);
         this.secretOperator = secretOperator;
         this.certManager = certManager;

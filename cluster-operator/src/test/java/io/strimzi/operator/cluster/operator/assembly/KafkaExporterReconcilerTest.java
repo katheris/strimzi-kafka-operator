@@ -30,7 +30,6 @@ import io.strimzi.operator.cluster.model.CertManagerUtils;
 import io.strimzi.operator.cluster.model.KafkaExporter;
 import io.strimzi.operator.cluster.model.KafkaVersion;
 import io.strimzi.operator.cluster.operator.resource.ResourceOperatorSupplier;
-import io.strimzi.operator.cluster.operator.resource.kubernetes.CertManagerCertificateOperator;
 import io.strimzi.operator.cluster.operator.resource.kubernetes.DeploymentOperator;
 import io.strimzi.operator.cluster.operator.resource.kubernetes.NetworkPolicyOperator;
 import io.strimzi.operator.cluster.operator.resource.kubernetes.PodDisruptionBudgetOperator;
@@ -44,6 +43,7 @@ import io.strimzi.operator.common.model.CertManagerCa;
 import io.strimzi.operator.common.model.InternalCa;
 import io.strimzi.operator.common.model.PasswordGenerator;
 import io.strimzi.operator.common.operator.MockCertManager;
+import io.strimzi.operator.common.operator.resource.concurrent.CertManagerCertificateOperator;
 import io.vertx.core.Future;
 import io.vertx.junit5.Checkpoint;
 import io.vertx.junit5.VertxExtension;
@@ -55,6 +55,7 @@ import org.mockito.ArgumentCaptor;
 import java.time.Clock;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
@@ -276,8 +277,8 @@ public class KafkaExporterReconcilerTest {
         ResourceOperatorSupplier supplier = ResourceUtils.supplierWithMocks(false);
 
         CertManagerCertificateOperator mockCertManagerOps = supplier.certManagerCertificateOperator;
-        when(mockCertManagerOps.reconcile(any(), eq(NAMESPACE), eq(KafkaExporterResources.secretName(NAME)), any(Certificate.class))).thenReturn(Future.succeededFuture());
-        when(mockCertManagerOps.waitForReady(any(), eq(NAMESPACE), eq(KafkaExporterResources.secretName(NAME)))).thenReturn(Future.succeededFuture());
+        when(mockCertManagerOps.reconcile(any(), eq(NAMESPACE), eq(KafkaExporterResources.secretName(NAME)), any(Certificate.class))).thenReturn(CompletableFuture.completedFuture(null));
+        when(mockCertManagerOps.waitForReady(any(), eq(NAMESPACE), eq(KafkaExporterResources.secretName(NAME)))).thenReturn(CompletableFuture.completedFuture(null));
 
         ServiceAccountOperator mockSaOps = supplier.serviceAccountOperations;
         when(mockSaOps.reconcile(any(), eq(NAMESPACE), eq(KafkaExporterResources.componentName(NAME)), any())).thenReturn(Future.succeededFuture());
