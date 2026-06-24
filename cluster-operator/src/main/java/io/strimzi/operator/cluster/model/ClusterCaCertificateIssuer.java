@@ -242,23 +242,9 @@ public final class ClusterCaCertificateIssuer {
                     .map(existing -> existing.get(podName))
                     .orElse(null);
 
-            futureList.add(ca.generateSignedCert(podName, subject)
-                    .thenApply(newCertAndKey -> {
-                        if (existingCertAndKey == null) {
-                            return Map.entry(podName, newCertAndKey);
-                        } else if (certManagerCertUpdated(existingCertAndKey, newCertAndKey)) {
-                            if (certIsTrusted(reconciliation, extractCertChain(podName, newCertAndKey.cert()), ca.currentCaCertX509())) {
-                                LOGGER.infoCr(reconciliation, "New certificate for {}/{}", reconciliation.namespace(), podName);
-                                return Map.entry(podName, newCertAndKey);
-                            } else {
-                                LOGGER.infoCr(reconciliation, "New certificate for {}/{}, but not trusted yet so keeping existing certificate.", reconciliation.namespace(), podName);
-                                return Map.entry(podName, existingCertAndKey);
-                            }
-                        } else {
-                            // Certificate has not changed
-                            return Map.entry(podName, existingCertAndKey);
-                        }
-                    }).toCompletableFuture());
+            futureList.add(maybeCopyOrGenerateCertManagerCert(reconciliation, ca, podName, subject, existingCertAndKey)
+                    .thenApply(certAndKey -> Map.entry(podName, certAndKey))
+                    .toCompletableFuture());
         }
         return CompletableFuture.allOf(futureList.toArray(new CompletableFuture[0]))
                 .thenApply(v -> futureList.stream()
@@ -361,6 +347,7 @@ public final class ClusterCaCertificateIssuer {
         }
     }
 
+
     /**
      * Generates or reuses a single certificate signed by this Cluster CA.
      * Used for components that only act as clients, like Entity Operators and Kafka Exporter.
@@ -373,10 +360,25 @@ public final class ClusterCaCertificateIssuer {
      *
      * @return CertAndKey object containing the certificate and key with CA generation set
      */
-    public static CertAndKey maybeCopyOrGenerateClientCert(
+    public static CompletionStage<CertAndKey> maybeCopyOrGenerateClientCert(
             Reconciliation reconciliation,
             String commonName,
             Ca ca,
+            CertAndKey existingCertAndKey,
+            boolean isMaintenanceTimeWindowsSatisfied
+    ) {
+        return switch (ca) {
+            case InternalCa internalCa -> CompletableFuture.completedFuture(maybeCopyOrGenerateClientCertWithInternalCa(reconciliation, commonName, internalCa, existingCertAndKey, isMaintenanceTimeWindowsSatisfied));
+            case CertManagerCa certManagerCa -> maybeCopyOrGenerateClientCertWithCertManagerCa(reconciliation, commonName, certManagerCa, existingCertAndKey);
+            default -> CompletableFuture.failedStage(new InvalidResourceException("Unable to generate server certificate for unknown type of CA {}" + ca));
+        };
+    }
+
+
+    /* test */ static CertAndKey maybeCopyOrGenerateClientCertWithInternalCa(
+            Reconciliation reconciliation,
+            String commonName,
+            InternalCa ca,
             CertAndKey existingCertAndKey,
             boolean isMaintenanceTimeWindowsSatisfied
     ) {
@@ -387,12 +389,9 @@ public final class ClusterCaCertificateIssuer {
         } else if (hasCaCertGenerationChanged(existingCertAndKey.caCertGeneration(), ca, commonName)) {
             reasons.add("certificate has old cert generation");
         } else {
-            //TODO: temporary fix
-            if (ca instanceof InternalCa internalCa) {
-                // Certificate exists and CA generation matches - check if renewal is needed
-                if (internalCa.isExpiring(existingCertAndKey.cert()) && isMaintenanceTimeWindowsSatisfied) {
-                    reasons.add("certificate is expiring");
-                }
+            // Certificate exists and CA generation matches - check if renewal is needed
+            if (ca.isExpiring(existingCertAndKey.cert()) && isMaintenanceTimeWindowsSatisfied) {
+                reasons.add("certificate is expiring");
             }
         }
 
@@ -401,10 +400,7 @@ public final class ClusterCaCertificateIssuer {
             LOGGER.infoCr(reconciliation, "Certificate for component {} needs to be regenerated because: {}", commonName, String.join(", ", reasons));
 
             try {
-                //TODO: temporary fix
-                if (ca instanceof InternalCa internalCa) {
-                    certAndKey = internalCa.getSignedCert(commonName, InternalCa.IO_STRIMZI);
-                }
+                certAndKey = ca.getSignedCert(commonName, InternalCa.IO_STRIMZI);
             } catch (IOException e) {
                 LOGGER.warnCr(reconciliation, "Error while generating certificates", e);
             }
@@ -415,6 +411,17 @@ public final class ClusterCaCertificateIssuer {
         }
 
         return certAndKey;
+    }
+
+
+    /* test */ static CompletionStage<CertAndKey> maybeCopyOrGenerateClientCertWithCertManagerCa(
+            Reconciliation reconciliation,
+            String commonName,
+            CertManagerCa ca,
+            CertAndKey existingCertAndKey
+    ) {
+        Subject subject = CaUtils.getSubject(commonName, InternalCa.IO_STRIMZI);
+        return maybeCopyOrGenerateCertManagerCert(reconciliation, ca, commonName, subject, existingCertAndKey);
     }
 
     /**
@@ -442,6 +449,43 @@ public final class ClusterCaCertificateIssuer {
         } else {
             return Arrays.equals(Arrays.copyOfRange(cert, cert.length - caChain.length, cert.length), caChain);
         }
+    }
+
+    /**
+     * Generates a certificate using cert-manager and selects which certificate to use.
+     * Compares the existing certificate with the newly generated one and decides whether to use the new one.
+     *
+     * @param reconciliation        Reconciliation marker
+     * @param ca                    cert-manager CA
+     * @param certName              Name of the certificate (pod name or component name)
+     * @param subject               Certificate subject with DNS names, IP addresses, etc.
+     * @param existingCertAndKey    Existing certificate (or null if none exists)
+     * @return CompletionStage with the certificate to use (either new or existing)
+     */
+    private static CompletionStage<CertAndKey> maybeCopyOrGenerateCertManagerCert(
+            Reconciliation reconciliation,
+            CertManagerCa ca,
+            String certName,
+            Subject subject,
+            CertAndKey existingCertAndKey
+    ) {
+        return ca.generateSignedCert(certName, subject)
+                .thenApply(newCertAndKey -> {
+                    if (existingCertAndKey == null) {
+                        return newCertAndKey;
+                    } else if (certManagerCertUpdated(existingCertAndKey, newCertAndKey)) {
+                        if (certIsTrusted(reconciliation, extractCertChain(certName, newCertAndKey.cert()), ca.currentCaCertX509())) {
+                            LOGGER.infoCr(reconciliation, "New certificate for {}/{}", reconciliation.namespace(), certName);
+                            return newCertAndKey;
+                        } else {
+                            LOGGER.infoCr(reconciliation, "New certificate for {}/{}, but not trusted yet so keeping existing certificate.", reconciliation.namespace(), certName);
+                            return existingCertAndKey;
+                        }
+                    } else {
+                        // Certificate has not changed
+                        return existingCertAndKey;
+                    }
+                });
     }
 
     /**

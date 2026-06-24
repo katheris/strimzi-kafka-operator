@@ -37,6 +37,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletionStage;
 
 /**
  * Represents the Topic Operator deployment
@@ -294,28 +295,28 @@ public class EntityTopicOperator extends AbstractModel implements SupportsLoggin
      * Generate the Secret containing the Entity Topic Operator certificate signed by the cluster CA certificate used
      * for TLS-based internal communication with Kafka.
      *
-     * @param clusterCa                             The cluster CA.
-     * @param existingSecret                        The existing secret with Kafka certificates
-     * @param isMaintenanceTimeWindowsSatisfied     Indicates whether we are in the maintenance window or not.
-     *                                              This is used for certificate renewals
-     *
+     * @param clusterCa                         The cluster CA.
+     * @param existingSecret                    The existing secret with Kafka certificates
+     * @param isMaintenanceTimeWindowsSatisfied Indicates whether we are in the maintenance window or not.
+     *                                          This is used for certificate renewals
      * @return The generated Secret.
      */
-    public Secret generateCertificatesSecret(Ca clusterCa, Secret existingSecret, boolean isMaintenanceTimeWindowsSatisfied) {
+    public CompletionStage<Secret> generateCertificatesSecret(Ca clusterCa, Secret existingSecret, boolean isMaintenanceTimeWindowsSatisfied) {
         CertAndKey existingCertAndKey = CertUtils.keyStoreCertAndKey(existingSecret, EntityOperator.COMPONENT_TYPE, clusterCa.caCertGenerationAnnotation());
 
-        CertAndKey updatedCert = ClusterCaCertificateIssuer.maybeCopyOrGenerateClientCert(reconciliation, componentName, clusterCa, existingCertAndKey, isMaintenanceTimeWindowsSatisfied);
-
-        Map<String, String> secretData = CertUtils.buildSecretData(EntityOperator.COMPONENT_TYPE, updatedCert);
-        return ModelUtils.createSecret(
-                KafkaResources.entityTopicOperatorSecretName(cluster),
-                namespace,
-                labels,
-                ownerReference,
-                secretData,
-                Map.of(clusterCa.caCertGenerationAnnotation(), String.valueOf(updatedCert.caCertGeneration())),
-                Map.of()
-        );
+        return ClusterCaCertificateIssuer.maybeCopyOrGenerateClientCert(reconciliation, componentName, clusterCa, existingCertAndKey, isMaintenanceTimeWindowsSatisfied)
+                .thenApply(updatedCert -> {
+                    Map<String, String> secretData = CertUtils.buildSecretData(EntityOperator.COMPONENT_TYPE, updatedCert);
+                    return ModelUtils.createSecret(
+                            KafkaResources.entityTopicOperatorSecretName(cluster),
+                            namespace,
+                            labels,
+                            ownerReference,
+                            secretData,
+                            Map.of(clusterCa.caCertGenerationAnnotation(), String.valueOf(updatedCert.caCertGeneration())),
+                            Map.of()
+                    );
+                });
     }
 
     /**

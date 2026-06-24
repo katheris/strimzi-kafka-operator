@@ -26,7 +26,7 @@ import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 
 @ExtendWith(VertxExtension.class)
-public class ClusterCaRenewalTest {
+public class InternalClusterCaRenewalTest {
     private static final Function<NodeRef, Subject> SUBJECT_FN = node -> new Subject.Builder().build();
     private static final Set<NodeRef> NODES = new LinkedHashSet<>();
     // LinkedHashSet is used to maintain ordering and have predictable test results
@@ -413,7 +413,7 @@ public class ClusterCaRenewalTest {
     public void testRenewalOfDeploymentCertificateWithNullCertAndKey() {
         MockedClusterCa mockedCa = new MockedClusterCa();
 
-        CertAndKey newCert = ClusterCaCertificateIssuer.maybeCopyOrGenerateClientCert(
+        CertAndKey newCert = ClusterCaCertificateIssuer.maybeCopyOrGenerateClientCertWithInternalCa(
                 Reconciliation.DUMMY_RECONCILIATION,
                 "deployment",
                 mockedCa,
@@ -433,7 +433,7 @@ public class ClusterCaRenewalTest {
 
         CertAndKey initialCert = new CertAndKey("old-key".getBytes(), "old-cert".getBytes());
 
-        CertAndKey newCert = ClusterCaCertificateIssuer.maybeCopyOrGenerateClientCert(
+        CertAndKey newCert = ClusterCaCertificateIssuer.maybeCopyOrGenerateClientCertWithInternalCa(
                 Reconciliation.DUMMY_RECONCILIATION,
                 "deployment",
                 mockedCa,
@@ -453,7 +453,7 @@ public class ClusterCaRenewalTest {
 
         CertAndKey initialCert = new CertAndKey("old-key".getBytes(), "old-cert".getBytes());
 
-        CertAndKey newCert = ClusterCaCertificateIssuer.maybeCopyOrGenerateClientCert(
+        CertAndKey newCert = ClusterCaCertificateIssuer.maybeCopyOrGenerateClientCertWithInternalCa(
                 Reconciliation.DUMMY_RECONCILIATION,
                 "deployment",
                 mockedCa,
@@ -473,7 +473,7 @@ public class ClusterCaRenewalTest {
 
         CertAndKey initialCert = new CertAndKey("old-key".getBytes(), "old-cert".getBytes());
 
-        CertAndKey newCert = ClusterCaCertificateIssuer.maybeCopyOrGenerateClientCert(
+        CertAndKey newCert = ClusterCaCertificateIssuer.maybeCopyOrGenerateClientCertWithInternalCa(
                 Reconciliation.DUMMY_RECONCILIATION,
                 "deployment",
                 mockedCa,
@@ -492,7 +492,7 @@ public class ClusterCaRenewalTest {
 
         CertAndKey initialCert = new CertAndKey("old-key".getBytes(), "old-cert".getBytes(), null, "old-keystore".getBytes(), "old-password");
 
-        CertAndKey newCert = ClusterCaCertificateIssuer.maybeCopyOrGenerateClientCert(
+        CertAndKey newCert = ClusterCaCertificateIssuer.maybeCopyOrGenerateClientCertWithInternalCa(
                 Reconciliation.DUMMY_RECONCILIATION,
                 "deployment",
                 mockedCa,

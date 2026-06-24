@@ -91,6 +91,9 @@ public abstract class Ca {
 
     protected static final ReconciliationLogger LOGGER = ReconciliationLogger.create(Ca.class);
 
+    /**
+     * DateTimeFormatter used for renaming old certificates
+     */
     public static final DateTimeFormatter DATE_TIME_FORMATTER = new DateTimeFormatterBuilder()
             .appendValue(YEAR, 4, 10, SignStyle.EXCEEDS_PAD)
             .appendLiteral('-')

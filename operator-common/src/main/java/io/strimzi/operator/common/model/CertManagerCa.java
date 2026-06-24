@@ -368,6 +368,13 @@ public class CertManagerCa extends Ca {
                 });
     }
 
+    /**
+     * Generates a certificate signed by cert-manager CA
+     *
+     * @param entityName            Name of the component the Certificate is for
+     * @param subject               Subject for Certificate
+     * @return CompletionStage with CertAndKey
+     */
     public CompletionStage<CertAndKey> generateSignedCert(String entityName, Subject subject) {
         Certificate certificate = buildCertificateResource(entityName, subject, caConfig.getValidityDays(), caConfig.getRenewalDays());
         return certManagerCertificateOperator.reconcile(reconciliation, reconciliation.namespace(), entityName, certificate)
@@ -387,9 +394,9 @@ public class CertManagerCa extends Ca {
      * Build Certificate object to give to cert-manager to generate certificate
      *
      * @param entityName            Name of the component the Certificate is for
-     * @param subject    Subject for Certificate
-     * @param validityDays         Validity days for Certificate
-     * @param renewalDays        Renewal days for certificate
+     * @param subject               Subject for Certificate
+     * @param validityDays          Validity days for Certificate
+     * @param renewalDays           Renewal days for certificate
      * @return Certificate object
      */
     private Certificate buildCertificateResource(String entityName, Subject subject, int validityDays, int renewalDays) {

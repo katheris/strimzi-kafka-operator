@@ -56,7 +56,6 @@ import io.strimzi.operator.common.model.PasswordGenerator;
 import io.strimzi.operator.common.operator.resource.concurrent.CertManagerCertificateOperator;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
-import io.vertx.core.Vertx;
 
 import java.security.cert.CertificateEncodingException;
 import java.time.Clock;
@@ -389,7 +388,7 @@ public class CaReconciler {
                                 });
                         return CompletableFuture.completedStage(null);
                     });
-                    return promise.future();
+            return promise.future();
         } else {
             return Future.succeededFuture(null);
         }

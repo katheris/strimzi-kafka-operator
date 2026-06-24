@@ -240,16 +240,7 @@ public class InternalCa extends Ca {
      * @throws IOException If the cert could not be generated.
      */
     public CertAndKey generateSignedCert(String commonName) throws IOException {
-        return generateSignedCert(getSubject(commonName, null));
-    }
-
-    private Subject getSubject(String commonName, String organization) {
-        Subject.Builder subject = new Subject.Builder();
-        if (organization != null) {
-            subject.withOrganizationName(organization);
-        }
-        subject.withCommonName(commonName);
-        return subject.build();
+        return generateSignedCert(CaUtils.getSubject(commonName, null));
     }
 
     /**
@@ -261,7 +252,7 @@ public class InternalCa extends Ca {
      * @throws IOException If the cert could not be created.
      */
     public CertAndKey getSignedCert(String commonName, String organization) throws IOException {
-        Subject subject = getSubject(commonName, organization);
+        Subject subject = CaUtils.getSubject(commonName, organization);
         return generateSignedCert(subject);
     }
 

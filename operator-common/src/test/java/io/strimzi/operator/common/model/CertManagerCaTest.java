@@ -36,11 +36,8 @@ import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 import static io.strimzi.operator.common.model.Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION;
-import static io.strimzi.operator.common.model.Ca.ANNO_STRIMZI_IO_CLUSTER_CA_CERT_GENERATION;
 import static io.strimzi.operator.common.model.Ca.CA_CRT;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
@@ -53,7 +50,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 public class CertManagerCaTest {
-    private final static ExecutorService EXECUTOR = Executors.newSingleThreadExecutor();
     private final static String NAMESPACE = Reconciliation.DUMMY_RECONCILIATION.namespace();
     private final static String ENTITY_NAME = "mock-component";
     private final static int VALIDITY_DAYS = 100;

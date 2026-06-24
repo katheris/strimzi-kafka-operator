@@ -5,6 +5,7 @@
 package io.strimzi.operator.common.model;
 
 import io.fabric8.kubernetes.api.model.Secret;
+import io.strimzi.certs.Subject;
 import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.ReconciliationLogger;
 import io.strimzi.operator.common.Util;
@@ -175,5 +176,21 @@ public class CaUtils {
         } catch (CertificateException | IOException e) {
             throw new RuntimeException("Failed to decode "  + key, e);
         }
+    }
+
+    /**
+     * Create a subject
+     *
+     * @param commonName The CN of the certificate to be created.
+     * @param organization The O of the certificate to be created. May be null.
+     * @return The subject created with the given CN and O
+     */
+    public static Subject getSubject(String commonName, String organization) {
+        Subject.Builder subject = new Subject.Builder();
+        if (organization != null) {
+            subject.withOrganizationName(organization);
+        }
+        subject.withCommonName(commonName);
+        return subject.build();
     }
 }
