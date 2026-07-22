@@ -59,6 +59,8 @@ public class CertSecretUtils {
      *
      * @param certificate   Certificate to generate the SHA1-hash for
      * @return              SHA1-Hash of the certificate or null if certSecret contains no valid X509Certificate
+     *
+     * @throws CertificateEncodingException if an encoding error occurs.
      */
     public static String getCertificateThumbprint(X509Certificate certificate) throws CertificateEncodingException {
         return String.format("%040x", new BigInteger(1, Util.sha1Digest(certificate.getEncoded())));

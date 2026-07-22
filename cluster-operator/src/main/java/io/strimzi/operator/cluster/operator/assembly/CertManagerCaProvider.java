@@ -73,8 +73,9 @@ public class CertManagerCaProvider extends CaProvider {
 
     @Override
     public CompletionStage<CaProviderResult> createAndReconcileCa() {
+        //TODO: should this return failed stage with the error?
         if (existingCaCertSecret == null)   {
-            throw new InvalidResourceException(caRole.name() + " should not be generated, but the cert secret was not found.");
+            throw new InvalidResourceException(caRole.caName() + " should not be generated, but the cert secret was not found.");
         }
         return getCaCertForCertManager()
                 .thenCompose(newCaCertAsBase64 -> {

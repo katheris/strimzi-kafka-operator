@@ -66,13 +66,6 @@ public class CertManagerCaTest {
         secretOperator = mock(SecretOperator.class);
     }
 
-    private void initKafkaReconcilerTestMocks(Secret certManagerSecret) {
-        when(secretOperator.getAsync(eq(NAMESPACE), eq(certManagerSecret.getMetadata().getName()))).thenAnswer(i -> CompletableFuture.completedStage(certManagerSecret));
-
-        when(certManagerCertificateOperator.reconcile(any(), eq(NAMESPACE), any(), any(Certificate.class))).thenAnswer(i -> CompletableFuture.completedStage(ReconcileResult.patched(i.getArgument(3))));
-        when(certManagerCertificateOperator.waitForReady(any(), eq(NAMESPACE), any())).thenReturn(CompletableFuture.completedStage(null));
-    }
-
     private static CertificateAuthority getCertificateAuthority() {
         return new CertificateAuthorityBuilder()
                 .withValidityDays(VALIDITY_DAYS)
@@ -179,7 +172,7 @@ public class CertManagerCaTest {
     }
 
     @Test
-    void generateSignedCert() {
+    void renewalOfCertificatesWithNullCertificates() {
         // Create cluster ca cert Secret
         Map<String, String> clusterCaCertData = new HashMap<>();
         clusterCaCertData.put("ca.crt", MockCertIssuer.clusterCaCert());
@@ -191,7 +184,10 @@ public class CertManagerCaTest {
         cmSecretData.put("tls.key", Util.encodeToBase64(MockCertIssuer.serverKey()));
         Secret cmSecret = createSecret(ENTITY_NAME + "-cm", cmSecretData);
 
-        initKafkaReconcilerTestMocks(cmSecret);
+        when(secretOperator.getAsync(eq(NAMESPACE), eq(cmSecret.getMetadata().getName()))).thenAnswer(i -> CompletableFuture.completedStage(cmSecret));
+
+        when(certManagerCertificateOperator.reconcile(any(), eq(NAMESPACE), any(), any(Certificate.class))).thenAnswer(i -> CompletableFuture.completedStage(ReconcileResult.patched(i.getArgument(3))));
+        when(certManagerCertificateOperator.waitForReady(any(), eq(NAMESPACE), any())).thenReturn(CompletableFuture.completedStage(null));
 
         CertManagerCa certManagerCa = new CertManagerCa(
                 Reconciliation.DUMMY_RECONCILIATION,
@@ -215,37 +211,37 @@ public class CertManagerCaTest {
                 .addIpAddress("127.0.0.1")
                 .build();
 
-        certManagerCa.generateSignedCert(ENTITY_NAME, subject)
-                .whenComplete((cert, throwable) -> {
-                    assertNull(throwable);
+        certManagerCa.maybeCopyOrGenerateCert(ENTITY_NAME, subject, null)
+                        .whenComplete((cert, throwable)  -> {
+                            assertNull(throwable);
 
-                    // Certificate Object created
-                    ArgumentCaptor<Certificate> entityCertificateResourceCaptor =  ArgumentCaptor.forClass(Certificate.class);
-                    verify(certManagerCertificateOperator, times(1)).reconcile(any(), eq(NAMESPACE), eq(ENTITY_NAME), entityCertificateResourceCaptor.capture());
+                            // Certificate Object created
+                            ArgumentCaptor<Certificate> entityCertificateResourceCaptor =  ArgumentCaptor.forClass(Certificate.class);
+                            verify(certManagerCertificateOperator, times(1)).reconcile(any(), eq(NAMESPACE), eq(ENTITY_NAME), entityCertificateResourceCaptor.capture());
 
-                    Certificate certificate = entityCertificateResourceCaptor.getValue();
-                    assertThat(certificate.getSpec().getCommonName(), is(ENTITY_NAME));
+                            Certificate certificate = entityCertificateResourceCaptor.getValue();
+                            assertThat(certificate.getSpec().getCommonName(), is(ENTITY_NAME));
 
-                    assertThat(certificate.getSpec().getSubject().getOrganizations().size(), is(1));
-                    assertThat(certificate.getSpec().getSubject().getOrganizations().getFirst(), is("io.strimzi"));
+                            assertThat(certificate.getSpec().getSubject().getOrganizations().size(), is(1));
+                            assertThat(certificate.getSpec().getSubject().getOrganizations().getFirst(), is("io.strimzi"));
 
-                    assertThat(certificate.getSpec().getDuration(), is(convertToFabric8Duration(VALIDITY_DAYS)));
-                    assertThat(certificate.getSpec().getRenewBefore(), is(convertToFabric8Duration(RENEWAL_DAYS)));
+                            assertThat(certificate.getSpec().getDuration(), is(convertToFabric8Duration(VALIDITY_DAYS)));
+                            assertThat(certificate.getSpec().getRenewBefore(), is(convertToFabric8Duration(RENEWAL_DAYS)));
 
-                    assertThat(certificate.getSpec().getDnsNames().size(), is(1));
-                    assertThat(certificate.getSpec().getDnsNames().getFirst(), is("mock-component.namespace.local"));
+                            assertThat(certificate.getSpec().getDnsNames().size(), is(1));
+                            assertThat(certificate.getSpec().getDnsNames().getFirst(), is("mock-component.namespace.local"));
 
-                    assertThat(certificate.getSpec().getIpAddresses().size(), is(1));
-                    assertThat(certificate.getSpec().getIpAddresses().getFirst(), is("127.0.0.1"));
+                            assertThat(certificate.getSpec().getIpAddresses().size(), is(1));
+                            assertThat(certificate.getSpec().getIpAddresses().getFirst(), is("127.0.0.1"));
 
-                    // Entity cert is returned
-                    assertThat(cert.cert(), is(Util.decodeBytesFromBase64(cmSecretData.get("tls.crt"))));
-                    assertThat(cert.key(), is(Util.decodeBytesFromBase64(cmSecretData.get("tls.key"))));
-                }).toCompletableFuture().join();
+                            // Entity cert is returned
+                            assertThat(cert.cert(), is(Util.decodeBytesFromBase64(cmSecretData.get("tls.crt"))));
+                            assertThat(cert.key(), is(Util.decodeBytesFromBase64(cmSecretData.get("tls.key"))));
+                        }).toCompletableFuture().join();
     }
 
     @Test
-    void generateCertWhenCertificateResourceCreationFails() {
+    void renewalOfCertificatesWhenCertificateResourceCreationFails() {
         // Create cluster ca cert Secret
         Map<String, String> clusterCaCertData = new HashMap<>();
         clusterCaCertData.put("ca.crt", MockCertIssuer.clusterCaCert());
@@ -275,7 +271,7 @@ public class CertManagerCaTest {
                 .build();
 
         try {
-            certManagerCa.generateSignedCert(ENTITY_NAME, subject).toCompletableFuture().join();
+            certManagerCa.maybeCopyOrGenerateCert(ENTITY_NAME, subject, null).toCompletableFuture().join();
         } catch (Exception e) {
             assertThat(e.getMessage(), CoreMatchers.containsString("Timed out waiting for resource to be ready"));
 
@@ -288,8 +284,9 @@ public class CertManagerCaTest {
     }
 
     @Test
-    void entityCertRenewed() throws IOException {
-        // Create cluster ca cert Secret
+    void renewalOfCertificate() throws IOException {
+        CertAndKey initialCert = new CertAndKey(MockCertIssuer.serverKey().getBytes(StandardCharsets.UTF_8), MockCertIssuer.serverCert().getBytes(StandardCharsets.UTF_8), 0);
+
         Map<String, String> clusterCaCertData = new HashMap<>();
         clusterCaCertData.put("ca.crt", MockCertIssuer.clusterCaCert());
         Secret clusterCaCertSecret = createCaCertSecret("my-cluster-ca-secret", clusterCaCertData, 0);
@@ -301,7 +298,10 @@ public class CertManagerCaTest {
         cmSecretData.put("tls.key", renewedCert.keyAsBase64String());
         Secret cmSecret = createSecret(ENTITY_NAME + "-cm", cmSecretData);
 
-        initKafkaReconcilerTestMocks(cmSecret);
+        when(secretOperator.getAsync(eq(NAMESPACE), eq(cmSecret.getMetadata().getName()))).thenAnswer(i -> CompletableFuture.completedStage(cmSecret));
+
+        when(certManagerCertificateOperator.reconcile(any(), eq(NAMESPACE), any(), any(Certificate.class))).thenAnswer(i -> CompletableFuture.completedStage(ReconcileResult.patched(i.getArgument(3))));
+        when(certManagerCertificateOperator.waitForReady(any(), eq(NAMESPACE), any())).thenReturn(CompletableFuture.completedStage(null));
 
         CertManagerCa certManagerCa = new CertManagerCa(
                 Reconciliation.DUMMY_RECONCILIATION,
@@ -325,7 +325,7 @@ public class CertManagerCaTest {
                 .addIpAddress("127.0.0.1")
                 .build();
 
-        certManagerCa.maybeCopyOrGenerateCert(ENTITY_NAME, subject, new CertAndKey(MockCertIssuer.serverKey().getBytes(StandardCharsets.UTF_8), MockCertIssuer.serverCert().getBytes(StandardCharsets.UTF_8), 0))
+        certManagerCa.maybeCopyOrGenerateCert(ENTITY_NAME, subject, initialCert)
                 .whenComplete((cert, throwable) -> {
                     assertNull(throwable);
 
@@ -343,7 +343,9 @@ public class CertManagerCaTest {
     }
 
     @Test
-    void clusterCaAndEntityCertRenewed() throws IOException {
+    void renewalOfCertificatesWithCaRenewal() throws IOException {
+        CertAndKey initialCert = new CertAndKey(MockCertIssuer.serverKey().getBytes(StandardCharsets.UTF_8), MockCertIssuer.serverCert().getBytes(StandardCharsets.UTF_8), 0);
+
         // Create renewed cluster ca cert Secret
         CertAndKey renewedCaCert = renewCaCert(new CertAndKey(Util.decodeBytesFromBase64(MockCertIssuer.clusterCaKey()), Util.decodeBytesFromBase64(MockCertIssuer.clusterCaCert())));
         Map<String, String> clusterCaCertData = new HashMap<>();
@@ -357,7 +359,10 @@ public class CertManagerCaTest {
         cmSecretData.put("tls.key", renewedCert.keyAsBase64String());
         Secret cmSecret = createSecret(ENTITY_NAME + "-cm", cmSecretData);
 
-        initKafkaReconcilerTestMocks(cmSecret);
+        when(secretOperator.getAsync(eq(NAMESPACE), eq(cmSecret.getMetadata().getName()))).thenAnswer(i -> CompletableFuture.completedStage(cmSecret));
+
+        when(certManagerCertificateOperator.reconcile(any(), eq(NAMESPACE), any(), any(Certificate.class))).thenAnswer(i -> CompletableFuture.completedStage(ReconcileResult.patched(i.getArgument(3))));
+        when(certManagerCertificateOperator.waitForReady(any(), eq(NAMESPACE), any())).thenReturn(CompletableFuture.completedStage(null));
 
         CertManagerCa certManagerCa = new CertManagerCa(
                 Reconciliation.DUMMY_RECONCILIATION,
@@ -381,7 +386,7 @@ public class CertManagerCaTest {
                 .addIpAddress("127.0.0.1")
                 .build();
 
-        certManagerCa.maybeCopyOrGenerateCert(ENTITY_NAME, subject, new CertAndKey(MockCertIssuer.serverKey().getBytes(StandardCharsets.UTF_8), MockCertIssuer.serverCert().getBytes(StandardCharsets.UTF_8), 0))
+        certManagerCa.maybeCopyOrGenerateCert(ENTITY_NAME, subject, initialCert)
                 .whenComplete((cert, throwable) -> {
                     assertNull(throwable);
 
@@ -395,6 +400,68 @@ public class CertManagerCaTest {
                     assertThat(cert.cert(), is(renewedCert.cert()));
                     assertThat(cert.key(), is(renewedCert.key()));
                     assertThat(cert.caCertGeneration(), is(1));
+                }).toCompletableFuture().join();
+    }
+
+    @Test
+    void noRenewalOfCertificatesNewCaKeyNotTrusted() throws IOException {
+        CertAndKey initialCert = new CertAndKey(MockCertIssuer.serverKey().getBytes(StandardCharsets.UTF_8), MockCertIssuer.serverCert().getBytes(StandardCharsets.UTF_8), 0);
+
+        Map<String, String> clusterCaCertData = new HashMap<>();
+        clusterCaCertData.put("ca.crt", MockCertIssuer.clusterCaCert());
+        Secret clusterCaCertSecret = createCaCertSecret("my-cluster-ca-secret", clusterCaCertData, 0);
+
+        // Create cluster CA cert with a new key
+        CertificateAuthority certificateAuthority = getCertificateAuthority();
+        CertAndKey newCaCert = generateCa(certificateAuthority);
+
+        // Create cert-manager Secret for new entity cert signed by new CA key as though CA key is replaced
+        CertAndKey newCert = generateCert(newCaCert);
+        Map<String, String> cmSecretData = new HashMap<>();
+        cmSecretData.put("tls.crt", newCert.certAsBase64String());
+        cmSecretData.put("tls.key", newCert.keyAsBase64String());
+        Secret cmSecret = createSecret(ENTITY_NAME + "-cm", cmSecretData);
+
+        when(secretOperator.getAsync(eq(NAMESPACE), eq(cmSecret.getMetadata().getName()))).thenAnswer(i -> CompletableFuture.completedStage(cmSecret));
+
+        when(certManagerCertificateOperator.reconcile(any(), eq(NAMESPACE), any(), any(Certificate.class))).thenAnswer(i -> CompletableFuture.completedStage(ReconcileResult.patched(i.getArgument(3))));
+        when(certManagerCertificateOperator.waitForReady(any(), eq(NAMESPACE), any())).thenReturn(CompletableFuture.completedStage(null));
+
+        CertManagerCa certManagerCa = new CertManagerCa(
+                Reconciliation.DUMMY_RECONCILIATION,
+                Ca.CaRole.CLUSTER_CA,
+                clusterCaCertSecret,
+                new CaConfig(getCertificateAuthority(), false),
+                certManagerCertificateOperator,
+                secretOperator,
+                null,
+                Labels.EMPTY,
+                new IssuerRefBuilder()
+                        .withName("cm-issuer")
+                        .withKind(IssuerKind.CLUSTER_ISSUER)
+                        .build()
+        );
+
+        Subject subject = new Subject.Builder()
+                .withOrganizationName("io.strimzi")
+                .withCommonName(ENTITY_NAME)
+                .addDnsName("mock-component.namespace.local")
+                .addIpAddress("127.0.0.1")
+                .build();
+
+        certManagerCa.maybeCopyOrGenerateCert(ENTITY_NAME, subject, initialCert)
+                .whenComplete((cert, throwable) -> {
+                    assertNull(throwable);
+
+                    // Certificate Object created
+                    ArgumentCaptor<Certificate> entityCertificateResourceCaptor =  ArgumentCaptor.forClass(Certificate.class);
+                    verify(certManagerCertificateOperator, times(1)).reconcile(any(), eq(NAMESPACE), eq(ENTITY_NAME), entityCertificateResourceCaptor.capture());
+
+                    assertThat(entityCertificateResourceCaptor.getValue().getSpec().getCommonName(), is(ENTITY_NAME));
+
+                    // Entity cert Secret is returned
+                    assertThat(cert.cert(), is(initialCert.cert()));
+                    assertThat(cert.key(), is(initialCert.key()));
                 }).toCompletableFuture().join();
     }
 }

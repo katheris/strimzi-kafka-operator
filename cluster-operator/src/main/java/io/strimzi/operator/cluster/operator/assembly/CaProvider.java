@@ -115,7 +115,7 @@ public abstract class CaProvider {
     }
 
     /**
-     * Creates or loads the CA instance and reconciles the CA secrets with the Kubernetes cluster.
+     * Creates or loads the CA instance and may reconcile the CA secrets with the Kubernetes cluster.
      *
      * @return CompletionStage that completes with the CA instance and reconciled CA certificate secret
      */

@@ -468,4 +468,9 @@ public class ResourceUtils {
                 .with(ClusterOperatorConfig.FEATURE_GATES.key(), featureGates)
                 .build();
     }
+
+    //TODO: This method is lost, what was this method doing? It's only used by tests, should it be here?
+    public static Secret createInitialCaCertSecretForCMCa(String ns, String name, String secretName, String cert, boolean b) {
+        return null;
+    }
 }

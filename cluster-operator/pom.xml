@@ -109,6 +109,7 @@
         <dependency>
             <groupId>io.fabric8</groupId>
             <artifactId>certmanager-model</artifactId>
+            <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>

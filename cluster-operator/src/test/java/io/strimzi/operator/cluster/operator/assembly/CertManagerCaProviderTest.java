@@ -5,7 +5,7 @@
 package io.strimzi.operator.cluster.operator.assembly;
 
 import io.fabric8.kubernetes.api.model.Secret;
-import io.strimzi.api.kafka.model.common.CertificateAuthority;
+import io.strimzi.api.kafka.model.common.*;
 import io.strimzi.api.kafka.model.kafka.Kafka;
 import io.strimzi.api.kafka.model.kafka.KafkaBuilder;
 import io.strimzi.api.kafka.model.kafka.KafkaResources;
@@ -20,10 +20,12 @@ import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.Util;
 import io.strimzi.operator.common.ca.Ca;
 import io.strimzi.operator.common.ca.CaConfig;
+import io.strimzi.operator.common.model.InvalidResourceException;
 import io.strimzi.operator.common.model.PasswordGenerator;
 import io.strimzi.operator.common.operator.resource.kubernetes.CertManagerCertificateOperator;
 import io.strimzi.operator.common.operator.resource.kubernetes.SecretOperator;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.io.ByteArrayInputStream;
@@ -47,6 +49,7 @@ import static java.util.Collections.singleton;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -232,69 +235,66 @@ public class CertManagerCaProviderTest {
             Secret clientsCaCert
     ) { }
 
-//    @Test
-//    public void testReconcileCMCasWhenClusterCaCertMissingThrows() {
-//        String clusterCaSecretName = "cert-manager-cluster-ca-cert";
-//        CertificateAuthority clusterCa = new CertificateAuthorityBuilder()
-//                .withValidityDays(100)
-//                .withRenewalDays(10)
-//                .withGenerateCertificateAuthority(false)
-//                .withType(CertificateManagerType.CERT_MANAGER_IO)
-//                .withNewCertManager()
-//                    .withNewCaCert()
-//                        .withSecretName(clusterCaSecretName)
-//                        .withCertificate(CA_CRT)
-//                    .endCaCert()
-//                .endCertManager()
-//                .build();
-//
-//        CertManagerCaProvider clusterCaProvider = new CertManagerCaProvider(Reconciliation.DUMMY_RECONCILIATION,
-//                Ca.CaRole.CLUSTER_CA,
-//                new CaConfig(clusterCa, false),
-//                KAFKA,
-//                null,
-//                secretOperations,
-//                clusterOperatorSecret == null ? null : clusterOperatorSecret,
-//                kafka.getSpec().getClusterCa().getCertManager(),
-//                certificateOperator
-//        );
-//
-//        clusterCaProvider.createCa().toCompletableFuture().join();
-//        reconcileCas(clusterCa, clientsCa, null, null)
-//                .onComplete(context.failing(e -> context.verify(() -> {
-//                    assertThat(e.getMessage(), is("CA public certificate Secret " + clusterCaSecretName + " missing."));
-//    }
-//
-//    @Test
-//    public void testReconcileCMCasWhenClientsCaCertMissingThrows(VertxTestContext context) {
-//        String clientsCaSecretName = "cert-manager-clients-ca-cert";
-//
-//        CertificateAuthority clusterCa = new CertificateAuthorityBuilder()
-//                .withValidityDays(100)
-//                .withRenewalDays(10)
-//                .withGenerateCertificateAuthority(true)
-//                .build();
-//
-//        CertificateAuthority clientsCa = new CertificateAuthorityBuilder()
-//                .withValidityDays(100)
-//                .withRenewalDays(10)
-//                .withGenerateCertificateAuthority(false)
-//                .withType(CertificateManagerType.CERT_MANAGER_IO)
-//                .withNewCertManager()
-//                .withNewCaCert()
-//                .withSecretName(clientsCaSecretName)
-//                .withCertificate(CA_CRT)
-//                .endCaCert()
-//                .endCertManager()
-//                .build();
-//
-//        Checkpoint async = context.checkpoint();
-//        reconcileCas(clusterCa, clientsCa)
-//                .onComplete(context.failing(e -> context.verify(() -> {
-//                    assertThat(e.getMessage(), is("CA public certificate Secret " + clientsCaSecretName + " missing."));
-//                    async.flag();
-//                })));
-//    }
+    @Test
+    public void testReconcileCMCasWhenClusterCaCertMissingThrows() {
+        String clusterCaSecretName = "cert-manager-cluster-ca-cert";
+        CertificateAuthority clusterCa = new CertificateAuthorityBuilder()
+                .withValidityDays(100)
+                .withRenewalDays(10)
+                .withGenerateCertificateAuthority(false)
+                .withType(CertificateManagerType.CERT_MANAGER_IO)
+                .withNewCertManager()
+                    .withNewCaCert()
+                        .withSecretName(clusterCaSecretName)
+                        .withCertificate(CA_CRT)
+                    .endCaCert()
+                .endCertManager()
+                .build();
+
+        CertManagerCaProvider clusterCaProvider = new CertManagerCaProvider(Reconciliation.DUMMY_RECONCILIATION,
+                Ca.CaRole.CLUSTER_CA,
+                new CaConfig(clusterCa, false),
+                KAFKA,
+                null,
+                null,
+                certificateOperator,
+                secretOperations
+        );
+
+        Exception exception = assertThrows(InvalidResourceException.class, () -> clusterCaProvider.createAndReconcileCa().toCompletableFuture().join());
+        assertThat(exception.getMessage(), is("Cluster CA should not be generated, but the cert secret was not found."));
+    }
+
+    @Test
+    public void testReconcileCMCasWhenClientsCaCertMissingThrows() {
+        String clientsCaSecretName = "cert-manager-clients-ca-cert";
+        CertificateAuthority clientsCa = new CertificateAuthorityBuilder()
+                .withValidityDays(100)
+                .withRenewalDays(10)
+                .withGenerateCertificateAuthority(false)
+                .withType(CertificateManagerType.CERT_MANAGER_IO)
+                .withNewCertManager()
+                .withNewCaCert()
+                .withSecretName(clientsCaSecretName)
+                .withCertificate(CA_CRT)
+                .endCaCert()
+                .endCertManager()
+                .build();
+
+        CertManagerCaProvider clusterCaProvider = new CertManagerCaProvider(Reconciliation.DUMMY_RECONCILIATION,
+                Ca.CaRole.CLIENTS_CA,
+                new CaConfig(clientsCa, false),
+                KAFKA,
+                null,
+                null,
+                certificateOperator,
+                secretOperations
+        );
+
+        Exception exception = assertThrows(InvalidResourceException.class, () -> clusterCaProvider.createAndReconcileCa().toCompletableFuture().join());
+        assertThat(exception.getMessage(), is("Clients CA should not be generated, but the cert secret was not found."));
+    }
+
 //
 //    @Test
 //    public void testReconcileCMCasWhenClusterCaCertKeyMissingThrows(VertxTestContext context) {

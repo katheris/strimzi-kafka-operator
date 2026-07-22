@@ -216,7 +216,7 @@ public class CertManagerCa extends Ca {
      * @param subject               Subject for Certificate
      * @return CompletionStage with CertAndKey
      */
-    public CompletionStage<CertAndKey> generateSignedCert(String entityName, Subject subject) {
+    private CompletionStage<CertAndKey> generateSignedCert(String entityName, Subject subject) {
         Certificate certificate = buildCertificateResource(entityName, subject, caConfig.getValidityDays(), caConfig.getRenewalDays());
         return certManagerCertificateOperator.reconcile(reconciliation, reconciliation.namespace(), entityName, certificate)
                 .thenCompose(v -> certManagerCertificateOperator.waitForReady(reconciliation, reconciliation.namespace(), entityName))
