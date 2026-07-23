@@ -91,6 +91,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+//TODO Kate/Tina: do we need these tests or can these be removed?
 @ExtendWith(VertxExtension.class)
 public class KafkaReconcilerCertManagerTest {
     private final static String NAMESPACE = "test";

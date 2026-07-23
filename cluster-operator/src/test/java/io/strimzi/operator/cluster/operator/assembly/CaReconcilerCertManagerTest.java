@@ -93,6 +93,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+//TODO Kate/Tina: Do we need these tests or are we happy they are covered by CaReconcilerTest?
 /**
  * Tests for actions taken by CaReconciler after Cert Manager provided CA Secrets are reconciled,
  * particularly the rolling updates for trust.

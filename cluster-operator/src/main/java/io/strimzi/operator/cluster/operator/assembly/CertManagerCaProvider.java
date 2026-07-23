@@ -73,15 +73,11 @@ public class CertManagerCaProvider extends CaProvider {
 
     @Override
     public CompletionStage<CaProviderResult> createAndReconcileCa() {
-        //TODO: should this return failed stage with the error?
-        if (existingCaCertSecret == null)   {
-            throw new InvalidResourceException(caRole.caName() + " should not be generated, but the cert secret was not found.");
-        }
         return getCaCertForCertManager()
                 .thenCompose(newCaCertAsBase64 -> {
                     IssuerRef issuerRef = certificateAuthority != null && certificateAuthority.getCertManager() != null
                             ? certificateAuthority.getCertManager().getIssuerRef() : null;
-                    CertManagerCa certManagerCa = new CertManagerCa(reconciliation, Ca.CaRole.CLUSTER_CA,
+                    CertManagerCa certManagerCa = new CertManagerCa(reconciliation, caRole,
                             existingCaCertSecret,
                             caConfig,
                             certificateOperator,
@@ -99,7 +95,7 @@ public class CertManagerCaProvider extends CaProvider {
                             issuerRef);
                     certManagerCa.maybeUpdateCa(
                             newCaCertAsBase64,
-                            Annotations.stringAnnotation(existingCaCertSecret, Annotations.ANNO_STRIMZI_SERVER_CERT_HASH, ""),
+                            existingCaCertSecret == null ? null : Annotations.stringAnnotation(existingCaCertSecret, Annotations.ANNO_STRIMZI_SERVER_CERT_HASH, ""),
                             CertificateUtils.cert(clusterOperatorSecret, "cluster-operator.crt")
                     );
                     Secret caCertSecret = createCaCertSecret(caRole, certManagerCa.caCertData(),

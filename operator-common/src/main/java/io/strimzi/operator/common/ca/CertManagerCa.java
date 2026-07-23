@@ -148,6 +148,10 @@ public class CertManagerCa extends Ca {
         }
 
         if (!existingCaCertHash.equals(newCaCertHash)) {
+            if (CaRole.CLIENTS_CA.equals(caRole)) {
+                // For clients CA we treat both renewal and key replacement the same so no trust check is needed
+                return RenewalType.RENEW_CERT;
+            }
             if (endEntityCertificate == null) {
                 // Cluster operator certificate is missing, so no cert path validation to perform
                 // Don't update - wait for operator cert to be available
