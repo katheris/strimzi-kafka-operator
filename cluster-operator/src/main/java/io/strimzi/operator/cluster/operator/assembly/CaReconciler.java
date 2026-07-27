@@ -215,7 +215,7 @@ public class CaReconciler {
                             clientsCaConfig,
                             existingClientsCaCertSecret,
                             existingClientsCaKeySecret,
-                            coSecret,
+                            null,
                             clock
                     ).createAndReconcileCa().thenApply(result -> {
                         clientsCa = result.ca();

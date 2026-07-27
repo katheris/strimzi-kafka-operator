@@ -13,6 +13,7 @@ import io.strimzi.certs.CertAndKey;
 import io.strimzi.certs.Subject;
 import io.strimzi.operator.common.Annotations;
 import io.strimzi.operator.common.Reconciliation;
+import io.strimzi.operator.common.ReconciliationLogger;
 import io.strimzi.operator.common.Util;
 import io.strimzi.operator.common.model.Labels;
 import io.strimzi.operator.common.operator.resource.kubernetes.CertManagerCertificateOperator;
@@ -39,6 +40,8 @@ import java.util.function.Predicate;
  */
 @SuppressWarnings("checkstyle:CyclomaticComplexity")
 public class CertManagerCa extends Ca {
+    protected static final ReconciliationLogger LOGGER = ReconciliationLogger.create(CertManagerCa.class);
+
     private static final String CERT_MANAGER_SECRET_SUFFIX = "-cm";
     private final CertManagerCertificateOperator certManagerCertificateOperator;
     private final SecretOperator secretOperator;

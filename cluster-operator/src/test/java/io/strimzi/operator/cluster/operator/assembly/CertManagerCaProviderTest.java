@@ -17,7 +17,6 @@ import io.strimzi.api.kafka.model.kafka.listener.KafkaListenerType;
 import io.strimzi.certs.CertAndKey;
 import io.strimzi.certs.OpenSslCertIssuer;
 import io.strimzi.certs.Subject;
-import io.strimzi.operator.cluster.ResourceUtils;
 import io.strimzi.operator.cluster.model.AbstractModel;
 import io.strimzi.operator.cluster.model.CertSecretUtils;
 import io.strimzi.operator.cluster.model.ModelUtils;
@@ -30,7 +29,6 @@ import io.strimzi.operator.common.ca.CertManagerCa;
 import io.strimzi.operator.common.ca.CertificateUtils;
 import io.strimzi.operator.common.model.InvalidResourceException;
 import io.strimzi.operator.common.model.Labels;
-import io.strimzi.operator.common.model.PasswordGenerator;
 import io.strimzi.operator.common.operator.MockCertIssuer;
 import io.strimzi.operator.common.operator.resource.kubernetes.CertManagerCertificateOperator;
 import io.strimzi.operator.common.operator.resource.kubernetes.SecretOperator;
@@ -40,31 +38,24 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.ArgumentCaptor;
 
-import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.KeyStore;
 import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.security.cert.CertificateException;
-import java.security.cert.X509Certificate;
-import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.regex.Pattern;
 
 import static io.strimzi.operator.common.ca.Ca.CA_CRT;
-import static io.strimzi.operator.common.ca.Ca.CA_KEY;
-import static io.strimzi.operator.common.ca.InternalCa.CA_STORE;
-import static io.strimzi.operator.common.ca.InternalCa.CA_STORE_PASSWORD;
-import static java.util.Collections.singleton;
 import static org.hamcrest.CoreMatchers.instanceOf;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
@@ -77,12 +68,27 @@ import static org.mockito.Mockito.when;
 public class CertManagerCaProviderTest {
     private static final String NAMESPACE = Reconciliation.DUMMY_RECONCILIATION.namespace();
     private static final String NAME = Reconciliation.DUMMY_RECONCILIATION.name();
+    private static final String CM_CA_CERT_SECRET_NAME = "cert-manager-ca-cert";
+    private static final CertificateAuthority CERT_AUTHORITY = new CertificateAuthorityBuilder()
+            .withValidityDays(100)
+            .withRenewalDays(10)
+            .withGenerateCertificateAuthority(false)
+            .withType(CertificateManagerType.CERT_MANAGER_IO)
+            .withNewCertManager()
+                .withNewCaCert()
+                    .withSecretName(CM_CA_CERT_SECRET_NAME)
+                    .withCertificate(CA_CRT)
+                .endCaCert()
+            .endCertManager()
+            .build();
     private static final Kafka KAFKA = new KafkaBuilder()
             .withNewMetadata()
             .withName(NAME)
             .withNamespace(NAMESPACE)
             .endMetadata()
             .withNewSpec()
+            .withClusterCa(CERT_AUTHORITY)
+            .withClientsCa(CERT_AUTHORITY)
             .withNewKafka()
             .withListeners(new GenericKafkaListenerBuilder()
                     .withName("plain")
@@ -93,14 +99,7 @@ public class CertManagerCaProviderTest {
             .endKafka()
             .endSpec()
             .build();
-
-    private final static OpenSslCertIssuer CERT_ISSUER = new OpenSslCertIssuer();
-    private final static PasswordGenerator PASSWORD_GENERATOR = new PasswordGenerator(12,
-            "abcdefghijklmnopqrstuvwxyz" +
-                    "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
-            "abcdefghijklmnopqrstuvwxyz" +
-                    "ABCDEFGHIJKLMNOPQRSTUVWXYZ" +
-                    "0123456789");
+    private static final OpenSslCertIssuer CERT_ISSUER = new OpenSslCertIssuer();
 
     private SecretOperator secretOperations;
     private CertManagerCertificateOperator certificateOperator;
@@ -111,44 +110,7 @@ public class CertManagerCaProviderTest {
         certificateOperator = mock(CertManagerCertificateOperator.class);
     }
 
-    private void reconcileCas(CertificateAuthority clusterCa, CertificateAuthority clientsCa, CaSecrets caSecrets, Secret clusterOperatorSecret) {
-        Kafka kafka = new KafkaBuilder(KAFKA)
-                .editSpec()
-                .withClusterCa(clusterCa)
-                .withClientsCa(clientsCa)
-                .endSpec()
-                .build();
-
-        reconcileCas(kafka, caSecrets, clusterOperatorSecret);
-    }
-
-    private void reconcileCas(Kafka kafka, CaSecrets caSecrets, Secret clusterOperatorSecret) {
-        CertManagerCaProvider clusterCaProvider = new CertManagerCaProvider(Reconciliation.DUMMY_RECONCILIATION,
-                Ca.CaRole.CLUSTER_CA,
-                new CaConfig(kafka.getSpec().getClusterCa(), false),
-                kafka,
-                caSecrets == null ? null : caSecrets.clusterCaCert,
-                clusterOperatorSecret,
-                certificateOperator,
-                secretOperations
-        );
-
-        clusterCaProvider.createAndReconcileCa().toCompletableFuture().join();
-
-        CertManagerCaProvider clientsCaProvider = new CertManagerCaProvider(Reconciliation.DUMMY_RECONCILIATION,
-                Ca.CaRole.CLIENTS_CA,
-                new CaConfig(kafka.getSpec().getClientsCa(), false),
-                kafka,
-                caSecrets == null ? null : caSecrets.clientsCaCert,
-                clusterOperatorSecret,
-                certificateOperator,
-                secretOperations
-        );
-
-        clientsCaProvider.createAndReconcileCa().toCompletableFuture().join();
-    }
-
-    private CertAndKey generateCa(CertificateAuthority certificateAuthority, String commonName)
+    private CertAndKey generateCa(String commonName)
             throws IOException, CertificateException, KeyStoreException, NoSuchAlgorithmException {
         String clusterCaStorePassword = "123456";
 
@@ -163,7 +125,7 @@ public class CertManagerCaProviderTest {
                 .withOrganizationName("io.strimzi")
                 .withCommonName(commonName).build();
 
-        CERT_ISSUER.generateSelfSignedCert(clusterCaKeyFile.toFile(), clusterCaCertFile.toFile(), sbj, certificateAuthority.getValidityDays());
+        CERT_ISSUER.generateSelfSignedCert(clusterCaKeyFile.toFile(), clusterCaCertFile.toFile(), sbj, CertManagerCaProviderTest.CERT_AUTHORITY.getValidityDays());
 
         CERT_ISSUER.addCertToTrustStore(clusterCaCertFile.toFile(), CA_CRT, clusterCaStoreFile.toFile(), clusterCaStorePassword);
         return new CertAndKey(
@@ -219,86 +181,6 @@ public class CertManagerCaProviderTest {
                 null);
     }
 
-    private List<Secret> initialClusterCaSecrets(CertificateAuthority certificateAuthority)
-            throws IOException, CertificateException, KeyStoreException, NoSuchAlgorithmException {
-        return initialCaSecrets(certificateAuthority, "cluster-ca",
-                AbstractModel.clusterCaKeySecretName(NAME),
-                AbstractModel.clusterCaCertSecretName(NAME));
-    }
-
-    private List<Secret> initialClientsCaSecrets(CertificateAuthority certificateAuthority)
-            throws IOException, CertificateException, KeyStoreException, NoSuchAlgorithmException {
-        return initialCaSecrets(certificateAuthority, "clients-ca",
-                KafkaResources.clientsCaKeySecretName(NAME),
-                KafkaResources.clientsCaCertificateSecretName(NAME));
-    }
-
-    private List<Secret> initialCaSecrets(CertificateAuthority certificateAuthority, String commonName, String caKeySecretName, String caCertSecretName)
-            throws IOException, CertificateException, KeyStoreException, NoSuchAlgorithmException {
-        CertAndKey result = generateCa(certificateAuthority, commonName);
-        Secret caKeySecret = ResourceUtils.createInitialCaKeySecret(NAMESPACE, NAME, caKeySecretName, result.keyAsBase64String());
-        Secret caCertSecret = ResourceUtils.createInitialCaCertSecret(NAMESPACE, NAME, caCertSecretName,
-                result.certAsBase64String(), result.trustStoreAsBase64String(), result.storePasswordAsBase64String());
-
-        assertCertDataNotNull(caCertSecret.getData());
-        assertThat(isCertInTrustStore(CA_CRT, caCertSecret.getData()), is(true));
-        assertKeyDataNotNull(caKeySecret.getData());
-        return List.of(caKeySecret, caCertSecret);
-    }
-
-    private KeyStore getTrustStore(Map<String, String> data)
-            throws KeyStoreException, CertificateException, NoSuchAlgorithmException, IOException {
-        KeyStore trustStore = KeyStore.getInstance("PKCS12");
-        trustStore.load(new ByteArrayInputStream(
-                        Util.decodeBytesFromBase64(data.get(CA_STORE))),
-                Util.decodeFromBase64(data.get(CA_STORE_PASSWORD)).toCharArray()
-        );
-        return trustStore;
-    }
-
-    private boolean isCertInTrustStore(String alias, Map<String, String> data)
-            throws KeyStoreException, CertificateException, NoSuchAlgorithmException, IOException {
-        KeyStore trustStore = getTrustStore(data);
-        return trustStore.isCertificateEntry(alias);
-    }
-
-    private X509Certificate getCertificateFromTrustStore(String alias, Map<String, String> data)
-            throws KeyStoreException, CertificateException, NoSuchAlgorithmException, IOException {
-        KeyStore trustStore = getTrustStore(data);
-        return (X509Certificate) trustStore.getCertificate(alias);
-    }
-
-    private void assertCaptorSecretsNotNull(CaSecrets secrets) {
-        assertThat(secrets.clusterCaCert(), is(notNullValue()));
-        assertThat(secrets.clientsCaCert(), is(notNullValue()));
-    }
-
-    private CaSecrets verifyCaSecretReconcileCalls(SecretOperator secretOps) {
-        ArgumentCaptor<Secret> clusterCaCert = ArgumentCaptor.forClass(Secret.class);
-        ArgumentCaptor<Secret> clientsCaCert = ArgumentCaptor.forClass(Secret.class);
-        verify(secretOps).reconcile(any(), eq(NAMESPACE), eq(AbstractModel.clusterCaCertSecretName(NAME)), clusterCaCert.capture());
-        verify(secretOps).reconcile(any(), eq(NAMESPACE), eq(KafkaResources.clientsCaCertificateSecretName(NAME)), clientsCaCert.capture());
-
-        return new CaSecrets(clusterCaCert.getValue(), clientsCaCert.getValue());
-    }
-
-    private void assertCertDataNotNull(Map<String, String> certData) {
-        assertThat(certData.keySet(), is(Set.of(CA_CRT, CA_STORE, CA_STORE_PASSWORD)));
-        assertThat(certData.get(CA_CRT), is(notNullValue()));
-        assertThat(certData.get(CA_STORE), is(notNullValue()));
-        assertThat(certData.get(CA_STORE_PASSWORD), is(notNullValue()));
-    }
-
-    private void assertKeyDataNotNull(Map<String, String> keyData) {
-        assertThat(keyData.keySet(), is(singleton(CA_KEY)));
-        assertThat(keyData.get(CA_KEY), is(notNullValue()));
-    }
-
-    private record CaSecrets(
-            Secret clusterCaCert,
-            Secret clientsCaCert
-    ) { }
-
     private static Secret createInitialClusterCaCertSecret(String caCert) throws CertificateException {
         String hash = CertSecretUtils.getCertificateThumbprint(CertificateUtils.x509Certificate(Util.decodeFromBase64(caCert).getBytes(StandardCharsets.UTF_8)));
         return new SecretBuilder()
@@ -329,29 +211,10 @@ public class CertManagerCaProviderTest {
     @ParameterizedTest
     @EnumSource(Ca.CaRole.class)
     public void throwsWhenCaCertSecretMissing(Ca.CaRole caRole) {
-        String caCertSecretName = "cert-manager-ca-cert";
-        CertificateAuthority ca = new CertificateAuthorityBuilder()
-                .withValidityDays(100)
-                .withRenewalDays(10)
-                .withGenerateCertificateAuthority(false)
-                .withType(CertificateManagerType.CERT_MANAGER_IO)
-                .withNewCertManager()
-                    .withNewCaCert()
-                        .withSecretName(caCertSecretName)
-                        .withCertificate(CA_CRT)
-                    .endCaCert()
-                .endCertManager()
-                .build();
-
-        Kafka kafkaCluster = switch (caRole) {
-            case CLUSTER_CA -> new KafkaBuilder(KAFKA).editSpec().withClusterCa(ca).endSpec().build();
-            case CLIENTS_CA -> new KafkaBuilder(KAFKA).editSpec().withClientsCa(ca).endSpec().build();
-        };
-
         CertManagerCaProvider caProvider = new CertManagerCaProvider(Reconciliation.DUMMY_RECONCILIATION,
                 caRole,
-                new CaConfig(ca, false),
-                kafkaCluster,
+                new CaConfig(CERT_AUTHORITY, false),
+                KAFKA,
                 null,
                 null,
                 certificateOperator,
@@ -360,13 +223,12 @@ public class CertManagerCaProviderTest {
 
         Exception exception = assertThrows(CompletionException.class, () -> caProvider.createAndReconcileCa().toCompletableFuture().join());
         assertThat(exception.getCause(), instanceOf(InvalidResourceException.class));
-        assertThat(exception.getCause().getMessage(), is("CA public certificate Secret " + caCertSecretName + " missing."));
+        assertThat(exception.getCause().getMessage(), is("CA public certificate Secret " + CM_CA_CERT_SECRET_NAME + " missing."));
     }
 
     @ParameterizedTest
     @EnumSource(Ca.CaRole.class)
     public void throwsWhenCaCertSecretDataMissing(Ca.CaRole caRole) {
-        String caCertSecretName = "cert-manager-ca-cert";
         String caCertSecretKey = "cm-ca.crt";
         CertificateAuthority ca = new CertificateAuthorityBuilder()
                 .withValidityDays(100)
@@ -375,14 +237,14 @@ public class CertManagerCaProviderTest {
                 .withType(CertificateManagerType.CERT_MANAGER_IO)
                 .withNewCertManager()
                     .withNewCaCert()
-                        .withSecretName(caCertSecretName)
+                        .withSecretName(CM_CA_CERT_SECRET_NAME)
                         .withCertificate(caCertSecretKey)
                     .endCaCert()
                 .endCertManager()
                 .build();
 
-        Secret caCertSecret = ModelUtils.createSecret(caCertSecretName, NAMESPACE,  Labels.EMPTY, null, Map.of(), Map.of(), Map.of());
-        when(secretOperations.getAsync(eq(NAMESPACE), eq(caCertSecretName))).thenReturn(CompletableFuture.completedFuture(caCertSecret));
+        Secret caCertSecret = ModelUtils.createSecret(CM_CA_CERT_SECRET_NAME, NAMESPACE,  Labels.EMPTY, null, Map.of(), Map.of(), Map.of());
+        when(secretOperations.getAsync(eq(NAMESPACE), eq(CM_CA_CERT_SECRET_NAME))).thenReturn(CompletableFuture.completedFuture(caCertSecret));
 
         Kafka kafkaCluster = switch (caRole) {
             case CLUSTER_CA -> new KafkaBuilder(KAFKA).editSpec().withClusterCa(ca).endSpec().build();
@@ -401,34 +263,20 @@ public class CertManagerCaProviderTest {
 
         Exception exception = assertThrows(CompletionException.class, () -> caProvider.createAndReconcileCa().toCompletableFuture().join());
         assertThat(exception.getCause(), instanceOf(InvalidResourceException.class));
-        assertThat(exception.getCause().getMessage(), is("CA public certificate Secret " + caCertSecretName + " missing key " + caCertSecretKey));
+        assertThat(exception.getCause().getMessage(), is("CA public certificate Secret " + CM_CA_CERT_SECRET_NAME + " missing key " + caCertSecretKey));
     }
 
     @Test
     public void createsClusterCaSecretInitially() throws CertificateException {
-        String caCertSecretName = "cert-manager-ca-cert";
-        CertificateAuthority ca = new CertificateAuthorityBuilder()
-                .withValidityDays(100)
-                .withRenewalDays(10)
-                .withGenerateCertificateAuthority(false)
-                .withType(CertificateManagerType.CERT_MANAGER_IO)
-                .withNewCertManager()
-                    .withNewCaCert()
-                        .withSecretName(caCertSecretName)
-                        .withCertificate(CA_CRT)
-                    .endCaCert()
-                .endCertManager()
-                .build();
-
         Map<String, String> caCertData = Map.of(CA_CRT, MockCertIssuer.clusterCaCert());
 
-        Secret userCaCertSecret = ModelUtils.createSecret(caCertSecretName, NAMESPACE,  Labels.EMPTY, null, caCertData, Map.of(), Map.of());
-        when(secretOperations.getAsync(eq(NAMESPACE), eq(caCertSecretName))).thenReturn(CompletableFuture.completedFuture(userCaCertSecret));
+        Secret userCaCertSecret = ModelUtils.createSecret(CM_CA_CERT_SECRET_NAME, NAMESPACE,  Labels.EMPTY, null, caCertData, Map.of(), Map.of());
+        when(secretOperations.getAsync(eq(NAMESPACE), eq(CM_CA_CERT_SECRET_NAME))).thenReturn(CompletableFuture.completedFuture(userCaCertSecret));
 
         CertManagerCaProvider caProvider = new CertManagerCaProvider(Reconciliation.DUMMY_RECONCILIATION,
                 Ca.CaRole.CLUSTER_CA,
-                new CaConfig(ca, false),
-                new KafkaBuilder(KAFKA).editSpec().withClusterCa(ca).endSpec().build(),
+                new CaConfig(CERT_AUTHORITY, false),
+                KAFKA,
                 null,
                 null,
                 certificateOperator,
@@ -463,29 +311,15 @@ public class CertManagerCaProviderTest {
 
     @Test
     public void createsClientsCaSecretInitially() throws CertificateException {
-        String caCertSecretName = "cert-manager-ca-cert";
-        CertificateAuthority ca = new CertificateAuthorityBuilder()
-                .withValidityDays(100)
-                .withRenewalDays(10)
-                .withGenerateCertificateAuthority(false)
-                .withType(CertificateManagerType.CERT_MANAGER_IO)
-                .withNewCertManager()
-                    .withNewCaCert()
-                        .withSecretName(caCertSecretName)
-                        .withCertificate(CA_CRT)
-                    .endCaCert()
-                .endCertManager()
-                .build();
-
         Map<String, String> caCertData = Map.of(CA_CRT, MockCertIssuer.clientsCaCert());
 
-        Secret userCaCertSecret = ModelUtils.createSecret(caCertSecretName, NAMESPACE,  Labels.EMPTY, null, caCertData, Map.of(), Map.of());
-        when(secretOperations.getAsync(eq(NAMESPACE), eq(caCertSecretName))).thenReturn(CompletableFuture.completedFuture(userCaCertSecret));
+        Secret userCaCertSecret = ModelUtils.createSecret(CM_CA_CERT_SECRET_NAME, NAMESPACE,  Labels.EMPTY, null, caCertData, Map.of(), Map.of());
+        when(secretOperations.getAsync(eq(NAMESPACE), eq(CM_CA_CERT_SECRET_NAME))).thenReturn(CompletableFuture.completedFuture(userCaCertSecret));
 
         CertManagerCaProvider caProvider = new CertManagerCaProvider(Reconciliation.DUMMY_RECONCILIATION,
                 Ca.CaRole.CLIENTS_CA,
-                new CaConfig(ca, false),
-                new KafkaBuilder(KAFKA).editSpec().withClientsCa(ca).endSpec().build(),
+                new CaConfig(CERT_AUTHORITY, false),
+                KAFKA,
                 null,
                 null,
                 certificateOperator,
@@ -521,24 +355,10 @@ public class CertManagerCaProviderTest {
 
     @Test
     public void noChangeToClusterCaSecret() throws CertificateException {
-        String caCertSecretName = "cert-manager-ca-cert";
-        CertificateAuthority ca = new CertificateAuthorityBuilder()
-                .withValidityDays(100)
-                .withRenewalDays(10)
-                .withGenerateCertificateAuthority(false)
-                .withType(CertificateManagerType.CERT_MANAGER_IO)
-                .withNewCertManager()
-                    .withNewCaCert()
-                        .withSecretName(caCertSecretName)
-                        .withCertificate(CA_CRT)
-                    .endCaCert()
-                .endCertManager()
-                .build();
-
         Map<String, String> caCertData = Map.of(CA_CRT, MockCertIssuer.clusterCaCert());
 
-        Secret userCaCertSecret = ModelUtils.createSecret(caCertSecretName, NAMESPACE,  Labels.EMPTY, null, caCertData, Map.of(), Map.of());
-        when(secretOperations.getAsync(eq(NAMESPACE), eq(caCertSecretName))).thenReturn(CompletableFuture.completedFuture(userCaCertSecret));
+        Secret userCaCertSecret = ModelUtils.createSecret(CM_CA_CERT_SECRET_NAME, NAMESPACE,  Labels.EMPTY, null, caCertData, Map.of(), Map.of());
+        when(secretOperations.getAsync(eq(NAMESPACE), eq(CM_CA_CERT_SECRET_NAME))).thenReturn(CompletableFuture.completedFuture(userCaCertSecret));
 
         Secret existingCaCertSecret = createInitialClusterCaCertSecret(MockCertIssuer.clusterCaCert());
         Secret clusterOperatorSecret = ModelUtils.createSecret(KafkaResources.clusterOperatorCertsSecretName(NAME),
@@ -552,8 +372,8 @@ public class CertManagerCaProviderTest {
 
         CertManagerCaProvider caProvider = new CertManagerCaProvider(Reconciliation.DUMMY_RECONCILIATION,
                 Ca.CaRole.CLUSTER_CA,
-                new CaConfig(ca, false),
-                new KafkaBuilder(KAFKA).editSpec().withClusterCa(ca).endSpec().build(),
+                new CaConfig(CERT_AUTHORITY, false),
+                KAFKA,
                 existingCaCertSecret,
                 clusterOperatorSecret,
                 certificateOperator,
@@ -588,24 +408,10 @@ public class CertManagerCaProviderTest {
 
     @Test
     public void noChangeToClientsCaSecret() throws CertificateException {
-        String caCertSecretName = "cert-manager-ca-cert";
-        CertificateAuthority ca = new CertificateAuthorityBuilder()
-                .withValidityDays(100)
-                .withRenewalDays(10)
-                .withGenerateCertificateAuthority(false)
-                .withType(CertificateManagerType.CERT_MANAGER_IO)
-                .withNewCertManager()
-                    .withNewCaCert()
-                        .withSecretName(caCertSecretName)
-                        .withCertificate(CA_CRT)
-                    .endCaCert()
-                .endCertManager()
-                .build();
-
         Map<String, String> caCertData = Map.of(CA_CRT, MockCertIssuer.clientsCaCert());
 
-        Secret userCaCertSecret = ModelUtils.createSecret(caCertSecretName, NAMESPACE,  Labels.EMPTY, null, caCertData, Map.of(), Map.of());
-        when(secretOperations.getAsync(eq(NAMESPACE), eq(caCertSecretName))).thenReturn(CompletableFuture.completedFuture(userCaCertSecret));
+        Secret userCaCertSecret = ModelUtils.createSecret(CM_CA_CERT_SECRET_NAME, NAMESPACE,  Labels.EMPTY, null, caCertData, Map.of(), Map.of());
+        when(secretOperations.getAsync(eq(NAMESPACE), eq(CM_CA_CERT_SECRET_NAME))).thenReturn(CompletableFuture.completedFuture(userCaCertSecret));
 
         Secret existingCaCertSecret = createInitialClientsCaCertSecret(MockCertIssuer.clientsCaCert());
         Secret clusterOperatorSecret = ModelUtils.createSecret(KafkaResources.clusterOperatorCertsSecretName(NAME),
@@ -619,8 +425,8 @@ public class CertManagerCaProviderTest {
 
         CertManagerCaProvider caProvider = new CertManagerCaProvider(Reconciliation.DUMMY_RECONCILIATION,
                 Ca.CaRole.CLIENTS_CA,
-                new CaConfig(ca, false),
-                new KafkaBuilder(KAFKA).editSpec().withClientsCa(ca).endSpec().build(),
+                new CaConfig(CERT_AUTHORITY, false),
+                KAFKA,
                 existingCaCertSecret,
                 clusterOperatorSecret,
                 certificateOperator,
@@ -656,29 +462,15 @@ public class CertManagerCaProviderTest {
 
     @Test
     public void clusterCaSecretRenewed() throws CertificateException, IOException, KeyStoreException, NoSuchAlgorithmException {
-        String caCertSecretName = "cert-manager-ca-cert";
-        CertificateAuthority ca = new CertificateAuthorityBuilder()
-                .withValidityDays(100)
-                .withRenewalDays(10)
-                .withGenerateCertificateAuthority(false)
-                .withType(CertificateManagerType.CERT_MANAGER_IO)
-                .withNewCertManager()
-                    .withNewCaCert()
-                        .withSecretName(caCertSecretName)
-                        .withCertificate(CA_CRT)
-                    .endCaCert()
-                .endCertManager()
-                .build();
+        CertAndKey initialCaCert = generateCa(Ca.CaRole.CLUSTER_CA.caCommonName());
+        CertAndKey renewedCaCert = renewCaCert(initialCaCert);
+        Map<String, String> renewedCaCertData = Map.of(CA_CRT, renewedCaCert.certAsBase64String());
 
-        CertAndKey caCert = generateCa(ca, Ca.CaRole.CLUSTER_CA.caCommonName());
-        CertAndKey renewedCaCert = renewCaCert(caCert);
-        Map<String, String> caCertData = Map.of(CA_CRT, renewedCaCert.certAsBase64String());
+        Secret userCaCertSecret = ModelUtils.createSecret(CM_CA_CERT_SECRET_NAME, NAMESPACE,  Labels.EMPTY, null, renewedCaCertData, Map.of(), Map.of());
+        when(secretOperations.getAsync(eq(NAMESPACE), eq(CM_CA_CERT_SECRET_NAME))).thenReturn(CompletableFuture.completedFuture(userCaCertSecret));
 
-        Secret userCaCertSecret = ModelUtils.createSecret(caCertSecretName, NAMESPACE,  Labels.EMPTY, null, caCertData, Map.of(), Map.of());
-        when(secretOperations.getAsync(eq(NAMESPACE), eq(caCertSecretName))).thenReturn(CompletableFuture.completedFuture(userCaCertSecret));
-
-        Secret existingCaCertSecret = createInitialClusterCaCertSecret(caCert.certAsBase64String());
-        CertAndKey clusterOperatorCert = generateClusterOperatorCert(caCert);
+        Secret existingCaCertSecret = createInitialClusterCaCertSecret(initialCaCert.certAsBase64String());
+        CertAndKey clusterOperatorCert = generateClusterOperatorCert(initialCaCert);
         Secret clusterOperatorSecret = ModelUtils.createSecret(KafkaResources.clusterOperatorCertsSecretName(NAME),
                 NAMESPACE,
                 Labels.EMPTY,
@@ -690,8 +482,8 @@ public class CertManagerCaProviderTest {
 
         CertManagerCaProvider caProvider = new CertManagerCaProvider(Reconciliation.DUMMY_RECONCILIATION,
                 Ca.CaRole.CLUSTER_CA,
-                new CaConfig(ca, false),
-                new KafkaBuilder(KAFKA).editSpec().withClusterCa(ca).endSpec().build(),
+                new CaConfig(CERT_AUTHORITY, false),
+                KAFKA,
                 existingCaCertSecret,
                 clusterOperatorSecret,
                 certificateOperator,
@@ -704,16 +496,16 @@ public class CertManagerCaProviderTest {
         assertThat(result, notNullValue());
 
         assertThat(result.ca(), instanceOf(CertManagerCa.class));
-        assertThat(result.ca().caCertData(), is(caCertData));
+        assertThat(result.ca().caCertData(), is(renewedCaCertData));
         assertThat(result.ca().caCertGeneration(), is(1));
         assertThat(result.ca().caKeyGeneration(), is(0));
 
         assertThat(result.certSecret(), notNullValue());
-        assertThat(result.certSecret().getData(), is(caCertData));
+        assertThat(result.certSecret().getData(), is(renewedCaCertData));
         Map<String, String> secretAnnotations = result.certSecret().getMetadata().getAnnotations();
         assertThat(secretAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION), is("1"));
         assertThat(secretAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_KEY_GENERATION), is("0"));
-        String caCertHash = CertSecretUtils.getCertificateThumbprint(CertificateUtils.x509Certificate(Util.decodeBytesFromBase64(caCertData.get(CA_CRT))));
+        String caCertHash = CertSecretUtils.getCertificateThumbprint(CertificateUtils.x509Certificate(Util.decodeBytesFromBase64(renewedCaCertData.get(CA_CRT))));
         assertThat(secretAnnotations.get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH), is(caCertHash));
 
         // Verify K8s calls
@@ -726,41 +518,78 @@ public class CertManagerCaProviderTest {
 
     @Test
     public void clientsCaSecretRenewed() throws CertificateException, IOException, KeyStoreException, NoSuchAlgorithmException {
-        String caCertSecretName = "cert-manager-ca-cert";
-        CertificateAuthority ca = new CertificateAuthorityBuilder()
-                .withValidityDays(100)
-                .withRenewalDays(10)
-                .withGenerateCertificateAuthority(false)
-                .withType(CertificateManagerType.CERT_MANAGER_IO)
-                .withNewCertManager()
-                    .withNewCaCert()
-                        .withSecretName(caCertSecretName)
-                        .withCertificate(CA_CRT)
-                    .endCaCert()
-                .endCertManager()
-                .build();
+        CertAndKey initialCa = generateCa(Ca.CaRole.CLIENTS_CA.caCommonName());
+        CertAndKey renewedCaCert = renewCaCert(initialCa);
+        Map<String, String> renewedCaCertData = Map.of(CA_CRT, renewedCaCert.certAsBase64String());
 
-        CertAndKey caCert = generateCa(ca, Ca.CaRole.CLIENTS_CA.caCommonName());
-        CertAndKey renewedCaCert = renewCaCert(caCert);
-        Map<String, String> caCertData = Map.of(CA_CRT, renewedCaCert.certAsBase64String());
+        Secret userCaCertSecret = ModelUtils.createSecret(CM_CA_CERT_SECRET_NAME, NAMESPACE,  Labels.EMPTY, null, renewedCaCertData, Map.of(), Map.of());
+        when(secretOperations.getAsync(eq(NAMESPACE), eq(CM_CA_CERT_SECRET_NAME))).thenReturn(CompletableFuture.completedFuture(userCaCertSecret));
 
-        Secret userCaCertSecret = ModelUtils.createSecret(caCertSecretName, NAMESPACE,  Labels.EMPTY, null, caCertData, Map.of(), Map.of());
-        when(secretOperations.getAsync(eq(NAMESPACE), eq(caCertSecretName))).thenReturn(CompletableFuture.completedFuture(userCaCertSecret));
+        Secret existingCaCertSecret = createInitialClientsCaCertSecret(initialCa.certAsBase64String());
 
-        Secret existingCaCertSecret = createInitialClientsCaCertSecret(caCert.certAsBase64String());
+        CertManagerCaProvider caProvider = new CertManagerCaProvider(Reconciliation.DUMMY_RECONCILIATION,
+                Ca.CaRole.CLIENTS_CA,
+                new CaConfig(CERT_AUTHORITY, false),
+                KAFKA,
+                existingCaCertSecret,
+                null,
+                certificateOperator,
+                secretOperations
+        );
+
+        CaProviderResult result = caProvider.createAndReconcileCa().toCompletableFuture().join();
+
+        // Verify result
+        assertThat(result, notNullValue());
+
+        assertThat(result.ca(), instanceOf(CertManagerCa.class));
+        assertThat(result.ca().caCertData(), is(renewedCaCertData));
+        assertThat(result.ca().caCertGeneration(), is(1));
+        assertThat(result.ca().caKeyGeneration(), is(0));
+
+        assertThat(result.certSecret(), notNullValue());
+        assertThat(result.certSecret().getData(), is(renewedCaCertData));
+        Map<String, String> secretAnnotations = result.certSecret().getMetadata().getAnnotations();
+        assertThat(secretAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION), is("1"));
+        // Clients Ca cert secret does not need key annotation
+        assertThat(Annotations.hasAnnotation(result.certSecret(), Ca.ANNO_STRIMZI_IO_CA_KEY_GENERATION), is(false));
+        String caCertHash = CertSecretUtils.getCertificateThumbprint(CertificateUtils.x509Certificate(Util.decodeBytesFromBase64(renewedCaCertData.get(CA_CRT))));
+        assertThat(secretAnnotations.get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH), is(caCertHash));
+
+        // Verify K8s calls
+        ArgumentCaptor<Secret> caCertSecret = ArgumentCaptor.forClass(Secret.class);
+        verify(secretOperations).reconcile(any(), eq(NAMESPACE), eq(KafkaResources.clientsCaCertificateSecretName(NAME)), caCertSecret.capture());
+        verify(secretOperations, never()).reconcile(any(), eq(NAMESPACE), eq(KafkaResources.clientsCaKeySecretName(NAME)), any(Secret.class));
+
+        assertThat(caCertSecret.getValue(), is(result.certSecret()));
+    }
+
+
+    @Test
+    public void clusterCaSecretWithNewKeyAndCert() throws CertificateException, IOException, KeyStoreException, NoSuchAlgorithmException {
+        CertAndKey initialClusterCa = generateCa(Ca.CaRole.CLUSTER_CA.caCommonName());
+        CertAndKey renewedClusterCa = generateCa(Ca.CaRole.CLUSTER_CA.caCommonName());
+        Map<String, String> renewedCaCertData = Map.of(CA_CRT, renewedClusterCa.certAsBase64String());
+
+        Secret existingCaCertSecret = createInitialClusterCaCertSecret(initialClusterCa.certAsBase64String());
+        Secret userCaCertSecretRenewed = ModelUtils.createSecret(CM_CA_CERT_SECRET_NAME, NAMESPACE, Labels.EMPTY, null, renewedCaCertData, Map.of(), Map.of());
+
+        when(secretOperations.getAsync(eq(NAMESPACE), eq(CM_CA_CERT_SECRET_NAME))).thenReturn(CompletableFuture.completedFuture(userCaCertSecretRenewed));
+
+        CertAndKey clusterOperatorCert = generateClusterOperatorCert(initialClusterCa);
         Secret clusterOperatorSecret = ModelUtils.createSecret(KafkaResources.clusterOperatorCertsSecretName(NAME),
                 NAMESPACE,
                 Labels.EMPTY,
                 null,
-                Map.of("cluster-operator.crt", Util.encodeToBase64(MockCertIssuer.serverCert()),
-                        "cluster-operator.key", Util.encodeToBase64(MockCertIssuer.serverKey())),
+                Map.of("cluster-operator.crt", clusterOperatorCert.certAsBase64String(),
+                        "cluster-operator.key", clusterOperatorCert.keyAsBase64String()),
                 Map.of(),
                 Map.of());
 
         CertManagerCaProvider caProvider = new CertManagerCaProvider(Reconciliation.DUMMY_RECONCILIATION,
-                Ca.CaRole.CLIENTS_CA,
-                new CaConfig(ca, false),
-                new KafkaBuilder(KAFKA).editSpec().withClientsCa(ca).endSpec().build(),
+                Ca.CaRole.CLUSTER_CA,
+                new CaConfig(CERT_AUTHORITY, false),
+                KAFKA,
                 existingCaCertSecret,
                 clusterOperatorSecret,
                 certificateOperator,
@@ -773,17 +602,72 @@ public class CertManagerCaProviderTest {
         assertThat(result, notNullValue());
 
         assertThat(result.ca(), instanceOf(CertManagerCa.class));
-        assertThat(result.ca().caCertData(), is(caCertData));
+        assertThat(result.ca().caCertData().get(CA_CRT), is(renewedClusterCa.certAsBase64String()));
+        assertThat(result.ca().caCertGeneration(), is(1));
+        assertThat(result.ca().caKeyGeneration(), is(1));
+
+        assertThat(result.certSecret(), notNullValue());
+        Map<String, String> reconciledCaCert = result.certSecret().getData();
+        assertThat(reconciledCaCert.size(), is(2));
+        assertThat(reconciledCaCert.get(CA_CRT), is(renewedClusterCa.certAsBase64String()));
+        reconciledCaCert.remove(CA_CRT);
+        Pattern oldCaCertKeyPattern = Pattern.compile("ca-[0-9]+-[0-9]+-[0-9]+T[0-9]+-[0-9]+-[0-9]+Z\\.crt");
+        String oldCaCertKey = reconciledCaCert.keySet().stream().findFirst().orElse("");
+        assertThat(oldCaCertKeyPattern.matcher(oldCaCertKey).matches(), is(true));
+        assertThat(reconciledCaCert.get(oldCaCertKey), is(existingCaCertSecret.getData().get(CA_CRT)));
+
+        Map<String, String> secretAnnotations = result.certSecret().getMetadata().getAnnotations();
+        assertThat(secretAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION), is("1"));
+        assertThat(secretAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_KEY_GENERATION), is("1"));
+        String caCertHash = CertSecretUtils.getCertificateThumbprint(CertificateUtils.x509Certificate(Util.decodeBytesFromBase64(renewedCaCertData.get(CA_CRT))));
+        assertThat(secretAnnotations.get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH), is(caCertHash));
+
+        // Verify K8s calls
+        ArgumentCaptor<Secret> caCertSecret = ArgumentCaptor.forClass(Secret.class);
+        verify(secretOperations).reconcile(any(), eq(NAMESPACE), eq(AbstractModel.clusterCaCertSecretName(NAME)), caCertSecret.capture());
+        verify(secretOperations, never()).reconcile(any(), eq(NAMESPACE), eq(AbstractModel.clusterCaKeySecretName(NAME)), any(Secret.class));
+
+        assertThat(caCertSecret.getValue(), is(result.certSecret()));
+    }
+
+    @Test
+    public void clientsCaSecretWithNewKeyAndCert() throws CertificateException, IOException, KeyStoreException, NoSuchAlgorithmException {
+        CertAndKey initialClientsCa = generateCa(Ca.CaRole.CLIENTS_CA.caCommonName());
+        CertAndKey renewedClientsCa = generateCa(Ca.CaRole.CLIENTS_CA.caCommonName());
+        Map<String, String> renewedCaCertData = Map.of(CA_CRT, renewedClientsCa.certAsBase64String());
+
+        Secret existingCaCertSecret = createInitialClientsCaCertSecret(initialClientsCa.certAsBase64String());
+        Secret userCaCertSecretRenewed = ModelUtils.createSecret(CM_CA_CERT_SECRET_NAME, NAMESPACE, Labels.EMPTY, null, renewedCaCertData, Map.of(), Map.of());
+
+        when(secretOperations.getAsync(eq(NAMESPACE), eq(CM_CA_CERT_SECRET_NAME))).thenReturn(CompletableFuture.completedFuture(userCaCertSecretRenewed));
+
+        CertManagerCaProvider caProvider = new CertManagerCaProvider(Reconciliation.DUMMY_RECONCILIATION,
+                Ca.CaRole.CLIENTS_CA,
+                new CaConfig(CERT_AUTHORITY, false),
+                KAFKA,
+                existingCaCertSecret,
+                null,
+                certificateOperator,
+                secretOperations
+        );
+
+        CaProviderResult result = caProvider.createAndReconcileCa().toCompletableFuture().join();
+
+        // Verify result
+        assertThat(result, notNullValue());
+
+        assertThat(result.ca(), instanceOf(CertManagerCa.class));
+        assertThat(result.ca().caCertData(), is(renewedCaCertData));
         assertThat(result.ca().caCertGeneration(), is(1));
         assertThat(result.ca().caKeyGeneration(), is(0));
 
         assertThat(result.certSecret(), notNullValue());
-        assertThat(result.certSecret().getData(), is(caCertData));
+        assertThat(result.certSecret().getData(), is(renewedCaCertData));
+
         Map<String, String> secretAnnotations = result.certSecret().getMetadata().getAnnotations();
         assertThat(secretAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION), is("1"));
-        // Clients Ca cert secret does not need key annotation
-        assertThat(Annotations.hasAnnotation(result.certSecret(), Ca.ANNO_STRIMZI_IO_CA_KEY_GENERATION), is(false));
-        String caCertHash = CertSecretUtils.getCertificateThumbprint(CertificateUtils.x509Certificate(Util.decodeBytesFromBase64(caCertData.get(CA_CRT))));
+        assertThat(secretAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_KEY_GENERATION), nullValue());
+        String caCertHash = CertSecretUtils.getCertificateThumbprint(CertificateUtils.x509Certificate(Util.decodeBytesFromBase64(renewedCaCertData.get(CA_CRT))));
         assertThat(secretAnnotations.get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH), is(caCertHash));
 
         // Verify K8s calls
@@ -794,242 +678,97 @@ public class CertManagerCaProviderTest {
         assertThat(caCertSecret.getValue(), is(result.certSecret()));
     }
 
-//
-//    @Test
-//    public void testReconcileCMCasNewCaKeyAndCert(VertxTestContext context) throws CertificateException, IOException, KeyStoreException, NoSuchAlgorithmException {
-//        String clusterCaSecretName = "cert-manager-cluster-ca-cert";
-//        String clientsCaSecretName = "cert-manager-clients-ca-cert";
-//        CertificateAuthority clusterCa = new CertificateAuthorityBuilder()
-//                .withValidityDays(100)
-//                .withRenewalDays(10)
-//                .withGenerateCertificateAuthority(false)
-//                .withType(CertificateManagerType.CERT_MANAGER_IO)
-//                .withNewCertManager()
-//                .withNewCaCert()
-//                .withSecretName(clusterCaSecretName)
-//                .withCertificate(CA_CRT)
-//                .endCaCert()
-//                .endCertManager()
-//                .build();
-//
-//        CertificateAuthority clientsCa = new CertificateAuthorityBuilder()
-//                .withValidityDays(100)
-//                .withRenewalDays(10)
-//                .withGenerateCertificateAuthority(false)
-//                .withType(CertificateManagerType.CERT_MANAGER_IO)
-//                .withNewCertManager()
-//                .withNewCaCert()
-//                .withSecretName(clientsCaSecretName)
-//                .withCertificate(CA_CRT)
-//                .endCaCert()
-//                .endCertManager()
-//                .build();
-//
-//        CertAndKey initialClusterCa = generateCa(clusterCa, "ca");
-//        CertAndKey renewedClusterCa = generateCa(clusterCa, "ca");
-//        CertAndKey initialClientsCa = generateCa(clientsCa, "ca");
-//        CertAndKey renewedClientsCa = generateCa(clientsCa, "ca");
-//
-//        Secret initialClusterCaCertSecret = ResourceUtils.createInitialCaCertSecretForCMCa(NAMESPACE, NAME, AbstractModel.clusterCaCertSecretName(NAME), initialClusterCa.certAsBase64String(), true);
-//        Secret renewedClusterCaCertSecret = createSecret(clusterCaSecretName, Map.of(CA_CRT, renewedClusterCa.certAsBase64String()), Map.of());
-//
-//        Secret initialClientsCaCertSecret = ResourceUtils.createInitialCaCertSecretForCMCa(NAMESPACE, NAME, KafkaResources.clientsCaCertificateSecretName(NAME), initialClientsCa.certAsBase64String(), false);
-//        Secret renewedClientsCaCertSecret = createSecret(clientsCaSecretName, Map.of(CA_CRT, renewedClientsCa.certAsBase64String()), Map.of());
-//
-//        CertAndKey clusterOperatorCertAndKey = generateClusterOperatorSignedCert(initialClusterCa, clusterCa.getValidityDays());
-//        Secret clusterOperatorSecret = createSecret(KafkaResources.clusterOperatorCertsSecretName(NAME),
-//                Map.of("cluster-operator.crt", clusterOperatorCertAndKey.certAsBase64String(),
-//                        "cluster-operator.key", clusterOperatorCertAndKey.keyAsBase64String()),
-//                Labels.forStrimziCluster(NAME).withStrimziKind(Kafka.RESOURCE_KIND).toMap());
-//
-//        secrets.add(initialClusterCaCertSecret);
-//        secrets.add(renewedClusterCaCertSecret);
-//        secrets.add(initialClientsCaCertSecret);
-//        secrets.add(renewedClientsCaCertSecret);
-//        secrets.add(clusterOperatorSecret);
-//
-//        Checkpoint async = context.checkpoint();
-//        reconcileCas(clusterCa, clientsCa)
-//                .onComplete(context.succeeding(v -> context.verify(() -> {
-//                    ArgumentCaptor<Secret> clusterCaCert = ArgumentCaptor.forClass(Secret.class);
-//                    ArgumentCaptor<Secret> clientsCaCert = ArgumentCaptor.forClass(Secret.class);
-//                    verify(supplier.secretOperations).reconcile(any(), eq(NAMESPACE), eq(AbstractModel.clusterCaCertSecretName(NAME)), clusterCaCert.capture());
-//                    verify(supplier.secretOperations, times(0)).reconcile(any(), eq(NAMESPACE), eq(AbstractModel.clusterCaKeySecretName(NAME)), any(Secret.class));
-//                    verify(supplier.secretOperations).reconcile(any(), eq(NAMESPACE), eq(KafkaResources.clientsCaCertificateSecretName(NAME)), clientsCaCert.capture());
-//                    verify(supplier.secretOperations, times(0)).reconcile(any(), eq(NAMESPACE), eq(KafkaResources.clientsCaKeySecretName(NAME)), any(Secret.class));
-//
-//                    assertThat(clusterCaCert.getValue(), is(notNullValue()));
-//                    Map<String, String> clusterCaAnnotations = clusterCaCert.getValue().getMetadata().getAnnotations();
-//                    assertThat(clusterCaAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION), is("1"));
-//                    assertThat(clusterCaAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_KEY_GENERATION), is("1"));
-//                    assertThat(clusterCaAnnotations.get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH), is(CertUtils.getCertificateThumbprint(CaUtils.x509Certificate(renewedClusterCa.cert()))));
-//                    Map<String, String> clusterCaCertData = clusterCaCert.getValue().getData();
-//                    assertThat(clusterCaCertData, is(aMapWithSize(2)));
-//                    assertThat(clusterCaCert.getValue().getData().get(CA_CRT), is(renewedClusterCaCertSecret.getData().get(CA_CRT)));
-//                    clusterCaCertData.remove(CA_CRT);
-//                    Pattern oldCaCertKeyPattern = Pattern.compile("ca-[0-9]+-[0-9]+-[0-9]+T[0-9]+-[0-9]+-[0-9]+Z\\.crt");
-//                    String oldCaCertKey = clusterCaCertData.keySet().stream().findFirst().orElse("");
-//                    assertThat(oldCaCertKeyPattern.matcher(oldCaCertKey).matches(), is(true));
-//                    assertThat(clusterCaCertData.get(oldCaCertKey), is(initialClusterCaCertSecret.getData().get(CA_CRT)));
-//
-//                    assertThat(clientsCaCert.getValue(), is(notNullValue()));
-//                    Map<String, String> clientsCaAnnotations = clientsCaCert.getValue().getMetadata().getAnnotations();
-//                    assertThat(clientsCaAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION), is("1"));
-//                    assertThat(clientsCaAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_KEY_GENERATION), nullValue());
-//                    assertThat(clientsCaAnnotations.get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH), is(CertUtils.getCertificateThumbprint(CaUtils.x509Certificate(renewedClientsCa.cert()))));
-//                    assertThat(clientsCaCert.getValue().getData().get(CA_CRT), is(renewedClientsCaCertSecret.getData().get(CA_CRT)));
-//
-//                    async.flag();
-//                })));
-//    }
-//
-//    @Test
-//    public void testReconcileCMCasNewCaCertMissingClusterOperatorSecret(VertxTestContext context) throws CertificateException, IOException, KeyStoreException, NoSuchAlgorithmException {
-//        String clusterCaSecretName = "cert-manager-cluster-ca-cert";
-//        String clientsCaSecretName = "cert-manager-clients-ca-cert";
-//        CertificateAuthority clusterCa = new CertificateAuthorityBuilder()
-//                .withValidityDays(100)
-//                .withRenewalDays(10)
-//                .withGenerateCertificateAuthority(false)
-//                .withType(CertificateManagerType.CERT_MANAGER_IO)
-//                .withNewCertManager()
-//                .withNewCaCert()
-//                .withSecretName(clusterCaSecretName)
-//                .withCertificate(CA_CRT)
-//                .endCaCert()
-//                .endCertManager()
-//                .build();
-//
-//        CertificateAuthority clientsCa = new CertificateAuthorityBuilder()
-//                .withValidityDays(100)
-//                .withRenewalDays(10)
-//                .withGenerateCertificateAuthority(false)
-//                .withType(CertificateManagerType.CERT_MANAGER_IO)
-//                .withNewCertManager()
-//                .withNewCaCert()
-//                .withSecretName(clientsCaSecretName)
-//                .withCertificate(CA_CRT)
-//                .endCaCert()
-//                .endCertManager()
-//                .build();
-//
-//        CertAndKey initialClusterCa = generateCa(clusterCa, "ca");
-//        CertAndKey renewedClusterCa = renewCaCert(initialClusterCa, clusterCa.getValidityDays());
-//        CertAndKey initialClientsCa = generateCa(clientsCa, "ca");
-//        CertAndKey renewedClientsCa = renewCaCert(initialClientsCa, clientsCa.getValidityDays());
-//
-//        Secret initialClusterCaCertSecret = ResourceUtils.createInitialCaCertSecretForCMCa(NAMESPACE, NAME, AbstractModel.clusterCaCertSecretName(NAME), initialClusterCa.certAsBase64String(), true);
-//        Secret renewedClusterCaCertSecret = createSecret(clusterCaSecretName, Map.of(CA_CRT, renewedClusterCa.certAsBase64String()), Map.of());
-//
-//        Secret initialClientsCaCertSecret = ResourceUtils.createInitialCaCertSecretForCMCa(NAMESPACE, NAME, KafkaResources.clientsCaCertificateSecretName(NAME), initialClientsCa.certAsBase64String(), false);
-//        Secret renewedClientsCaCertSecret = createSecret(clientsCaSecretName, Map.of(CA_CRT, renewedClientsCa.certAsBase64String()), Map.of());
-//
-//        secrets.add(initialClusterCaCertSecret);
-//        secrets.add(renewedClusterCaCertSecret);
-//        secrets.add(initialClientsCaCertSecret);
-//        secrets.add(renewedClientsCaCertSecret);
-//
-//        Checkpoint async = context.checkpoint();
-//        reconcileCas(clusterCa, clientsCa)
-//                .onComplete(context.succeeding(v -> context.verify(() -> {
-//                    ArgumentCaptor<Secret> clusterCaCert = ArgumentCaptor.forClass(Secret.class);
-//                    ArgumentCaptor<Secret> clientsCaCert = ArgumentCaptor.forClass(Secret.class);
-//                    verify(supplier.secretOperations).reconcile(any(), eq(NAMESPACE), eq(AbstractModel.clusterCaCertSecretName(NAME)), clusterCaCert.capture());
-//                    verify(supplier.secretOperations, times(0)).reconcile(any(), eq(NAMESPACE), eq(AbstractModel.clusterCaKeySecretName(NAME)), any(Secret.class));
-//                    verify(supplier.secretOperations).reconcile(any(), eq(NAMESPACE), eq(KafkaResources.clientsCaCertificateSecretName(NAME)), clientsCaCert.capture());
-//                    verify(supplier.secretOperations, times(0)).reconcile(any(), eq(NAMESPACE), eq(KafkaResources.clientsCaKeySecretName(NAME)), any(Secret.class));
-//
-//                    // Since cluster operator Secret is missing we can't perform path validation, so cluster CA is not updated
-//                    assertThat(clusterCaCert.getValue(), is(notNullValue()));
-//                    Map<String, String> clusterCaAnnotations = clusterCaCert.getValue().getMetadata().getAnnotations();
-//                    assertThat(clusterCaAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION), is("0"));
-//                    assertThat(clusterCaAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_KEY_GENERATION), is("0"));
-//                    assertThat(clusterCaAnnotations.get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH), is(CertUtils.getCertificateThumbprint(CaUtils.x509Certificate(initialClusterCa.cert()))));
-//                    assertThat(clusterCaCert.getValue().getData().get(CA_CRT), is(initialClusterCaCertSecret.getData().get(CA_CRT)));
-//
-//                    assertThat(clientsCaCert.getValue(), is(notNullValue()));
-//                    Map<String, String> clientsCaAnnotations = clientsCaCert.getValue().getMetadata().getAnnotations();
-//                    assertThat(clientsCaAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION), is("1"));
-//                    assertThat(clientsCaAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_KEY_GENERATION), nullValue());
-//                    assertThat(clientsCaAnnotations.get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH), is(CertUtils.getCertificateThumbprint(CaUtils.x509Certificate(renewedClientsCa.cert()))));
-//                    assertThat(clientsCaCert.getValue().getData().get(CA_CRT), is(renewedClientsCaCertSecret.getData().get(CA_CRT)));
-//
-//                    async.flag();
-//                })));
-//    }
-//
-//    @Test
-//    public void testReconcileCMCasNewCaKeyAndCertMissingClusterOperatorSecret(VertxTestContext context) throws CertificateException, IOException, KeyStoreException, NoSuchAlgorithmException {
-//        String clusterCaSecretName = "cert-manager-cluster-ca-cert";
-//        String clientsCaSecretName = "cert-manager-clients-ca-cert";
-//        CertificateAuthority clusterCa = new CertificateAuthorityBuilder()
-//                .withValidityDays(100)
-//                .withRenewalDays(10)
-//                .withGenerateCertificateAuthority(false)
-//                .withType(CertificateManagerType.CERT_MANAGER_IO)
-//                .withNewCertManager()
-//                .withNewCaCert()
-//                .withSecretName(clusterCaSecretName)
-//                .withCertificate(CA_CRT)
-//                .endCaCert()
-//                .endCertManager()
-//                .build();
-//
-//        CertificateAuthority clientsCa = new CertificateAuthorityBuilder()
-//                .withValidityDays(100)
-//                .withRenewalDays(10)
-//                .withGenerateCertificateAuthority(false)
-//                .withType(CertificateManagerType.CERT_MANAGER_IO)
-//                .withNewCertManager()
-//                .withNewCaCert()
-//                .withSecretName(clientsCaSecretName)
-//                .withCertificate(CA_CRT)
-//                .endCaCert()
-//                .endCertManager()
-//                .build();
-//
-//        CertAndKey initialClusterCa = generateCa(clusterCa, "ca");
-//        CertAndKey renewedClusterCa = generateCa(clusterCa, "ca");
-//        CertAndKey initialClientsCa = generateCa(clientsCa, "ca");
-//        CertAndKey renewedClientsCa = generateCa(clientsCa, "ca");
-//
-//        Secret initialClusterCaCertSecret = ResourceUtils.createInitialCaCertSecretForCMCa(NAMESPACE, NAME, AbstractModel.clusterCaCertSecretName(NAME), initialClusterCa.certAsBase64String(), true);
-//        Secret renewedClusterCaCertSecret = createSecret(clusterCaSecretName, Map.of(CA_CRT, renewedClusterCa.certAsBase64String()), Map.of());
-//
-//        Secret initialClientsCaCertSecret = ResourceUtils.createInitialCaCertSecretForCMCa(NAMESPACE, NAME, KafkaResources.clientsCaCertificateSecretName(NAME), initialClientsCa.certAsBase64String(), false);
-//        Secret renewedClientsCaCertSecret = createSecret(clientsCaSecretName, Map.of(CA_CRT, renewedClientsCa.certAsBase64String()), Map.of());
-//
-//        secrets.add(initialClusterCaCertSecret);
-//        secrets.add(renewedClusterCaCertSecret);
-//        secrets.add(initialClientsCaCertSecret);
-//        secrets.add(renewedClientsCaCertSecret);
-//
-//        Checkpoint async = context.checkpoint();
-//        reconcileCas(clusterCa, clientsCa)
-//                .onComplete(context.succeeding(v -> context.verify(() -> {
-//                    ArgumentCaptor<Secret> clusterCaCert = ArgumentCaptor.forClass(Secret.class);
-//                    ArgumentCaptor<Secret> clientsCaCert = ArgumentCaptor.forClass(Secret.class);
-//                    verify(supplier.secretOperations).reconcile(any(), eq(NAMESPACE), eq(AbstractModel.clusterCaCertSecretName(NAME)), clusterCaCert.capture());
-//                    verify(supplier.secretOperations, times(0)).reconcile(any(), eq(NAMESPACE), eq(AbstractModel.clusterCaKeySecretName(NAME)), any(Secret.class));
-//                    verify(supplier.secretOperations).reconcile(any(), eq(NAMESPACE), eq(KafkaResources.clientsCaCertificateSecretName(NAME)), clientsCaCert.capture());
-//                    verify(supplier.secretOperations, times(0)).reconcile(any(), eq(NAMESPACE), eq(KafkaResources.clientsCaKeySecretName(NAME)), any(Secret.class));
-//
-//                    // Since cluster operator Secret is missing we can't perform path validation, so cluster CA is not updated
-//                    assertThat(clusterCaCert.getValue(), is(notNullValue()));
-//                    Map<String, String> clusterCaAnnotations = clusterCaCert.getValue().getMetadata().getAnnotations();
-//                    assertThat(clusterCaAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION), is("0"));
-//                    assertThat(clusterCaAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_KEY_GENERATION), is("0"));
-//                    assertThat(clusterCaAnnotations.get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH), is(CertUtils.getCertificateThumbprint(CaUtils.x509Certificate(initialClusterCa.cert()))));
-//                    assertThat(clusterCaCert.getValue().getData().get(CA_CRT), is(initialClusterCaCertSecret.getData().get(CA_CRT)));
-//
-//                    assertThat(clientsCaCert.getValue(), is(notNullValue()));
-//                    Map<String, String> clientsCaAnnotations = clientsCaCert.getValue().getMetadata().getAnnotations();
-//                    assertThat(clientsCaAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION), is("1"));
-//                    assertThat(clientsCaAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_KEY_GENERATION), nullValue());
-//                    assertThat(clientsCaAnnotations.get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH), is(CertUtils.getCertificateThumbprint(CaUtils.x509Certificate(renewedClientsCa.cert()))));
-//                    assertThat(clientsCaCert.getValue().getData().get(CA_CRT), is(renewedClientsCaCertSecret.getData().get(CA_CRT)));
-//
-//                    async.flag();
-//                })));
-//    }
+    @Test
+    public void clusterCaSecretNotRenewedWhenCLusterOperatorCertMissing() throws CertificateException, IOException, KeyStoreException, NoSuchAlgorithmException {
+        CertAndKey initialClusterCa = generateCa(Ca.CaRole.CLUSTER_CA.caCommonName());
+        CertAndKey renewedClusterCa = renewCaCert(initialClusterCa);
+        Map<String, String> renewedCaCertData = Map.of(CA_CRT, renewedClusterCa.certAsBase64String());
+
+        Secret existingCaCertSecret = createInitialClusterCaCertSecret(initialClusterCa.certAsBase64String());
+        Secret userCaCertSecretRenewed = ModelUtils.createSecret(CM_CA_CERT_SECRET_NAME, NAMESPACE, Labels.EMPTY, null, renewedCaCertData, Map.of(), Map.of());
+
+        when(secretOperations.getAsync(eq(NAMESPACE), eq(CM_CA_CERT_SECRET_NAME))).thenReturn(CompletableFuture.completedFuture(userCaCertSecretRenewed));
+
+        CertManagerCaProvider caProvider = new CertManagerCaProvider(Reconciliation.DUMMY_RECONCILIATION,
+                Ca.CaRole.CLUSTER_CA,
+                new CaConfig(CERT_AUTHORITY, false),
+                KAFKA,
+                existingCaCertSecret,
+                null,
+                certificateOperator,
+                secretOperations
+        );
+
+        CaProviderResult result = caProvider.createAndReconcileCa().toCompletableFuture().join();
+
+        // Verify result
+        assertThat(result, notNullValue());
+
+        assertThat(result.ca(), instanceOf(CertManagerCa.class));
+        assertThat(result.ca().caCertData(), is(existingCaCertSecret.getData()));
+        assertThat(result.ca().caCertGeneration(), is(0));
+        assertThat(result.ca().caKeyGeneration(), is(0));
+
+        assertThat(result.certSecret().getData(), is(existingCaCertSecret.getData()));
+
+        Map<String, String> secretAnnotations = result.certSecret().getMetadata().getAnnotations();
+        assertThat(secretAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION), is("0"));
+        assertThat(secretAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_KEY_GENERATION), is("0"));
+        String caCertHash = CertSecretUtils.getCertificateThumbprint(CertificateUtils.x509Certificate(initialClusterCa.cert()));
+        assertThat(secretAnnotations.get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH), is(caCertHash));
+
+        // Verify K8s calls
+        ArgumentCaptor<Secret> caCertSecret = ArgumentCaptor.forClass(Secret.class);
+        verify(secretOperations).reconcile(any(), eq(NAMESPACE), eq(AbstractModel.clusterCaCertSecretName(NAME)), caCertSecret.capture());
+        verify(secretOperations, never()).reconcile(any(), eq(NAMESPACE), eq(AbstractModel.clusterCaKeySecretName(NAME)), any(Secret.class));
+
+        assertThat(caCertSecret.getValue(), is(result.certSecret()));
+    }
+
+    @Test
+    public void clusterCaSecretWithNewKeyNotRenewedWhenCLusterOperatorCertMissing() throws CertificateException, IOException, KeyStoreException, NoSuchAlgorithmException {
+        CertAndKey initialClusterCa = generateCa(Ca.CaRole.CLUSTER_CA.caCommonName());
+        CertAndKey renewedClusterCa = generateCa(Ca.CaRole.CLUSTER_CA.caCommonName());
+        Map<String, String> renewedCaCertData = Map.of(CA_CRT, renewedClusterCa.certAsBase64String());
+
+        Secret existingCaCertSecret = createInitialClusterCaCertSecret(initialClusterCa.certAsBase64String());
+        Secret userCaCertSecretRenewed = ModelUtils.createSecret(CM_CA_CERT_SECRET_NAME, NAMESPACE, Labels.EMPTY, null, renewedCaCertData, Map.of(), Map.of());
+
+        when(secretOperations.getAsync(eq(NAMESPACE), eq(CM_CA_CERT_SECRET_NAME))).thenReturn(CompletableFuture.completedFuture(userCaCertSecretRenewed));
+
+        CertManagerCaProvider caProvider = new CertManagerCaProvider(Reconciliation.DUMMY_RECONCILIATION,
+                Ca.CaRole.CLUSTER_CA,
+                new CaConfig(CERT_AUTHORITY, false),
+                KAFKA,
+                existingCaCertSecret,
+                null,
+                certificateOperator,
+                secretOperations
+        );
+
+        CaProviderResult result = caProvider.createAndReconcileCa().toCompletableFuture().join();
+
+        // Verify result
+        assertThat(result, notNullValue());
+
+        assertThat(result.ca(), instanceOf(CertManagerCa.class));
+        assertThat(result.ca().caCertData(), is(existingCaCertSecret.getData()));
+        assertThat(result.ca().caCertGeneration(), is(0));
+        assertThat(result.ca().caKeyGeneration(), is(0));
+
+        assertThat(result.certSecret().getData(), is(existingCaCertSecret.getData()));
+
+        Map<String, String> secretAnnotations = result.certSecret().getMetadata().getAnnotations();
+        assertThat(secretAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION), is("0"));
+        assertThat(secretAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_KEY_GENERATION), is("0"));
+        String caCertHash = CertSecretUtils.getCertificateThumbprint(CertificateUtils.x509Certificate(initialClusterCa.cert()));
+        assertThat(secretAnnotations.get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH), is(caCertHash));
+
+        // Verify K8s calls
+        ArgumentCaptor<Secret> caCertSecret = ArgumentCaptor.forClass(Secret.class);
+        verify(secretOperations).reconcile(any(), eq(NAMESPACE), eq(AbstractModel.clusterCaCertSecretName(NAME)), caCertSecret.capture());
+        verify(secretOperations, never()).reconcile(any(), eq(NAMESPACE), eq(AbstractModel.clusterCaKeySecretName(NAME)), any(Secret.class));
+
+        assertThat(caCertSecret.getValue(), is(result.certSecret()));
+    }
 }
