@@ -83,20 +83,20 @@ public class CertManagerCaProviderTest {
             .build();
     private static final Kafka KAFKA = new KafkaBuilder()
             .withNewMetadata()
-            .withName(NAME)
-            .withNamespace(NAMESPACE)
+                .withName(NAME)
+                .withNamespace(NAMESPACE)
             .endMetadata()
             .withNewSpec()
-            .withClusterCa(CERT_AUTHORITY)
-            .withClientsCa(CERT_AUTHORITY)
-            .withNewKafka()
-            .withListeners(new GenericKafkaListenerBuilder()
-                    .withName("plain")
-                    .withPort(9092)
-                    .withType(KafkaListenerType.INTERNAL)
-                    .withTls(false)
-                    .build())
-            .endKafka()
+                .withClusterCa(CERT_AUTHORITY)
+                .withClientsCa(CERT_AUTHORITY)
+                .withNewKafka()
+                    .withListeners(new GenericKafkaListenerBuilder()
+                            .withName("plain")
+                            .withPort(9092)
+                            .withType(KafkaListenerType.INTERNAL)
+                            .withTls(false)
+                            .build())
+                .endKafka()
             .endSpec()
             .build();
     private static final OpenSslCertIssuer CERT_ISSUER = new OpenSslCertIssuer();
@@ -125,7 +125,7 @@ public class CertManagerCaProviderTest {
                 .withOrganizationName("io.strimzi")
                 .withCommonName(commonName).build();
 
-        CERT_ISSUER.generateSelfSignedCert(clusterCaKeyFile.toFile(), clusterCaCertFile.toFile(), sbj, CertManagerCaProviderTest.CERT_AUTHORITY.getValidityDays());
+        CERT_ISSUER.generateSelfSignedCert(clusterCaKeyFile.toFile(), clusterCaCertFile.toFile(), sbj, CERT_AUTHORITY.getValidityDays());
 
         CERT_ISSUER.addCertToTrustStore(clusterCaCertFile.toFile(), CA_CRT, clusterCaStoreFile.toFile(), clusterCaStorePassword);
         return new CertAndKey(
