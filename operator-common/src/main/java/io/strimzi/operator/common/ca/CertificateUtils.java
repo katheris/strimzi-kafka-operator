@@ -12,6 +12,7 @@ import io.strimzi.operator.common.Util;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.NoSuchAlgorithmException;
@@ -222,5 +223,17 @@ public class CertificateUtils {
         }
         subject.withCommonName(commonName);
         return subject.build();
+    }
+
+    /**
+     * Generates the full SHA1-hash of the server certificate which is used to track when the certificate changes.
+     *
+     * @param certificate   Certificate to generate the SHA1-hash for
+     * @return              SHA1-Hash of the certificate or null if certSecret contains no valid X509Certificate
+     *
+     * @throws CertificateEncodingException if an encoding error occurs.
+     */
+    public static String getCertificateThumbprint(X509Certificate certificate) throws CertificateEncodingException {
+        return String.format("%040x", new BigInteger(1, Util.sha1Digest(certificate.getEncoded())));
     }
 }

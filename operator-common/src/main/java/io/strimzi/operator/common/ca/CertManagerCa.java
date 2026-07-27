@@ -20,7 +20,6 @@ import io.strimzi.operator.common.operator.resource.kubernetes.CertManagerCertif
 import io.strimzi.operator.common.operator.resource.kubernetes.SecretOperator;
 
 import java.math.BigInteger;
-import java.security.cert.CertificateEncodingException;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
@@ -34,6 +33,8 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Predicate;
+
+import static io.strimzi.operator.common.ca.CertificateUtils.getCertificateThumbprint;
 
 /**
  * A Certificate Authority managed by cert-manager
@@ -286,22 +287,12 @@ public class CertManagerCa extends Ca {
     }
 
     /**
-     * Get the name of the Secret managed by cert-manager, given a Strimzi managed Secret
-     *
-     * @param strimziSecretName Name of the Secret managed by Strimzi
-     * @return Secret name to use for cert-manager managed Secret
-     */
-    public static String certManagerSecretName(String strimziSecretName) {
-        return strimziSecretName + CERT_MANAGER_SECRET_SUFFIX;
-    }
-
-    /**
      * Checks if two certs are the same by comparing hashes
      * @param existingCertAndKey    Existing cert
      * @param newCertAndKey         New cert
      * @return Whether the cert has been updated in the new Secret
      */
-    public static boolean certManagerCertUpdated(CertAndKey existingCertAndKey, CertAndKey newCertAndKey) {
+    private static boolean certManagerCertUpdated(CertAndKey existingCertAndKey, CertAndKey newCertAndKey) {
         try {
             String existingCertHash = getCertificateThumbprint(CertificateUtils.x509Certificate(existingCertAndKey.cert()));
             String newCertHash = getCertificateThumbprint(CertificateUtils.x509Certificate(newCertAndKey.cert()));
@@ -312,18 +303,8 @@ public class CertManagerCa extends Ca {
     }
 
     /**
-     * Generates the full SHA1-hash of the server certificate which is used to track when the certificate changes.
-     *
-     * @param certificate   Certificate to generate the SHA1-hash for
-     * @return              SHA1-Hash of the certificate or null if certSecret contains no valid X509Certificate
-     */
-    private static String getCertificateThumbprint(X509Certificate certificate) throws CertificateEncodingException {
-        return String.format("%040x", new BigInteger(1, Util.sha1Digest(certificate.getEncoded())));
-    }
-
-    /**
      * Convert an int to a fabric8 Duration.
-     *
+     * <p>
      * Since the constructor only takes a java.time.Duration the checkstyle
      * warning for qualified class names needs to be suppressed.
      *
@@ -333,6 +314,16 @@ public class CertManagerCa extends Ca {
     @SuppressWarnings("NoFullyQualifiedClassNames")
     /*test*/ static io.fabric8.kubernetes.api.model.Duration convertToFabric8Duration(int days) {
         return new io.fabric8.kubernetes.api.model.Duration(Duration.ofDays(days));
+    }
+
+    /**
+     * Get the name of the Secret managed by cert-manager, given a Strimzi managed Secret
+     *
+     * @param strimziSecretName Name of the Secret managed by Strimzi
+     * @return Secret name to use for cert-manager managed Secret
+     */
+    private static String certManagerSecretName(String strimziSecretName) {
+        return strimziSecretName + CERT_MANAGER_SECRET_SUFFIX;
     }
 
     /**

@@ -18,7 +18,6 @@ import io.strimzi.certs.CertAndKey;
 import io.strimzi.certs.OpenSslCertIssuer;
 import io.strimzi.certs.Subject;
 import io.strimzi.operator.cluster.model.AbstractModel;
-import io.strimzi.operator.cluster.model.CertSecretUtils;
 import io.strimzi.operator.cluster.model.ModelUtils;
 import io.strimzi.operator.common.Annotations;
 import io.strimzi.operator.common.Reconciliation;
@@ -182,7 +181,7 @@ public class CertManagerCaProviderTest {
     }
 
     private static Secret createInitialClusterCaCertSecret(String caCert) throws CertificateException {
-        String hash = CertSecretUtils.getCertificateThumbprint(CertificateUtils.x509Certificate(Util.decodeFromBase64(caCert).getBytes(StandardCharsets.UTF_8)));
+        String hash = CertificateUtils.getCertificateThumbprint(CertificateUtils.x509Certificate(Util.decodeFromBase64(caCert).getBytes(StandardCharsets.UTF_8)));
         return new SecretBuilder()
                 .withNewMetadata()
                     .withName(AbstractModel.clusterCaCertSecretName(NAME))
@@ -196,7 +195,7 @@ public class CertManagerCaProviderTest {
     }
 
     private static Secret createInitialClientsCaCertSecret(String caCert) throws CertificateException {
-        String hash = CertSecretUtils.getCertificateThumbprint(CertificateUtils.x509Certificate(Util.decodeFromBase64(caCert).getBytes(StandardCharsets.UTF_8)));
+        String hash = CertificateUtils.getCertificateThumbprint(CertificateUtils.x509Certificate(Util.decodeFromBase64(caCert).getBytes(StandardCharsets.UTF_8)));
         return new SecretBuilder()
                 .withNewMetadata()
                     .withName(KafkaResources.clientsCaCertificateSecretName(NAME))
@@ -298,7 +297,7 @@ public class CertManagerCaProviderTest {
         Map<String, String> secretAnnotations = result.certSecret().getMetadata().getAnnotations();
         assertThat(secretAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION), is("0"));
         assertThat(secretAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_KEY_GENERATION), is("0"));
-        String caCertHash = CertSecretUtils.getCertificateThumbprint(CertificateUtils.x509Certificate(Util.decodeBytesFromBase64(MockCertIssuer.clusterCaCert())));
+        String caCertHash = CertificateUtils.getCertificateThumbprint(CertificateUtils.x509Certificate(Util.decodeBytesFromBase64(MockCertIssuer.clusterCaCert())));
         assertThat(secretAnnotations.get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH), is(caCertHash));
 
         // Verify K8s calls
@@ -342,7 +341,7 @@ public class CertManagerCaProviderTest {
         assertThat(secretAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION), is("0"));
         // Clients Ca cert secret does not need key annotation
         assertThat(Annotations.hasAnnotation(result.certSecret(), Ca.ANNO_STRIMZI_IO_CA_KEY_GENERATION), is(false));
-        String caCertHash = CertSecretUtils.getCertificateThumbprint(CertificateUtils.x509Certificate(Util.decodeBytesFromBase64(MockCertIssuer.clientsCaCert())));
+        String caCertHash = CertificateUtils.getCertificateThumbprint(CertificateUtils.x509Certificate(Util.decodeBytesFromBase64(MockCertIssuer.clientsCaCert())));
         assertThat(secretAnnotations.get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH), is(caCertHash));
 
         // Verify K8s calls
@@ -395,7 +394,7 @@ public class CertManagerCaProviderTest {
         Map<String, String> secretAnnotations = result.certSecret().getMetadata().getAnnotations();
         assertThat(secretAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION), is("0"));
         assertThat(secretAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_KEY_GENERATION), is("0"));
-        String caCertHash = CertSecretUtils.getCertificateThumbprint(CertificateUtils.x509Certificate(Util.decodeBytesFromBase64(MockCertIssuer.clusterCaCert())));
+        String caCertHash = CertificateUtils.getCertificateThumbprint(CertificateUtils.x509Certificate(Util.decodeBytesFromBase64(MockCertIssuer.clusterCaCert())));
         assertThat(secretAnnotations.get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH), is(caCertHash));
 
         // Verify K8s calls
@@ -449,7 +448,7 @@ public class CertManagerCaProviderTest {
         assertThat(secretAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION), is("0"));
         // Clients Ca cert secret does not need key annotation
         assertThat(Annotations.hasAnnotation(result.certSecret(), Ca.ANNO_STRIMZI_IO_CA_KEY_GENERATION), is(false));
-        String caCertHash = CertSecretUtils.getCertificateThumbprint(CertificateUtils.x509Certificate(Util.decodeBytesFromBase64(MockCertIssuer.clientsCaCert())));
+        String caCertHash = CertificateUtils.getCertificateThumbprint(CertificateUtils.x509Certificate(Util.decodeBytesFromBase64(MockCertIssuer.clientsCaCert())));
         assertThat(secretAnnotations.get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH), is(caCertHash));
 
         // Verify K8s calls
@@ -505,7 +504,7 @@ public class CertManagerCaProviderTest {
         Map<String, String> secretAnnotations = result.certSecret().getMetadata().getAnnotations();
         assertThat(secretAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION), is("1"));
         assertThat(secretAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_KEY_GENERATION), is("0"));
-        String caCertHash = CertSecretUtils.getCertificateThumbprint(CertificateUtils.x509Certificate(Util.decodeBytesFromBase64(renewedCaCertData.get(CA_CRT))));
+        String caCertHash = CertificateUtils.getCertificateThumbprint(CertificateUtils.x509Certificate(Util.decodeBytesFromBase64(renewedCaCertData.get(CA_CRT))));
         assertThat(secretAnnotations.get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH), is(caCertHash));
 
         // Verify K8s calls
@@ -553,7 +552,7 @@ public class CertManagerCaProviderTest {
         assertThat(secretAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION), is("1"));
         // Clients Ca cert secret does not need key annotation
         assertThat(Annotations.hasAnnotation(result.certSecret(), Ca.ANNO_STRIMZI_IO_CA_KEY_GENERATION), is(false));
-        String caCertHash = CertSecretUtils.getCertificateThumbprint(CertificateUtils.x509Certificate(Util.decodeBytesFromBase64(renewedCaCertData.get(CA_CRT))));
+        String caCertHash = CertificateUtils.getCertificateThumbprint(CertificateUtils.x509Certificate(Util.decodeBytesFromBase64(renewedCaCertData.get(CA_CRT))));
         assertThat(secretAnnotations.get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH), is(caCertHash));
 
         // Verify K8s calls
@@ -619,7 +618,7 @@ public class CertManagerCaProviderTest {
         Map<String, String> secretAnnotations = result.certSecret().getMetadata().getAnnotations();
         assertThat(secretAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION), is("1"));
         assertThat(secretAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_KEY_GENERATION), is("1"));
-        String caCertHash = CertSecretUtils.getCertificateThumbprint(CertificateUtils.x509Certificate(Util.decodeBytesFromBase64(renewedCaCertData.get(CA_CRT))));
+        String caCertHash = CertificateUtils.getCertificateThumbprint(CertificateUtils.x509Certificate(Util.decodeBytesFromBase64(renewedCaCertData.get(CA_CRT))));
         assertThat(secretAnnotations.get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH), is(caCertHash));
 
         // Verify K8s calls
@@ -667,7 +666,7 @@ public class CertManagerCaProviderTest {
         Map<String, String> secretAnnotations = result.certSecret().getMetadata().getAnnotations();
         assertThat(secretAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION), is("1"));
         assertThat(secretAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_KEY_GENERATION), nullValue());
-        String caCertHash = CertSecretUtils.getCertificateThumbprint(CertificateUtils.x509Certificate(Util.decodeBytesFromBase64(renewedCaCertData.get(CA_CRT))));
+        String caCertHash = CertificateUtils.getCertificateThumbprint(CertificateUtils.x509Certificate(Util.decodeBytesFromBase64(renewedCaCertData.get(CA_CRT))));
         assertThat(secretAnnotations.get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH), is(caCertHash));
 
         // Verify K8s calls
@@ -714,7 +713,7 @@ public class CertManagerCaProviderTest {
         Map<String, String> secretAnnotations = result.certSecret().getMetadata().getAnnotations();
         assertThat(secretAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION), is("0"));
         assertThat(secretAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_KEY_GENERATION), is("0"));
-        String caCertHash = CertSecretUtils.getCertificateThumbprint(CertificateUtils.x509Certificate(initialClusterCa.cert()));
+        String caCertHash = CertificateUtils.getCertificateThumbprint(CertificateUtils.x509Certificate(initialClusterCa.cert()));
         assertThat(secretAnnotations.get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH), is(caCertHash));
 
         // Verify K8s calls
@@ -761,7 +760,7 @@ public class CertManagerCaProviderTest {
         Map<String, String> secretAnnotations = result.certSecret().getMetadata().getAnnotations();
         assertThat(secretAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION), is("0"));
         assertThat(secretAnnotations.get(Ca.ANNO_STRIMZI_IO_CA_KEY_GENERATION), is("0"));
-        String caCertHash = CertSecretUtils.getCertificateThumbprint(CertificateUtils.x509Certificate(initialClusterCa.cert()));
+        String caCertHash = CertificateUtils.getCertificateThumbprint(CertificateUtils.x509Certificate(initialClusterCa.cert()));
         assertThat(secretAnnotations.get(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH), is(caCertHash));
 
         // Verify K8s calls

@@ -331,7 +331,7 @@ public class CaReconciler {
         isClusterCaFullyUsed = true;
 
         // Building the selector for Kafka related components
-        Labels labels =  Labels.forStrimziCluster(reconciliation.name()).withStrimziKind(Kafka.RESOURCE_KIND);
+        Labels labels = Labels.forStrimziCluster(reconciliation.name()).withStrimziKind(Kafka.RESOURCE_KIND);
 
         return VertxUtil.toFuture(podOperator.listAsync(reconciliation.namespace(), labels))
                 .compose(pods -> {

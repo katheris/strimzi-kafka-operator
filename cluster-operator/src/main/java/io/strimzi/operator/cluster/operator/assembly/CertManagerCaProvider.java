@@ -11,7 +11,6 @@ import io.strimzi.api.kafka.model.common.certmanager.IssuerRef;
 import io.strimzi.api.kafka.model.kafka.Kafka;
 import io.strimzi.api.kafka.model.kafka.KafkaResources;
 import io.strimzi.operator.cluster.model.AbstractModel;
-import io.strimzi.operator.cluster.model.CertSecretUtils;
 import io.strimzi.operator.common.Annotations;
 import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.Util;
@@ -124,7 +123,7 @@ public class CertManagerCaProvider extends CaProvider {
         Map<String, String> certAnnotations = new HashMap<>(2);
 
         try {
-            certAnnotations.put(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH, CertSecretUtils.getCertificateThumbprint(CertificateUtils.x509Certificate(Util.decodeBytesFromBase64(caCertData.get(CA_CRT)))));
+            certAnnotations.put(Annotations.ANNO_STRIMZI_SERVER_CERT_HASH, CertificateUtils.getCertificateThumbprint(CertificateUtils.x509Certificate(Util.decodeBytesFromBase64(caCertData.get(CA_CRT)))));
         } catch (CertificateException e) {
             throw new RuntimeException(e);
         }
