@@ -12,7 +12,6 @@ import io.strimzi.api.kafka.model.kafka.Kafka;
 import io.strimzi.certs.CertIssuer;
 import io.strimzi.operator.cluster.model.AbstractModel;
 import io.strimzi.operator.common.Reconciliation;
-import io.strimzi.operator.common.ReconciliationLogger;
 import io.strimzi.operator.common.Util;
 import io.strimzi.operator.common.ca.Ca;
 import io.strimzi.operator.common.ca.CaConfig;
@@ -36,8 +35,6 @@ import static java.util.Collections.singletonList;
  * Provides common functionality for managing CA certificates and secrets.
  */
 public abstract class CaProvider {
-    private static final ReconciliationLogger LOGGER = ReconciliationLogger.create(CaProvider.class);
-
     protected final Reconciliation reconciliation;
     protected final Ca.CaRole caRole;
     protected final CaConfig caConfig;

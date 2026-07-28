@@ -19,6 +19,7 @@ import io.strimzi.operator.common.ca.CaConfig;
 import io.strimzi.operator.common.ca.CertManagerCa;
 import io.strimzi.operator.common.ca.CertificateUtils;
 import io.strimzi.operator.common.model.InvalidResourceException;
+import io.strimzi.operator.common.model.Labels;
 import io.strimzi.operator.common.operator.resource.kubernetes.CertManagerCertificateOperator;
 import io.strimzi.operator.common.operator.resource.kubernetes.SecretOperator;
 
@@ -90,7 +91,7 @@ public class CertManagerCaProvider extends CaProvider {
                                     .withController(false)
                                     .build()
                                     : null,
-                            null,
+                            Labels.fromMap(caLabels),
                             issuerRef);
                     certManagerCa.maybeUpdateCa(
                             newCaCertAsBase64,
