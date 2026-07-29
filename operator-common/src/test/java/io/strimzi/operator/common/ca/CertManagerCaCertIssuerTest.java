@@ -16,7 +16,7 @@ import io.strimzi.certs.CertAndKey;
 import io.strimzi.certs.OpenSslCertIssuer;
 import io.strimzi.certs.Subject;
 import io.strimzi.operator.common.Reconciliation;
-import io.strimzi.operator.common.TimeoutException;
+import io.strimzi.operator.common.StrimziTimeoutException;
 import io.strimzi.operator.common.Util;
 import io.strimzi.operator.common.model.Labels;
 import io.strimzi.operator.common.operator.MockCertIssuer;
@@ -249,7 +249,7 @@ public class CertManagerCaCertIssuerTest {
         Secret clusterCaCertSecret = createCaCertSecret(clusterCaCertData, 0);
 
         when(certManagerCertificateOperator.waitForReady(any(), eq(NAMESPACE), eq(ENTITY_NAME)))
-                .thenReturn(CompletableFuture.failedFuture(new TimeoutException("Timed out waiting for resource to be ready")));
+                .thenReturn(CompletableFuture.failedFuture(new StrimziTimeoutException("Timed out waiting for resource to be ready")));
 
         CertManagerCa certManagerCa = new CertManagerCa(
                 Reconciliation.DUMMY_RECONCILIATION,
