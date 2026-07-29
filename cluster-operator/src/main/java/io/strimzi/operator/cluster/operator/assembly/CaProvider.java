@@ -93,7 +93,7 @@ public abstract class CaProvider {
                 if (certManagerCaTypeEnabled) {
                     yield new CertManagerCaProvider(reconciliation, caRole, caConfig, kafkaCr, existingCaCertSecret, clusterOperatorCertSecret, certManagerCertificateOperator, secretOperator);
                 } else {
-                    throw new RuntimeException("Certificate Manager type is set to " + CertificateManagerType.CERT_MANAGER_IO.toValue() + ", but CertManagerCaType feature gate is not enabled");
+                    throw new IllegalArgumentException("Certificate Manager type is set to " + CertificateManagerType.CERT_MANAGER_IO.toValue() + ", but CertManagerCaType feature gate is not enabled");
                 }
 
             }
