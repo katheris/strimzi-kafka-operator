@@ -8,6 +8,7 @@ import io.fabric8.kubernetes.api.model.OwnerReference;
 import io.fabric8.kubernetes.api.model.OwnerReferenceBuilder;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.SecretBuilder;
+import io.strimzi.api.kafka.model.common.CertificateManagerType;
 import io.strimzi.api.kafka.model.kafka.Kafka;
 import io.strimzi.certs.CertIssuer;
 import io.strimzi.operator.cluster.model.AbstractModel;
@@ -73,7 +74,8 @@ public abstract class CaProvider {
             Clock clock,
             Secret existingCaCertSecret,
             Secret existingCaKeySecret,
-            Secret clusterOperatorCertSecret
+            Secret clusterOperatorCertSecret,
+            boolean certManagerCaTypeEnabled
     ) {
         return switch (caConfig.getCertificateManagerType()) {
             case STRIMZI_IO -> {
@@ -87,7 +89,14 @@ public abstract class CaProvider {
                     );
                 }
             }
-            case CERT_MANAGER_IO -> new CertManagerCaProvider(reconciliation, caRole, caConfig, kafkaCr, existingCaCertSecret, clusterOperatorCertSecret, certManagerCertificateOperator, secretOperator);
+            case CERT_MANAGER_IO -> {
+                if (certManagerCaTypeEnabled) {
+                    yield new CertManagerCaProvider(reconciliation, caRole, caConfig, kafkaCr, existingCaCertSecret, clusterOperatorCertSecret, certManagerCertificateOperator, secretOperator);
+                } else {
+                    throw new RuntimeException("Certificate Manager type is set to " + CertificateManagerType.CERT_MANAGER_IO.toValue() + ", but CertManagerCaType feature gate is not enabled");
+                }
+
+            }
         };
     }
 
