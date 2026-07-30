@@ -50,6 +50,11 @@
             <artifactId>kubernetes-model-core</artifactId>
         </dependency>
         <dependency>
+            <groupId>io.fabric8</groupId>
+            <artifactId>certmanager-model</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>io.strimzi</groupId>
             <artifactId>certificate-issuer</artifactId>
         </dependency>

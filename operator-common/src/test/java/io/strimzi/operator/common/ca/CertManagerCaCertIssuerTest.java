@@ -41,6 +41,7 @@ import static io.strimzi.operator.common.ca.Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATIO
 import static io.strimzi.operator.common.ca.Ca.CA_CRT;
 import static io.strimzi.operator.common.ca.CertManagerCa.convertToFabric8Duration;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.is;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -149,17 +150,13 @@ public class CertManagerCaCertIssuerTest {
                 null);
     }
 
-    private CertAndKey generateCert(CertAndKey ca) throws IOException {
+    private CertAndKey generateCert(CertAndKey ca, Subject sbj) throws IOException {
         File csrFile = Files.createTempFile("tls", "csr").toFile();
         csrFile.deleteOnExit();
         File keyFile = Files.createTempFile("tls", "key").toFile();
         keyFile.deleteOnExit();
         File certFile = Files.createTempFile("tls", "cert").toFile();
         certFile.deleteOnExit();
-
-        Subject sbj = new Subject.Builder()
-                .withOrganizationName("io.strimzi")
-                .withCommonName(ENTITY_NAME).build();
 
         CERT_ISSUER.generateCsr(keyFile, csrFile, sbj);
         CERT_ISSUER.generateCert(csrFile, ca.key(), ca.cert(), certFile, sbj, 10);
@@ -173,16 +170,24 @@ public class CertManagerCaCertIssuerTest {
     }
 
     @Test
-    void renewalOfCertificatesWithNullCertificates() {
+    void renewalOfCertificatesWithNullCertificates() throws IOException {
         // Create cluster ca cert Secret
         Map<String, String> clusterCaCertData = new HashMap<>();
         clusterCaCertData.put("ca.crt", MockCertIssuer.clusterCaCert());
         Secret clusterCaCertSecret = createCaCertSecret(clusterCaCertData, 0);
 
+        Subject subject = new Subject.Builder()
+                .withOrganizationName("io.strimzi")
+                .withCommonName(ENTITY_NAME)
+                .addDnsName("mock-component.namespace.local")
+                .addIpAddress("127.0.0.1")
+                .build();
+
         // Create cert-manager Secret for entity cert as though Certificate request will succeed
+        CertAndKey certAndKey = generateCert(new CertAndKey(Util.decodeBytesFromBase64(MockCertIssuer.clusterCaKey()), Util.decodeBytesFromBase64(MockCertIssuer.clusterCaCert())), subject);
         Map<String, String> cmSecretData = new HashMap<>();
-        cmSecretData.put("tls.crt", Util.encodeToBase64(MockCertIssuer.serverCert()));
-        cmSecretData.put("tls.key", Util.encodeToBase64(MockCertIssuer.serverKey()));
+        cmSecretData.put("tls.crt", certAndKey.certAsBase64String());
+        cmSecretData.put("tls.key", certAndKey.keyAsBase64String());
         Secret cmSecret = createSecret(cmSecretData);
 
         when(secretOperator.getAsync(eq(NAMESPACE), eq(cmSecret.getMetadata().getName()))).thenAnswer(i -> CompletableFuture.completedStage(cmSecret));
@@ -204,13 +209,6 @@ public class CertManagerCaCertIssuerTest {
                         .withKind(IssuerKind.CLUSTER_ISSUER)
                         .build()
                 );
-
-        Subject subject = new Subject.Builder()
-                .withOrganizationName("io.strimzi")
-                .withCommonName(ENTITY_NAME)
-                .addDnsName("mock-component.namespace.local")
-                .addIpAddress("127.0.0.1")
-                .build();
 
         certManagerCa.maybeCopyOrGenerateCert(ENTITY_NAME, subject, null)
                         .whenComplete((cert, throwable)  -> {
@@ -289,8 +287,15 @@ public class CertManagerCaCertIssuerTest {
         clusterCaCertData.put("ca.crt", MockCertIssuer.clusterCaCert());
         Secret clusterCaCertSecret = createCaCertSecret(clusterCaCertData, 0);
 
+        Subject subject = new Subject.Builder()
+                .withOrganizationName("io.strimzi")
+                .withCommonName(ENTITY_NAME)
+                .addDnsName("mock-component.namespace.local")
+                .addIpAddress("127.0.0.1")
+                .build();
+
         // Create cert-manager Secret for entity cert as though Certificate has been renewed
-        CertAndKey renewedCert = generateCert(new CertAndKey(Util.decodeBytesFromBase64(MockCertIssuer.clusterCaKey()), Util.decodeBytesFromBase64(MockCertIssuer.clusterCaCert())));
+        CertAndKey renewedCert = generateCert(new CertAndKey(Util.decodeBytesFromBase64(MockCertIssuer.clusterCaKey()), Util.decodeBytesFromBase64(MockCertIssuer.clusterCaCert())), subject);
         Map<String, String> cmSecretData = new HashMap<>();
         cmSecretData.put("tls.crt", renewedCert.certAsBase64String());
         cmSecretData.put("tls.key", renewedCert.keyAsBase64String());
@@ -316,14 +321,119 @@ public class CertManagerCaCertIssuerTest {
                         .build()
         );
 
-        Subject subject = new Subject.Builder()
+        certManagerCa.maybeCopyOrGenerateCert(ENTITY_NAME, subject, initialCert)
+                .whenComplete((cert, throwable) -> {
+                    assertNull(throwable);
+
+                    // Certificate Object created
+                    ArgumentCaptor<Certificate> entityCertificateResourceCaptor =  ArgumentCaptor.forClass(Certificate.class);
+                    verify(certManagerCertificateOperator, times(1)).reconcile(any(), eq(NAMESPACE), eq(ENTITY_NAME), entityCertificateResourceCaptor.capture());
+
+                    assertThat(entityCertificateResourceCaptor.getValue().getSpec().getCommonName(), is(ENTITY_NAME));
+
+                    // Entity cert Secret is returned
+                    assertThat(cert.cert(), is(renewedCert.cert()));
+                    assertThat(cert.key(), is(renewedCert.key()));
+                    assertThat(cert.caCertGeneration(), is(0));
+                }).toCompletableFuture().join();
+    }
+
+    @Test
+    void renewalOfCertificateWithUpdatedSubjectFailureCase() throws IOException {
+        CertAndKey initialCert = new CertAndKey(MockCertIssuer.serverKey().getBytes(StandardCharsets.UTF_8), MockCertIssuer.serverCert().getBytes(StandardCharsets.UTF_8), 0);
+
+        Map<String, String> clusterCaCertData = new HashMap<>();
+        clusterCaCertData.put("ca.crt", MockCertIssuer.clusterCaCert());
+        Secret clusterCaCertSecret = createCaCertSecret(clusterCaCertData, 0);
+
+        Subject newSubject = new Subject.Builder()
                 .withOrganizationName("io.strimzi")
                 .withCommonName(ENTITY_NAME)
                 .addDnsName("mock-component.namespace.local")
                 .addIpAddress("127.0.0.1")
                 .build();
 
-        certManagerCa.maybeCopyOrGenerateCert(ENTITY_NAME, subject, initialCert)
+        // Create cert-manager Secret for entity cert as though Certificate has been renewed
+        CertAndKey renewedCert = generateCert(new CertAndKey(Util.decodeBytesFromBase64(MockCertIssuer.clusterCaKey()), Util.decodeBytesFromBase64(MockCertIssuer.clusterCaCert())), newSubject);
+        Map<String, String> cmSecretData = new HashMap<>();
+        cmSecretData.put("tls.crt", renewedCert.certAsBase64String());
+        cmSecretData.put("tls.key", renewedCert.keyAsBase64String());
+        Secret cmSecret = createSecret(cmSecretData);
+
+        when(secretOperator.getAsync(eq(NAMESPACE), eq(cmSecret.getMetadata().getName()))).thenAnswer(i -> CompletableFuture.completedStage(cmSecret));
+
+        when(certManagerCertificateOperator.reconcile(any(), eq(NAMESPACE), any(), any(Certificate.class))).thenAnswer(i -> CompletableFuture.completedStage(ReconcileResult.patched(i.getArgument(3))));
+        when(certManagerCertificateOperator.waitForReady(any(), eq(NAMESPACE), any())).thenReturn(CompletableFuture.completedStage(null));
+
+        CertManagerCa certManagerCa = new CertManagerCa(
+                Reconciliation.DUMMY_RECONCILIATION,
+                Ca.CaRole.CLUSTER_CA,
+                clusterCaCertSecret,
+                new CaConfig(getCertificateAuthority(), false),
+                certManagerCertificateOperator,
+                secretOperator,
+                null,
+                Labels.EMPTY,
+                new IssuerRefBuilder()
+                        .withName("cm-issuer")
+                        .withKind(IssuerKind.CLUSTER_ISSUER)
+                        .build()
+        );
+
+        Subject expectedSubject = new Subject.Builder()
+                .withOrganizationName("io.strimzi")
+                .withCommonName(ENTITY_NAME)
+                .addDnsName("mock-component-v2.namespace.local")
+                .addIpAddress("127.0.0.1")
+                .build();
+
+        Exception e = assertThrows(CompletionException.class, () -> certManagerCa.maybeCopyOrGenerateCert(ENTITY_NAME, expectedSubject, initialCert).toCompletableFuture().join());
+        assertThat(e.getCause().getMessage(), containsString("Certificate from cert-manager does not contain correct subject"));
+    }
+
+    @Test
+    void renewalOfCertificateWithUpdatedSubject() throws IOException {
+        CertAndKey initialCert = new CertAndKey(MockCertIssuer.serverKey().getBytes(StandardCharsets.UTF_8), MockCertIssuer.serverCert().getBytes(StandardCharsets.UTF_8), 0);
+
+        Map<String, String> clusterCaCertData = new HashMap<>();
+        clusterCaCertData.put("ca.crt", MockCertIssuer.clusterCaCert());
+        Secret clusterCaCertSecret = createCaCertSecret(clusterCaCertData, 0);
+
+        Subject newSubject = new Subject.Builder()
+                .withOrganizationName("io.strimzi")
+                .withCommonName(ENTITY_NAME)
+                .addDnsName("mock-component-v2.namespace.local")
+                .addIpAddress("127.0.0.1")
+                .build();
+
+        // Create cert-manager Secret for entity cert as though Certificate has been renewed
+        CertAndKey renewedCert = generateCert(new CertAndKey(Util.decodeBytesFromBase64(MockCertIssuer.clusterCaKey()), Util.decodeBytesFromBase64(MockCertIssuer.clusterCaCert())), newSubject);
+        Map<String, String> cmSecretData = new HashMap<>();
+        cmSecretData.put("tls.crt", renewedCert.certAsBase64String());
+        cmSecretData.put("tls.key", renewedCert.keyAsBase64String());
+        Secret cmSecret = createSecret(cmSecretData);
+
+        when(secretOperator.getAsync(eq(NAMESPACE), eq(cmSecret.getMetadata().getName()))).thenAnswer(i -> CompletableFuture.completedStage(cmSecret));
+
+        when(certManagerCertificateOperator.reconcile(any(), eq(NAMESPACE), any(), any(Certificate.class))).thenAnswer(i -> CompletableFuture.completedStage(ReconcileResult.patched(i.getArgument(3))));
+        when(certManagerCertificateOperator.waitForReady(any(), eq(NAMESPACE), any())).thenReturn(CompletableFuture.completedStage(null));
+
+        CertManagerCa certManagerCa = new CertManagerCa(
+                Reconciliation.DUMMY_RECONCILIATION,
+                Ca.CaRole.CLUSTER_CA,
+                clusterCaCertSecret,
+                new CaConfig(getCertificateAuthority(), false),
+                certManagerCertificateOperator,
+                secretOperator,
+                null,
+                Labels.EMPTY,
+                new IssuerRefBuilder()
+                        .withName("cm-issuer")
+                        .withKind(IssuerKind.CLUSTER_ISSUER)
+                        .build()
+        );
+
+        certManagerCa.maybeCopyOrGenerateCert(ENTITY_NAME, newSubject, initialCert)
                 .whenComplete((cert, throwable) -> {
                     assertNull(throwable);
 
@@ -350,8 +460,15 @@ public class CertManagerCaCertIssuerTest {
         clusterCaCertData.put("ca.crt", renewedCaCert.certAsBase64String());
         Secret clusterCaCertSecret = createCaCertSecret(clusterCaCertData, 1);
 
+        Subject subject = new Subject.Builder()
+                .withOrganizationName("io.strimzi")
+                .withCommonName(ENTITY_NAME)
+                .addDnsName("mock-component.namespace.local")
+                .addIpAddress("127.0.0.1")
+                .build();
+
         // Create cert-manager Secret for entity cert as though Certificate has been renewed with renewed Ca cert
-        CertAndKey renewedCert = generateCert(renewedCaCert);
+        CertAndKey renewedCert = generateCert(renewedCaCert, subject);
         Map<String, String> cmSecretData = new HashMap<>();
         cmSecretData.put("tls.crt", renewedCert.certAsBase64String());
         cmSecretData.put("tls.key", renewedCert.keyAsBase64String());
@@ -376,13 +493,6 @@ public class CertManagerCaCertIssuerTest {
                         .withKind(IssuerKind.CLUSTER_ISSUER)
                         .build()
         );
-
-        Subject subject = new Subject.Builder()
-                .withOrganizationName("io.strimzi")
-                .withCommonName(ENTITY_NAME)
-                .addDnsName("mock-component.namespace.local")
-                .addIpAddress("127.0.0.1")
-                .build();
 
         certManagerCa.maybeCopyOrGenerateCert(ENTITY_NAME, subject, initialCert)
                 .whenComplete((cert, throwable) -> {
@@ -413,8 +523,15 @@ public class CertManagerCaCertIssuerTest {
         CertificateAuthority certificateAuthority = getCertificateAuthority();
         CertAndKey newCaCert = generateCa(certificateAuthority);
 
+        Subject subject = new Subject.Builder()
+                .withOrganizationName("io.strimzi")
+                .withCommonName(ENTITY_NAME)
+                .addDnsName("mock-component.namespace.local")
+                .addIpAddress("127.0.0.1")
+                .build();
+
         // Create cert-manager Secret for new entity cert signed by new CA key as though CA key is replaced
-        CertAndKey newCert = generateCert(newCaCert);
+        CertAndKey newCert = generateCert(newCaCert, subject);
         Map<String, String> cmSecretData = new HashMap<>();
         cmSecretData.put("tls.crt", newCert.certAsBase64String());
         cmSecretData.put("tls.key", newCert.keyAsBase64String());
@@ -439,13 +556,6 @@ public class CertManagerCaCertIssuerTest {
                         .withKind(IssuerKind.CLUSTER_ISSUER)
                         .build()
         );
-
-        Subject subject = new Subject.Builder()
-                .withOrganizationName("io.strimzi")
-                .withCommonName(ENTITY_NAME)
-                .addDnsName("mock-component.namespace.local")
-                .addIpAddress("127.0.0.1")
-                .build();
 
         certManagerCa.maybeCopyOrGenerateCert(ENTITY_NAME, subject, initialCert)
                 .whenComplete((cert, throwable) -> {
@@ -476,8 +586,15 @@ public class CertManagerCaCertIssuerTest {
         clusterCaCertDataNewKey.put("ca.crt", newCaCert.certAsBase64String());
         Secret clusterCaCertSecretNewKey = createCaCertSecret(clusterCaCertDataNewKey, 1);
 
+        Subject subject = new Subject.Builder()
+                .withOrganizationName("io.strimzi")
+                .withCommonName(ENTITY_NAME)
+                .addDnsName("mock-component.namespace.local")
+                .addIpAddress("127.0.0.1")
+                .build();
+
         // Create cert-manager Secret for new entity cert signed by new CA key as though CA key is replaced
-        CertAndKey newCert = generateCert(newCaCert);
+        CertAndKey newCert = generateCert(newCaCert, subject);
         Map<String, String> cmSecretData = new HashMap<>();
         cmSecretData.put("tls.crt", newCert.certAsBase64String());
         cmSecretData.put("tls.key", newCert.keyAsBase64String());
@@ -502,13 +619,6 @@ public class CertManagerCaCertIssuerTest {
                         .withKind(IssuerKind.CLUSTER_ISSUER)
                         .build()
         );
-
-        Subject subject = new Subject.Builder()
-                .withOrganizationName("io.strimzi")
-                .withCommonName(ENTITY_NAME)
-                .addDnsName("mock-component.namespace.local")
-                .addIpAddress("127.0.0.1")
-                .build();
 
         certManagerCa.maybeCopyOrGenerateCert(ENTITY_NAME, subject, initialCert)
                 .whenComplete((cert, throwable) -> {

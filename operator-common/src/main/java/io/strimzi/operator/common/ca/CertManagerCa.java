@@ -25,6 +25,7 @@ import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -234,8 +235,19 @@ public class CertManagerCa extends Ca {
                     if (certSecret.getData().get("tls.crt") == null || certSecret.getData().get("tls.key") == null) {
                         return CompletableFuture.failedFuture(new RuntimeException("No certificate data provided"));
                     }
-                    return CompletableFuture.completedFuture(new CertAndKey(Util.decodeBytesFromBase64(certSecret.getData().get("tls.key")),
-                            Util.decodeBytesFromBase64(certSecret.getData().get("tls.crt")), this.caCertGeneration));
+                    CertAndKey updatedCert = new CertAndKey(Util.decodeBytesFromBase64(certSecret.getData().get("tls.key")),
+                            Util.decodeBytesFromBase64(certSecret.getData().get("tls.crt")), this.caCertGeneration);
+
+                    // Check the subject of the certificate is correct, otherwise fail the reconciliation to wait for the certificate to be issued with correct dns
+                    Collection<String> desiredAltNames = subject.subjectAltNames().values();
+                    Collection<String> updatedCertAltNames = CertificateUtils.getSubjectAltNames(reconciliation, updatedCert.cert());
+                    if (updatedCertAltNames != null && desiredAltNames.containsAll(updatedCertAltNames) && updatedCertAltNames.containsAll(desiredAltNames))   {
+                        return CompletableFuture.completedFuture(updatedCert);
+                    } else {
+                        String message = "Certificate from cert-manager does not contain correct subject. Failing reconciliation to wait for new certificate to be issued.";
+                        LOGGER.debugCr(reconciliation, message);
+                        return CompletableFuture.failedFuture(new RuntimeException(message));
+                    }
                 });
     }
 
