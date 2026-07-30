@@ -1,6 +1,6 @@
 # CertManagerST
 
-**Description:** Test suite verifying cert-manager CA integration: Strimzi delegates end-entity certificate issuance to an external cert-manager issuer while the cluster CA public cert is provided by the user in a Kubernetes Secret.
+**Description:** Test suite verifying cert-manager CA integration: The Cluster Operator delegates issuing of end-entity certificate to an external cert-manager issuer while the cluster CA public cert is provided by the user in a Kubernetes Secret.
 
 **Labels:**
 
@@ -19,7 +19,7 @@
 | 1. | Create the CA cert Secret in the test namespace. | Secret is present in the test namespace. |
 | 2. | Deploy Kafka with clusterCa.type=cert-manager.io, generateCertificateAuthority=false. | Kafka cluster reaches ready state without errors. |
 | 3. | Assert cluster CA cert Secret has correct annotations. | ca-cert-generation=0, ca-key-generation=0, and cert-hash annotations are set. |
-| 4. | Assert each broker cert Secret exists and its certificate is signed by the cert-manager CA. | Broker cert Secrets are present and the certificate issuer DN matches the CA subject DN. |
+| 4. | Assert the cert-manager broker and cluster operator Secrets (-cm suffix) exist and their certificates match the corresponding Strimzi Secrets and are signed by the cert-manager CA. | cert-manager Secrets exist, their certificates match the Strimzi Secrets, and the issuer DNs match the CA subject DN. |
 | 5. | Produce and consume messages over TLS using a KafkaUser. | Messages are successfully produced and consumed. |
 
 **Labels:**
