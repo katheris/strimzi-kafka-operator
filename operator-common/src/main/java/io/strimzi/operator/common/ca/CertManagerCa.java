@@ -15,7 +15,6 @@ import io.strimzi.operator.common.Annotations;
 import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.ReconciliationLogger;
 import io.strimzi.operator.common.Util;
-import io.strimzi.operator.common.model.Labels;
 import io.strimzi.operator.common.operator.resource.kubernetes.CertManagerCertificateOperator;
 import io.strimzi.operator.common.operator.resource.kubernetes.SecretOperator;
 
@@ -30,7 +29,6 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Predicate;
@@ -48,21 +46,19 @@ public class CertManagerCa extends Ca {
     private final CertManagerCertificateOperator certManagerCertificateOperator;
     private final SecretOperator secretOperator;
     private final OwnerReference ownerReference;
-    private final Labels labels;
     protected final IssuerRef issuerRef;
 
     /**
      * Constructs the CA object
      *
-     * @param reconciliation        Reconciliation marker
-     * @param caRole                Ca role
-     * @param caCertSecret          Kubernetes Secret where the CA public key is stored
-     * @param caConfig              Certificate Authority configuration
+     * @param reconciliation                 Reconciliation marker
+     * @param caRole                         Ca role
+     * @param caCertSecret                   Kubernetes Secret where the CA public key is stored
+     * @param caConfig                       Certificate Authority configuration
      * @param certManagerCertificateOperator cert-manager Certificate operator
-     * @param secretOperator Secret operator
-     * @param ownerReference Owner reference for Kubernetes resources
-     * @param labels Labels for Kubernetes resources
-     * @param issuerRef              Reference to issuer for issuing certificates through other services like cert-manager
+     * @param secretOperator                 Secret operator
+     * @param ownerReference                 Owner reference for Kubernetes resources
+     * @param issuerRef                      Reference to issuer for issuing certificates through other services like cert-manager
      */
     public CertManagerCa(Reconciliation reconciliation,
                          CaRole caRole,
@@ -71,13 +67,11 @@ public class CertManagerCa extends Ca {
                          CertManagerCertificateOperator certManagerCertificateOperator,
                          SecretOperator secretOperator,
                          OwnerReference ownerReference,
-                         Labels labels,
                          IssuerRef issuerRef) {
         super(reconciliation, caRole, caCertSecret, null, caConfig);
         this.certManagerCertificateOperator = certManagerCertificateOperator;
         this.secretOperator = secretOperator;
         this.ownerReference = ownerReference;
-        this.labels = labels;
         this.issuerRef = issuerRef;
     }
 
@@ -231,9 +225,12 @@ public class CertManagerCa extends Ca {
                 .thenCompose(v -> certManagerCertificateOperator.waitForReady(reconciliation, reconciliation.namespace(), entityName))
                 .thenCompose(v -> secretOperator.getAsync(reconciliation.namespace(), certManagerSecretName(entityName)))
                 .thenCompose(certSecret -> {
-                    Objects.requireNonNull(certSecret);
-                    if (certSecret.getData().get("tls.crt") == null || certSecret.getData().get("tls.key") == null) {
-                        return CompletableFuture.failedFuture(new RuntimeException("No certificate data provided"));
+                    if (certSecret == null) {
+                        return CompletableFuture.failedFuture(new RuntimeException("cert-manager Certificate '" + entityName + "' is Ready but its Secret '" + certManagerSecretName(entityName) +
+                                "' is not yet available. Failing reconciliation to wait for the secret to become available."));
+                    }
+                    if (certSecret.getData() == null || certSecret.getData().get("tls.crt") == null || certSecret.getData().get("tls.key") == null) {
+                        return CompletableFuture.failedFuture(new RuntimeException(new RuntimeException("cert-manager Certificate '" + entityName + "' is Ready but no certificate data is provided")));
                     }
                     CertAndKey updatedCert = new CertAndKey(Util.decodeBytesFromBase64(certSecret.getData().get("tls.key")),
                             Util.decodeBytesFromBase64(certSecret.getData().get("tls.crt")), this.caCertGeneration);
@@ -288,9 +285,6 @@ public class CertManagerCa extends Ca {
                     .withGroup(issuerRef.getGroup())
                 .endIssuerRef()
                 .withSecretName(secretName)
-                .withNewSecretTemplate()
-                    .withLabels(labels.toMap())
-                .endSecretTemplate()
                 .endSpec();
         if (ownerReference != null) {
             certificateBuilder.editMetadata().withOwnerReferences(ownerReference).endMetadata();

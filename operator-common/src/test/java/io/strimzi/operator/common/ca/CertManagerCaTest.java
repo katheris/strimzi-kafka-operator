@@ -10,7 +10,6 @@ import io.strimzi.api.kafka.model.common.CertificateManagerType;
 import io.strimzi.api.kafka.model.common.certmanager.IssuerKind;
 import io.strimzi.api.kafka.model.common.certmanager.IssuerRefBuilder;
 import io.strimzi.operator.common.Reconciliation;
-import io.strimzi.operator.common.model.Labels;
 import io.strimzi.operator.common.operator.MockCertIssuer;
 import org.junit.jupiter.api.Test;
 
@@ -59,7 +58,6 @@ public class CertManagerCaTest {
                 null,
                 null,
                 null,
-                Labels.EMPTY,
                 new IssuerRefBuilder()
                         .withName("cm-issuer")
                         .withKind(IssuerKind.CLUSTER_ISSUER)

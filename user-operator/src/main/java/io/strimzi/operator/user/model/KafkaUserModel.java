@@ -191,7 +191,7 @@ public class KafkaUserModel {
             data.put("user.key", userCertAndKey.keyAsBase64String());
             data.put("user.crt", userCertAndKey.certAsBase64String());
 
-            if (generatePkcs12Stores) {
+            if (generatePkcs12Stores && userCertAndKey.keyStore() != null) {
                 data.put("user.p12", userCertAndKey.keyStoreAsBase64String());
                 data.put("user.password", userCertAndKey.storePasswordAsBase64String());
             }
@@ -233,7 +233,7 @@ public class KafkaUserModel {
         int renewalDays = kafkaUserTlsClientAuthentication.getRenewalDays() != null ? kafkaUserTlsClientAuthentication.getRenewalDays() : caRenewalDays;
 
         return userCertIssuer.maybeCopyOrGenerateCert(reconciliation, clientsCaCertSecret, clientsCaKeySecret, userSecret,
-                        name, validityDays, renewalDays, generatePkcs12Stores, labels, createOwnerReference())
+                        name, validityDays, renewalDays, generatePkcs12Stores, createOwnerReference())
             .thenApply(result -> {
                 this.caCert = result.caCertBase64();
                 this.userCertAndKey = result.userCertAndKey();

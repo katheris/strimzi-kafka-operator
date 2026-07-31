@@ -46,9 +46,8 @@ public class CustomCaProvider extends CaProvider {
 
     @Override
     public CompletionStage<CaProviderResult> createAndReconcileCa() {
-        //TODO: should this return failed stage with the error?
-        if (existingCaCertSecret == null || existingCaKeySecret == null)   {
-            throw new InvalidResourceException(caRole.caName() + " should not be generated, but the secrets were not found.");
+        if (existingCaCertSecret == null || existingCaKeySecret == null) {
+            return CompletableFuture.failedFuture(new InvalidResourceException(caRole.caName() + " should not be generated, but the required CA secrets were not found."));
         }
         CertificateUtils.validateUserCaCertChain(reconciliation, caRole, existingCaCertSecret.getData());
         InternalCa internalCa = new InternalCa(reconciliation, caRole, certIssuer, passwordGenerator, existingCaCertSecret, existingCaKeySecret, caConfig);

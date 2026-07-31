@@ -18,7 +18,6 @@ import io.strimzi.certs.Subject;
 import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.StrimziTimeoutException;
 import io.strimzi.operator.common.Util;
-import io.strimzi.operator.common.model.Labels;
 import io.strimzi.operator.common.operator.MockCertIssuer;
 import io.strimzi.operator.common.operator.resource.ReconcileResult;
 import io.strimzi.operator.common.operator.resource.kubernetes.CertManagerCertificateOperator;
@@ -203,7 +202,6 @@ public class CertManagerCaCertIssuerTest {
                 certManagerCertificateOperator,
                 secretOperator,
                 null,
-                Labels.EMPTY,
                 new IssuerRefBuilder()
                         .withName("cm-issuer")
                         .withKind(IssuerKind.CLUSTER_ISSUER)
@@ -257,7 +255,6 @@ public class CertManagerCaCertIssuerTest {
                 certManagerCertificateOperator,
                 secretOperator,
                 null,
-                Labels.EMPTY,
                 new IssuerRefBuilder()
                         .withName("cm-issuer")
                         .withKind(IssuerKind.CLUSTER_ISSUER)
@@ -314,7 +311,6 @@ public class CertManagerCaCertIssuerTest {
                 certManagerCertificateOperator,
                 secretOperator,
                 null,
-                Labels.EMPTY,
                 new IssuerRefBuilder()
                         .withName("cm-issuer")
                         .withKind(IssuerKind.CLUSTER_ISSUER)
@@ -373,7 +369,6 @@ public class CertManagerCaCertIssuerTest {
                 certManagerCertificateOperator,
                 secretOperator,
                 null,
-                Labels.EMPTY,
                 new IssuerRefBuilder()
                         .withName("cm-issuer")
                         .withKind(IssuerKind.CLUSTER_ISSUER)
@@ -426,7 +421,6 @@ public class CertManagerCaCertIssuerTest {
                 certManagerCertificateOperator,
                 secretOperator,
                 null,
-                Labels.EMPTY,
                 new IssuerRefBuilder()
                         .withName("cm-issuer")
                         .withKind(IssuerKind.CLUSTER_ISSUER)
@@ -487,7 +481,6 @@ public class CertManagerCaCertIssuerTest {
                 certManagerCertificateOperator,
                 secretOperator,
                 null,
-                Labels.EMPTY,
                 new IssuerRefBuilder()
                         .withName("cm-issuer")
                         .withKind(IssuerKind.CLUSTER_ISSUER)
@@ -550,7 +543,6 @@ public class CertManagerCaCertIssuerTest {
                 certManagerCertificateOperator,
                 secretOperator,
                 null,
-                Labels.EMPTY,
                 new IssuerRefBuilder()
                         .withName("cm-issuer")
                         .withKind(IssuerKind.CLUSTER_ISSUER)
@@ -613,7 +605,6 @@ public class CertManagerCaCertIssuerTest {
                 certManagerCertificateOperator,
                 secretOperator,
                 null,
-                Labels.EMPTY,
                 new IssuerRefBuilder()
                         .withName("cm-issuer")
                         .withKind(IssuerKind.CLUSTER_ISSUER)

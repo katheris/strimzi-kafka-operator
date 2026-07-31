@@ -12,7 +12,6 @@ import io.strimzi.api.kafka.model.common.certmanager.IssuerRef;
 import io.strimzi.api.kafka.model.common.certmanager.IssuerRefBuilder;
 import io.strimzi.certs.OpenSslCertIssuer;
 import io.strimzi.operator.common.Reconciliation;
-import io.strimzi.operator.common.model.Labels;
 import io.strimzi.operator.common.model.PasswordGenerator;
 import io.strimzi.operator.common.operator.resource.kubernetes.CertManagerCertificateOperator;
 import io.strimzi.operator.common.operator.resource.kubernetes.SecretOperator;
@@ -29,17 +28,15 @@ public interface UserCertIssuer {
     /**
      * Maybe copy or generate user certificate using Clients CA
      *
-     * @param reconciliation        Reconciliation marker
-     * @param caCertSecret          Secret containing the CA certificate
-     * @param caKeySecret           Secret containing the CA private key
-     * @param userSecret            Existing user secret, if it exists
-     * @param userName              Name of the user
-     * @param validityDays          Certificate validity in days
-     * @param renewalDays           Certificate renewal period in days
-     * @param generatePkcs12Stores  Whether to generate PKCS12 keystores
-     * @param labels                Labels to add to any created resources
-     * @param ownerReference        Owner reference to add to any created resources
-     *
+     * @param reconciliation       Reconciliation marker
+     * @param caCertSecret         Secret containing the CA certificate
+     * @param caKeySecret          Secret containing the CA private key
+     * @param userSecret           Existing user secret, if it exists
+     * @param userName             Name of the user
+     * @param validityDays         Certificate validity in days
+     * @param renewalDays          Certificate renewal period in days
+     * @param generatePkcs12Stores Whether to generate PKCS12 keystores
+     * @param ownerReference       Owner reference to add to any created resources
      * @return CompletionStage with the CA cert and generated user certificate
      */
     CompletionStage<UserCertResult> maybeCopyOrGenerateCert(
@@ -51,7 +48,6 @@ public interface UserCertIssuer {
             int validityDays,
             int renewalDays,
             boolean generatePkcs12Stores,
-            Labels labels,
             OwnerReference ownerReference);
 
     /**

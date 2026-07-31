@@ -53,8 +53,8 @@ import static org.hamcrest.MatcherAssert.assertThat;
 /**
  * System tests for cert-manager CA integration.
  *
- * <p>The test simulates the steps user would perform before deploying a Kafka cluster
- * with {@code clusterCa.type: cert-manager.io}:</p>
+ * <p>The test simulates user setting up cert-manager and providing a Secret with CA public certificate
+ * before deploying a Kafka cluster with {@code clusterCa.type: cert-manager.io}:</p>
  * <ol>
  *   <li>A self-signed CA certificate and private key are generated and stored in a
  *       Kubernetes {@code Secret} in the cert-manager namespace.</li>
@@ -67,9 +67,7 @@ import static org.hamcrest.MatcherAssert.assertThat;
  */
 @Tag(REGRESSION)
 @SuiteDoc(
-    description = @Desc("Test suite verifying cert-manager CA integration: The Cluster Operator delegates " +
-        "issuing of end-entity certificate to an external cert-manager issuer while the cluster CA " +
-        "public cert is provided by the user in a Kubernetes Secret."),
+    description = @Desc("Test suite verifying cert-manager CA integration: The operators delegates issuing of end-entity certificate to an external cert-manager issuer while the CA public cert is provided by the user in a Kubernetes Secret."),
     labels = {
         @Label(value = TestDocsLabels.SECURITY)
     }
@@ -84,10 +82,8 @@ public class CertManagerST extends AbstractST {
     @SuppressWarnings("checkstyle:MethodLength")
     @ParallelNamespaceTest
     @TestDoc(
-        description = @Desc("Verifies the cert-manager Cluster CA happy path: a new Kafka cluster " +
-            "is deployed with clusterCa.type=cert-manager.io. cert-manager issues all component " +
-            "end-entity certificates. The cluster must come up healthy and a TLS-authenticated " +
-            "producer/consumer must be able to send and receive messages."),
+        description = @Desc("Test verifying the cert-manager Cluster CA happy path: a new Kafka cluster is deployed with clusterCa.type=cert-manager.io. cert-manager issues all component " +
+            "end-entity certificates. The cluster must come up healthy and a TLS-authenticated producer/consumer must be able to send and receive messages."),
         steps = {
             @Step(value = "Create the CA cert Secret in the test namespace.",
                   expected = "Secret is present in the test namespace."),
@@ -270,9 +266,7 @@ public class CertManagerST extends AbstractST {
     @SuppressWarnings("checkstyle:MethodLength")
     @ParallelNamespaceTest
     @TestDoc(
-        description = @Desc("Verifies that cert-manager renews end-entity certificates by updating validityDays on the Kafka cluster " +
-            "and that the Cluster Operator detects the cert change and rolls the broker pods. After the rolling update the cluster " +
-            "must remain healthy and a TLS-authenticated produce/consume must be able to send and receive messages."),
+        description = @Desc("Test verifying that cert-manager renews end-entity certificates by updating validityDays on the Kafka cluster and that the Cluster Operator detects the cert change and rolls the broker pods. After the rolling update the cluster must remain healthy and a TLS-authenticated produce/consume must be able to send and receive messages."),
         steps = {
             @Step(value = "Create the CA cert Secret in the test namespace and deploy Kafka with clusterCa.type=cert-manager.io.",
                   expected = "Kafka cluster reaches ready state."),
@@ -380,6 +374,161 @@ public class CertManagerST extends AbstractST {
             testStorage.getMessageCount());
     }
 
+    @ParallelNamespaceTest
+    @TestDoc(
+        description = @Desc("Test verifying that when clientsCa.type=cert-manager.io is configured, the User Operator delegates issuing of KafkaUser TLS certificate to cert-manager. The cert-manager managed Secret (-cm suffix) must exist, and user.crt in the Strimzi user Secret must match its tls.crt."),
+        steps = {
+            @Step(value = "Create the CA cert Secret in the test namespace and deploy Kafka with both " +
+                      "clusterCa.type=cert-manager.io and clientsCa.type=cert-manager.io.",
+                  expected = "Kafka cluster reaches ready state."),
+            @Step(value = "Create a KafkaUser with TLS authentication.",
+                  expected = "KafkaUser reaches ready state and its Secret is populated."),
+            @Step(value = "Assert that the cert-manager managed user Secret (<username>-cm) exists and " +
+                      "its tls.crt matches user.crt in the Strimzi user Secret.",
+                  expected = "cert-manager Secret exists and certificates match."),
+            @Step(value = "Assert that user.crt is signed by the cert-manager clients CA " +
+                      "(issuer DN matches clients CA subject DN).",
+                  expected = "User certificate issuer DN matches the clients CA subject DN."),
+            @Step(value = "Produce and consume messages over TLS using the KafkaUser.",
+                    expected = "Messages are successfully produced and consumed.")
+        },
+        labels = {
+            @Label(value = TestDocsLabels.SECURITY)
+        }
+    )
+    void testKafkaUserCertIssuedByCertManager() {
+        final TestStorage testStorage = new TestStorage(KubeResourceManager.get().getTestContext());
+
+        createCaCertSecret(testStorage.getNamespaceName());
+
+        KubeResourceManager.get().createResourceWithWait(
+            KafkaNodePoolTemplates.brokerPoolPersistentStorage(
+                testStorage.getNamespaceName(), testStorage.getBrokerPoolName(), testStorage.getClusterName(), 3).build(),
+            KafkaNodePoolTemplates.controllerPoolPersistentStorage(
+                testStorage.getNamespaceName(), testStorage.getControllerPoolName(), testStorage.getClusterName(), 3).build()
+        );
+
+        KubeResourceManager.get().createResourceWithWait(
+            KafkaTemplates.kafka(testStorage.getNamespaceName(), testStorage.getClusterName(), 3)
+                .editSpec()
+                    .withNewClusterCa()
+                        .withGenerateCertificateAuthority(false)
+                        .withType(CertificateManagerType.CERT_MANAGER_IO)
+                        .withNewCertManager()
+                            .withNewIssuerRef()
+                                .withName(SetupCertManager.CLUSTER_ISSUER_NAME)
+                                .withKind(IssuerKind.CLUSTER_ISSUER)
+                                .withGroup("cert-manager.io")
+                            .endIssuerRef()
+                            .withNewCaCert()
+                                .withSecretName(CA_CERT_SECRET_NAME)
+                                .withCertificate(CA_CERT_KEY)
+                            .endCaCert()
+                        .endCertManager()
+                    .endClusterCa()
+                    .withNewClientsCa()
+                        .withGenerateCertificateAuthority(false)
+                        .withType(CertificateManagerType.CERT_MANAGER_IO)
+                        .withNewCertManager()
+                            .withNewIssuerRef()
+                                .withName(SetupCertManager.CLUSTER_ISSUER_NAME)
+                                .withKind(IssuerKind.CLUSTER_ISSUER)
+                                .withGroup("cert-manager.io")
+                            .endIssuerRef()
+                            .withNewCaCert()
+                                .withSecretName(CA_CERT_SECRET_NAME)
+                                .withCertificate(CA_CERT_KEY)
+                            .endCaCert()
+                        .endCertManager()
+                    .endClientsCa()
+                .endSpec()
+                .build()
+        );
+
+        KubeResourceManager.get().createResourceWithWait(KafkaUserTemplates.tlsUser(testStorage).build());
+
+        LOGGER.info("KafkaUser {}/{} is ready — asserting cert-manager certificate issuance",
+            testStorage.getNamespaceName(), testStorage.getUsername());
+
+        // The cert-manager managed Secret for the user follows the same -cm naming convention
+        // as broker and cluster-operator Secrets: <username>-cm
+        final String cmUserSecretName = testStorage.getUsername() + "-cm";
+        final Secret cmUserSecret = KubeResourceManager.get().kubeClient().getClient()
+            .secrets()
+            .inNamespace(testStorage.getNamespaceName())
+            .withName(cmUserSecretName)
+            .get();
+
+        assertThat("cert-manager user Secret '" + cmUserSecretName + "' must exist", cmUserSecret, notNullValue());
+
+        final X509Certificate cmUserCert = SecretUtils.getCertificateFromSecret(cmUserSecret, "tls.crt");
+        assertThat("cert-manager user cert must not be null", cmUserCert, notNullValue());
+
+        // Retrieve the Strimzi user Secret and extract user.crt
+        final Secret userSecret = KubeResourceManager.get().kubeClient().getClient()
+            .secrets()
+            .inNamespace(testStorage.getNamespaceName())
+            .withName(testStorage.getUsername())
+            .get();
+
+        assertThat("Strimzi user Secret must exist", userSecret, notNullValue());
+
+        final X509Certificate userCert = SecretUtils.getCertificateFromSecret(userSecret, "user.crt");
+        assertThat("user.crt must not be null", userCert, notNullValue());
+
+        assertThat("cert-manager Secret tls.crt must match Strimzi user Secret user.crt",
+            cmUserCert, is(userCert));
+
+        // Verify the user cert is signed by the cert-manager clients CA
+        final Secret clientsCaCertSecret = KubeResourceManager.get().kubeClient().getClient()
+            .secrets()
+            .inNamespace(testStorage.getNamespaceName())
+            .withName(KafkaResources.clientsCaCertificateSecretName(testStorage.getClusterName()))
+            .get();
+
+        assertThat("Clients CA cert Secret must exist", clientsCaCertSecret, notNullValue());
+
+        final X509Certificate clientsCaCert = SecretUtils.getCertificateFromSecret(clientsCaCertSecret, Ca.CA_CRT);
+        assertThat("Clients CA cert must not be null", clientsCaCert, notNullValue());
+
+        assertThat("user.crt issuer DN must match the cert-manager clients CA subject DN",
+            userCert.getIssuerX500Principal().getName(),
+            is(clientsCaCert.getSubjectX500Principal().getName()));
+
+        LOGGER.info("cert-manager user Secret '{}' cert matches Strimzi user Secret '{}', issuer '{}' matches clients CA subject '{}'",
+            cmUserSecretName, testStorage.getUsername(),
+            userCert.getIssuerX500Principal().getName(), clientsCaCert.getSubjectX500Principal().getName());
+
+        KubeResourceManager.get().createResourceWithWait(KafkaTopicTemplates.topic(testStorage).build());
+
+        KafkaProducerConsumer kafkaProducerConsumer =
+                new KafkaProducerConsumerBuilder()
+                        .withProducerName(testStorage.getProducerName())
+                        .withConsumerName(testStorage.getConsumerName())
+                        .withNamespaceName(testStorage.getNamespaceName())
+                        .withTopicName(testStorage.getTopicName())
+                        .withConsumerGroup(ClientUtils.generateRandomConsumerGroup())
+                        .withBootstrapAddress(KafkaResources.tlsBootstrapAddress(testStorage.getClusterName()))
+                        .withMessageCount(testStorage.getMessageCount())
+                        .withAuthentication(ClientsAuthentication.configureTls(testStorage.getClusterName(), testStorage.getUsername()))
+                        .build();
+
+        KubeResourceManager.get().createResourceWithWait(
+                kafkaProducerConsumer.getProducer().getJob(),
+                kafkaProducerConsumer.getConsumer().getJob()
+        );
+
+        ClientUtils.waitForClientsSuccess(
+                testStorage.getNamespaceName(),
+                testStorage.getConsumerName(),
+                testStorage.getProducerName(),
+                testStorage.getMessageCount()
+        );
+
+        LOGGER.info("TLS producer/consumer successfully exchanged {} messages after cert renewal rolling update",
+                testStorage.getMessageCount());
+    }
+
     @BeforeAll
     void setup() {
         SetupCertManager.deployCertManager();
@@ -410,6 +559,6 @@ public class CertManagerST extends AbstractST {
                 .build();
 
         KubeResourceManager.get().createResourceWithWait(secret);
-        LOGGER.info("Created user-provided CA cert Secret '{}/{}' (key='{}')", namespace, CA_CERT_SECRET_NAME, CA_CERT_KEY);
+        LOGGER.info("Created user-provided CA cert Secret '{}/{}'", namespace, CA_CERT_SECRET_NAME);
     }
 }

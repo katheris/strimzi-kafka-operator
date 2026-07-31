@@ -14,7 +14,6 @@ import io.strimzi.operator.common.Util;
 import io.strimzi.operator.common.ca.Ca;
 import io.strimzi.operator.common.ca.CaConfig;
 import io.strimzi.operator.common.ca.CertManagerCa;
-import io.strimzi.operator.common.model.Labels;
 import io.strimzi.operator.common.operator.resource.kubernetes.CertManagerCertificateOperator;
 import io.strimzi.operator.common.operator.resource.kubernetes.SecretOperator;
 import io.strimzi.operator.user.model.InvalidCertificateException;
@@ -54,7 +53,6 @@ public class CertManagerCaUserCertIssuer implements UserCertIssuer {
             int validityDays,
             int renewalDays,
             boolean generatePkcs12Stores,
-            Labels labels,
             OwnerReference ownerReference) {
         validateCaSecrets(caCertSecret);
 
@@ -66,15 +64,16 @@ public class CertManagerCaUserCertIssuer implements UserCertIssuer {
                 certManagerCertificateOperator,
                 secretOperator,
                 ownerReference,
-                labels,
                 issuerRef
         );
 
-        String userCrt = userSecret.getData().get("user.crt");
-        String userKey = userSecret.getData().get("user.key");
         CertAndKey existingCertAndKey = null;
-        if (userCrt != null && !userCrt.isEmpty() && userKey != null && !userKey.isEmpty()) {
-            existingCertAndKey = new CertAndKey(Util.decodeBytesFromBase64(userKey), Util.decodeBytesFromBase64(userCrt), clientsCa.caCertGeneration());
+        if (userSecret != null) {
+            String userCrt = userSecret.getData().get("user.crt");
+            String userKey = userSecret.getData().get("user.key");
+            if (userCrt != null && !userCrt.isEmpty() && userKey != null && !userKey.isEmpty()) {
+                existingCertAndKey = new CertAndKey(Util.decodeBytesFromBase64(userKey), Util.decodeBytesFromBase64(userCrt), clientsCa.caCertGeneration());
+            }
         }
 
         return clientsCa.maybeCopyOrGenerateClientCert(reconciliation, userName, existingCertAndKey, false)

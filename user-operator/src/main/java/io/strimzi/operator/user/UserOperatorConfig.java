@@ -609,7 +609,8 @@ public class UserOperatorConfig {
      * @return Kind of the cert-manager Issuer.
      */
     public IssuerKind getCertManagerIssuerKind() {
-        return IssuerKind.forValue(get(CM_ISSUER_KIND));
+        String value = get(CM_ISSUER_KIND);
+        return (value != null && !value.isEmpty()) ? IssuerKind.forValue(value) : null;
     }
 
     /**

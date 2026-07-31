@@ -17,7 +17,6 @@ import io.strimzi.operator.common.ca.Ca;
 import io.strimzi.operator.common.ca.CaConfig;
 import io.strimzi.operator.common.ca.CertificateUtils;
 import io.strimzi.operator.common.ca.InternalCa;
-import io.strimzi.operator.common.model.Labels;
 import io.strimzi.operator.common.model.PasswordGenerator;
 import io.strimzi.operator.user.model.InvalidCertificateException;
 
@@ -63,7 +62,6 @@ public class InternalCaUserCertIssuer implements UserCertIssuer {
             int caValidityDays,
             int caRenewalDays,
             boolean generatePkcs12Stores,
-            Labels labels,
             OwnerReference ownerReference) {
         validateCaSecrets(reconciliation, clientsCaCertSecret, clientsCaKeySecret);
 
