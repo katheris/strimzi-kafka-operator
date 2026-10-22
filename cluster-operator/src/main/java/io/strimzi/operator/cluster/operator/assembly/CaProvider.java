@@ -15,6 +15,7 @@ import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.Util;
 import io.strimzi.operator.common.ca.Ca;
 import io.strimzi.operator.common.ca.CaConfig;
+import io.strimzi.operator.common.ca.CertManagerCa;
 import io.strimzi.operator.common.model.Labels;
 import io.strimzi.operator.common.model.PasswordGenerator;
 import io.strimzi.operator.common.operator.resource.kubernetes.CertManagerCertificateOperator;
@@ -24,7 +25,9 @@ import java.time.Clock;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.function.Function;
 
 import static io.strimzi.operator.common.ca.Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION;
 import static java.util.Collections.emptyList;
@@ -42,6 +45,7 @@ public abstract class CaProvider {
     protected final Map<String, String> caLabels;
     protected final Secret existingCaCertSecret;
     protected final Secret existingCaKeySecret;
+    protected final Function<String, CompletionStage<Void>> otherCaTypesCleanupCallback;
 
     /**
      * Creates a CA provider.
@@ -77,32 +81,36 @@ public abstract class CaProvider {
     ) {
         return switch (caConfig.getCertificateManagerType()) {
             case STRIMZI -> {
+                var certManagerCleanupCallback = CertManagerCa.cleanupCallback(reconciliation, certManagerCertificateOperator);
                 if (caConfig.isGenerateCa()) {
                     yield new InternalCaProvider(reconciliation, caRole, caConfig, kafkaCr, secretOperator, certIssuer,
-                            passwordGenerator, clock, existingCaCertSecret, existingCaKeySecret
+                            passwordGenerator, clock, existingCaCertSecret, existingCaKeySecret, certManagerCleanupCallback
                     );
                 } else {
                     yield new CustomCaProvider(reconciliation, caRole, caConfig, kafkaCr, certIssuer, passwordGenerator,
-                            existingCaCertSecret, existingCaKeySecret
+                            existingCaCertSecret, existingCaKeySecret, certManagerCleanupCallback
                     );
                 }
             }
             case CERT_MANAGER -> new CertManagerCaProvider(reconciliation, caRole, caConfig, kafkaCr, existingCaCertSecret,
-                    clusterOperatorCertSecret, certManagerCertificateOperator, secretOperator);
+                    clusterOperatorCertSecret, certManagerCertificateOperator, secretOperator,
+                    // Currently InternalCa does not have resources needing to be cleaned up
+                    i -> CompletableFuture.completedStage(null));
         };
     }
 
     /**
      * Constructor.
      *
-     * @param reconciliation        Reconciliation marker
-     * @param caRole                The role of the CA
-     * @param caConfig              CA configuration
-     * @param kafkaCr               The Kafka custom resource
-     * @param existingCaCertSecret  Existing CA certificate secret
-     * @param existingCaKeySecret   Existing CA key secret
+     * @param reconciliation                Reconciliation marker
+     * @param caRole                        The role of the CA
+     * @param caConfig                      CA configuration
+     * @param kafkaCr                       The Kafka custom resource
+     * @param existingCaCertSecret          Existing CA certificate secret
+     * @param existingCaKeySecret           Existing CA key secret
+     * @param otherCaTypesCleanupCallback   Callback to clean up resources from other CA types
      */
-    CaProvider(Reconciliation reconciliation, Ca.CaRole caRole, CaConfig caConfig, Kafka kafkaCr, Secret existingCaCertSecret, Secret existingCaKeySecret) {
+    CaProvider(Reconciliation reconciliation, Ca.CaRole caRole, CaConfig caConfig, Kafka kafkaCr, Secret existingCaCertSecret, Secret existingCaKeySecret, Function<String, CompletionStage<Void>> otherCaTypesCleanupCallback) {
         this.reconciliation = reconciliation;
         this.caRole = caRole;
         this.caConfig = caConfig;
@@ -110,6 +118,7 @@ public abstract class CaProvider {
         this.caLabels = Labels.generateDefaultLabels(kafkaCr, Labels.APPLICATION_NAME, "certificate-authority", AbstractModel.STRIMZI_CLUSTER_OPERATOR_NAME).toMap();
         this.existingCaCertSecret = existingCaCertSecret;
         this.existingCaKeySecret = existingCaKeySecret;
+        this.otherCaTypesCleanupCallback = otherCaTypesCleanupCallback;
     }
 
     /**

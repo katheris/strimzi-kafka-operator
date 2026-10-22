@@ -19,6 +19,7 @@ import io.strimzi.operator.common.model.PasswordGenerator;
 import java.security.cert.X509Certificate;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.function.Function;
 
 /**
  * CA provider for custom CAs provided by users.
@@ -33,17 +34,18 @@ public class CustomCaProvider extends CaProvider {
     /**
      * Constructor.
      *
-     * @param reconciliation    Reconciliation marker
-     * @param caRole            The role of this CA
-     * @param caConfig          CA configuration
-     * @param kafkaCr           The Kafka custom resource
-     * @param certIssuer        Certificate issuer
-     * @param passwordGenerator Password generator
-     * @param existingCaCert    Existing CA certificate secret
-     * @param existingCaKey     Existing CA key secret
+     * @param reconciliation                Reconciliation marker
+     * @param caRole                        The role of this CA
+     * @param caConfig                      CA configuration
+     * @param kafkaCr                       The Kafka custom resource
+     * @param certIssuer                    Certificate issuer
+     * @param passwordGenerator             Password generator
+     * @param existingCaCert                Existing CA certificate secret
+     * @param existingCaKey                 Existing CA key secret
+     * @param otherCaTypesCleanupCallback   Callback to clean up resources from other CA types
      */
-    CustomCaProvider(Reconciliation reconciliation, Ca.CaRole caRole, CaConfig caConfig, Kafka kafkaCr, CertIssuer certIssuer, PasswordGenerator passwordGenerator, Secret existingCaCert, Secret existingCaKey) {
-        super(reconciliation, caRole, caConfig, kafkaCr, existingCaCert, existingCaKey);
+    CustomCaProvider(Reconciliation reconciliation, Ca.CaRole caRole, CaConfig caConfig, Kafka kafkaCr, CertIssuer certIssuer, PasswordGenerator passwordGenerator, Secret existingCaCert, Secret existingCaKey, Function<String, CompletionStage<Void>> otherCaTypesCleanupCallback) {
+        super(reconciliation, caRole, caConfig, kafkaCr, existingCaCert, existingCaKey, otherCaTypesCleanupCallback);
         this.certIssuer = certIssuer;
         this.passwordGenerator = passwordGenerator;
     }
@@ -54,7 +56,7 @@ public class CustomCaProvider extends CaProvider {
             return CompletableFuture.failedStage(new InvalidResourceException(caRole.caName() + " should not be generated, but the secrets were not found."));
         }
         CertificateUtils.validateCaCertChain(reconciliation, caRole, existingCaCertSecret.getData());
-        InternalCa internalCa = new InternalCa(reconciliation, caRole, certIssuer, passwordGenerator, existingCaCertSecret, existingCaKeySecret, caConfig);
+        InternalCa internalCa = new InternalCa(reconciliation, caRole, certIssuer, passwordGenerator, existingCaCertSecret, existingCaKeySecret, caConfig, otherCaTypesCleanupCallback);
         maybeWarnCertExpiry(internalCa);
         return CompletableFuture.completedStage(new CaProviderResult(internalCa, existingCaCertSecret));
     }

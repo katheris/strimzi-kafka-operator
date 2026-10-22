@@ -25,6 +25,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.function.Function;
 
 import static io.strimzi.operator.common.ca.Ca.ANNO_STRIMZI_IO_CA_KEY_GENERATION;
 import static io.strimzi.operator.common.ca.Ca.CA_CRT;
@@ -42,14 +43,15 @@ public class CertManagerCaProvider extends CaProvider {
     /**
      * Constructor.
      *
-     * @param reconciliation            Reconciliation marker
-     * @param caRole                    The role of this CA
-     * @param caConfig                  CA configuration
-     * @param kafkaCr                   The Kafka custom resource
-     * @param existingCaCertSecret      Existing CA certificate secret
-     * @param clusterOperatorSecret     Cluster operator secret
-     * @param certificateOperator       Certificate operator for managing cert-manager certificates
-     * @param secretOperator            Secret operator for managing secrets
+     * @param reconciliation                Reconciliation marker
+     * @param caRole                        The role of this CA
+     * @param caConfig                      CA configuration
+     * @param kafkaCr                       The Kafka custom resource
+     * @param existingCaCertSecret          Existing CA certificate secret
+     * @param clusterOperatorSecret         Cluster operator secret
+     * @param certificateOperator           Certificate operator for managing cert-manager certificates
+     * @param secretOperator                Secret operator for managing secrets
+     * @param otherCaTypesCleanupCallback   Callback to clean up resources from other CA types
      */
     public CertManagerCaProvider(Reconciliation reconciliation,
                                  Ca.CaRole caRole,
@@ -58,8 +60,9 @@ public class CertManagerCaProvider extends CaProvider {
                                  Secret existingCaCertSecret,
                                  Secret clusterOperatorSecret,
                                  CertManagerCertificateOperator certificateOperator,
-                                 SecretOperator secretOperator) {
-        super(reconciliation, caRole, caConfig, kafkaCr, existingCaCertSecret, null);
+                                 SecretOperator secretOperator,
+                                 Function<String, CompletionStage<Void>> otherCaTypesCleanupCallback) {
+        super(reconciliation, caRole, caConfig, kafkaCr, existingCaCertSecret, null, otherCaTypesCleanupCallback);
         this.certificateAuthority = switch (caRole) {
             case CLUSTER_CA -> kafkaCr.getSpec().getClusterCa();
             case CLIENTS_CA -> kafkaCr.getSpec().getClientsCa();
@@ -76,6 +79,7 @@ public class CertManagerCaProvider extends CaProvider {
                     CertManagerCa certManagerCa = new CertManagerCa(reconciliation, caRole,
                             existingCaCertSecret,
                             caConfig,
+                            otherCaTypesCleanupCallback,
                             certificateOperator,
                             secretOperator,
                             caConfig.isGenerateSecretOwnerRef() ? new OwnerReferenceBuilder()

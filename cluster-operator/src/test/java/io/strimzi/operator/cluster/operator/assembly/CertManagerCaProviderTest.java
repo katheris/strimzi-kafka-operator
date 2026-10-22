@@ -216,7 +216,8 @@ public class CertManagerCaProviderTest {
                 null,
                 null,
                 certificateOperator,
-                secretOperations
+                secretOperations,
+                i -> CompletableFuture.completedStage(null)
         );
 
         Exception exception = assertThrows(CompletionException.class, () -> caProvider.createAndReconcileCa().toCompletableFuture().join());
@@ -256,7 +257,8 @@ public class CertManagerCaProviderTest {
                 null,
                 null,
                 certificateOperator,
-                secretOperations
+                secretOperations,
+                i -> CompletableFuture.completedStage(null)
         );
 
         Exception exception = assertThrows(CompletionException.class, () -> caProvider.createAndReconcileCa().toCompletableFuture().join());
@@ -278,7 +280,8 @@ public class CertManagerCaProviderTest {
                 null,
                 null,
                 certificateOperator,
-                secretOperations
+                secretOperations,
+                i -> CompletableFuture.completedStage(null)
         );
 
         CaProviderResult result = caProvider.createAndReconcileCa().toCompletableFuture().join();
@@ -321,7 +324,8 @@ public class CertManagerCaProviderTest {
                 null,
                 null,
                 certificateOperator,
-                secretOperations
+                secretOperations,
+                i -> CompletableFuture.completedStage(null)
         );
 
         CaProviderResult result = caProvider.createAndReconcileCa().toCompletableFuture().join();
@@ -375,7 +379,8 @@ public class CertManagerCaProviderTest {
                 existingCaCertSecret,
                 clusterOperatorSecret,
                 certificateOperator,
-                secretOperations
+                secretOperations,
+                i -> CompletableFuture.completedStage(null)
         );
 
         CaProviderResult result = caProvider.createAndReconcileCa().toCompletableFuture().join();
@@ -428,7 +433,8 @@ public class CertManagerCaProviderTest {
                 existingCaCertSecret,
                 clusterOperatorSecret,
                 certificateOperator,
-                secretOperations
+                secretOperations,
+                i -> CompletableFuture.completedStage(null)
         );
 
         CaProviderResult result = caProvider.createAndReconcileCa().toCompletableFuture().join();
@@ -485,7 +491,8 @@ public class CertManagerCaProviderTest {
                 existingCaCertSecret,
                 clusterOperatorSecret,
                 certificateOperator,
-                secretOperations
+                secretOperations,
+                i -> CompletableFuture.completedStage(null)
         );
 
         CaProviderResult result = caProvider.createAndReconcileCa().toCompletableFuture().join();
@@ -532,7 +539,8 @@ public class CertManagerCaProviderTest {
                 existingCaCertSecret,
                 null,
                 certificateOperator,
-                secretOperations
+                secretOperations,
+                i -> CompletableFuture.completedStage(null)
         );
 
         CaProviderResult result = caProvider.createAndReconcileCa().toCompletableFuture().join();
@@ -591,7 +599,8 @@ public class CertManagerCaProviderTest {
                 existingCaCertSecret,
                 clusterOperatorSecret,
                 certificateOperator,
-                secretOperations
+                secretOperations,
+                i -> CompletableFuture.completedStage(null)
         );
 
         CaProviderResult result = caProvider.createAndReconcileCa().toCompletableFuture().join();
@@ -646,7 +655,8 @@ public class CertManagerCaProviderTest {
                 existingCaCertSecret,
                 null,
                 certificateOperator,
-                secretOperations
+                secretOperations,
+                i -> CompletableFuture.completedStage(null)
         );
 
         CaProviderResult result = caProvider.createAndReconcileCa().toCompletableFuture().join();
@@ -694,7 +704,8 @@ public class CertManagerCaProviderTest {
                 existingCaCertSecret,
                 null,
                 certificateOperator,
-                secretOperations
+                secretOperations,
+                i -> CompletableFuture.completedStage(null)
         );
 
         CaProviderResult result = caProvider.createAndReconcileCa().toCompletableFuture().join();
@@ -741,7 +752,8 @@ public class CertManagerCaProviderTest {
                 existingCaCertSecret,
                 null,
                 certificateOperator,
-                secretOperations
+                secretOperations,
+                i -> CompletableFuture.completedStage(null)
         );
 
         CaProviderResult result = caProvider.createAndReconcileCa().toCompletableFuture().join();

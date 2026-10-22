@@ -36,6 +36,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static io.strimzi.operator.common.ca.Ca.ANNO_STRIMZI_IO_CA_CERT_GENERATION;
 import static io.strimzi.operator.common.ca.Ca.CA_CRT;
@@ -198,11 +199,17 @@ public class CertManagerCaCertIssuerTest {
         when(certManagerCertificateOperator.reconcile(any(), eq(NAMESPACE), any(), any(Certificate.class))).thenAnswer(i -> CompletableFuture.completedStage(ReconcileResult.patched(i.getArgument(3))));
         when(certManagerCertificateOperator.waitForReady(any(), eq(NAMESPACE), any())).thenReturn(CompletableFuture.completedStage(null));
 
+        AtomicBoolean cleanupCallbackCalled = new AtomicBoolean(false);
+
         CertManagerCa certManagerCa = new CertManagerCa(
                 Reconciliation.DUMMY_RECONCILIATION,
                 Ca.CaRole.CLUSTER_CA,
                 clusterCaCertSecret,
                 new CaConfig(getCertificateAuthority(), false),
+                i -> {
+                    cleanupCallbackCalled.set(true);
+                    return CompletableFuture.completedStage(null);
+                },
                 certManagerCertificateOperator,
                 secretOperator,
                 null,
@@ -245,6 +252,8 @@ public class CertManagerCaCertIssuerTest {
                             // Entity cert is returned
                             assertThat(cert.cert(), is(Util.decodeBytesFromBase64(cmSecretData.get("tls.crt"))));
                             assertThat(cert.key(), is(Util.decodeBytesFromBase64(cmSecretData.get("tls.key"))));
+
+                            assertThat("Cleanup should not be called if this is a brand new cluster", cleanupCallbackCalled.get(), is(false));
                         }).toCompletableFuture().join();
     }
 
@@ -263,6 +272,7 @@ public class CertManagerCaCertIssuerTest {
                 Ca.CaRole.CLUSTER_CA,
                 clusterCaCertSecret,
                 new CaConfig(getCertificateAuthority(), false),
+                i -> CompletableFuture.completedStage(null),
                 certManagerCertificateOperator,
                 secretOperator,
                 null,
@@ -314,11 +324,17 @@ public class CertManagerCaCertIssuerTest {
         when(certManagerCertificateOperator.reconcile(any(), eq(NAMESPACE), any(), any(Certificate.class))).thenAnswer(i -> CompletableFuture.completedStage(ReconcileResult.patched(i.getArgument(3))));
         when(certManagerCertificateOperator.waitForReady(any(), eq(NAMESPACE), any())).thenReturn(CompletableFuture.completedStage(null));
 
+        AtomicBoolean cleanupCallbackCalled = new AtomicBoolean(false);
+
         CertManagerCa certManagerCa = new CertManagerCa(
                 Reconciliation.DUMMY_RECONCILIATION,
                 Ca.CaRole.CLUSTER_CA,
                 clusterCaCertSecret,
                 new CaConfig(getCertificateAuthority(), false),
+                i -> {
+                    cleanupCallbackCalled.set(true);
+                    return CompletableFuture.completedStage(null);
+                },
                 certManagerCertificateOperator,
                 secretOperator,
                 null,
@@ -342,6 +358,8 @@ public class CertManagerCaCertIssuerTest {
                     assertThat(cert.cert(), is(renewedCert.cert()));
                     assertThat(cert.key(), is(renewedCert.key()));
                     assertThat(cert.caCertGeneration(), is(0));
+
+                    assertThat("Cleanup callback should be called when renewing a certificate", cleanupCallbackCalled.get(), is(true));
                 }).toCompletableFuture().join();
     }
 
@@ -377,6 +395,7 @@ public class CertManagerCaCertIssuerTest {
                 Ca.CaRole.CLUSTER_CA,
                 clusterCaCertSecret,
                 new CaConfig(getCertificateAuthority(), false),
+                i -> CompletableFuture.completedStage(null),
                 certManagerCertificateOperator,
                 secretOperator,
                 null,
@@ -429,6 +448,7 @@ public class CertManagerCaCertIssuerTest {
                 Ca.CaRole.CLUSTER_CA,
                 clusterCaCertSecret,
                 new CaConfig(getCertificateAuthority(), false),
+                i -> CompletableFuture.completedStage(null),
                 certManagerCertificateOperator,
                 secretOperator,
                 null,
@@ -484,11 +504,17 @@ public class CertManagerCaCertIssuerTest {
         when(certManagerCertificateOperator.reconcile(any(), eq(NAMESPACE), any(), any(Certificate.class))).thenAnswer(i -> CompletableFuture.completedStage(ReconcileResult.patched(i.getArgument(3))));
         when(certManagerCertificateOperator.waitForReady(any(), eq(NAMESPACE), any())).thenReturn(CompletableFuture.completedStage(null));
 
+        AtomicBoolean cleanupCallbackCalled = new AtomicBoolean(false);
+
         CertManagerCa certManagerCa = new CertManagerCa(
                 Reconciliation.DUMMY_RECONCILIATION,
                 Ca.CaRole.CLUSTER_CA,
                 clusterCaCertSecret,
                 new CaConfig(getCertificateAuthority(), false),
+                i -> {
+                    cleanupCallbackCalled.set(true);
+                    return CompletableFuture.completedStage(null);
+                },
                 certManagerCertificateOperator,
                 secretOperator,
                 null,
@@ -512,6 +538,8 @@ public class CertManagerCaCertIssuerTest {
                     assertThat(cert.cert(), is(renewedCert.cert()));
                     assertThat(cert.key(), is(renewedCert.key()));
                     assertThat(cert.caCertGeneration(), is(1));
+
+                    assertThat("Cleanup callback should be called when renewing a certificate", cleanupCallbackCalled.get(), is(true));
                 }).toCompletableFuture().join();
     }
 
@@ -546,11 +574,17 @@ public class CertManagerCaCertIssuerTest {
         when(certManagerCertificateOperator.reconcile(any(), eq(NAMESPACE), any(), any(Certificate.class))).thenAnswer(i -> CompletableFuture.completedStage(ReconcileResult.patched(i.getArgument(3))));
         when(certManagerCertificateOperator.waitForReady(any(), eq(NAMESPACE), any())).thenReturn(CompletableFuture.completedStage(null));
 
+        AtomicBoolean cleanupCallbackCalled = new AtomicBoolean(false);
+
         CertManagerCa certManagerCa = new CertManagerCa(
                 Reconciliation.DUMMY_RECONCILIATION,
                 Ca.CaRole.CLUSTER_CA,
                 clusterCaCertSecret,
                 new CaConfig(getCertificateAuthority(), false),
+                i -> {
+                    cleanupCallbackCalled.set(true);
+                    return CompletableFuture.completedStage(null);
+                },
                 certManagerCertificateOperator,
                 secretOperator,
                 null,
@@ -574,6 +608,8 @@ public class CertManagerCaCertIssuerTest {
                     assertThat(cert.cert(), is(initialCert.cert()));
                     assertThat(cert.key(), is(initialCert.key()));
                     assertThat(cert.caCertGeneration(), is(0));
+
+                    assertThat("Cleanup callback should not be called when certificate is not being renewed", cleanupCallbackCalled.get(), is(false));
                 }).toCompletableFuture().join();
     }
 
@@ -608,11 +644,17 @@ public class CertManagerCaCertIssuerTest {
         when(certManagerCertificateOperator.reconcile(any(), eq(NAMESPACE), any(), any(Certificate.class))).thenAnswer(i -> CompletableFuture.completedStage(ReconcileResult.patched(i.getArgument(3))));
         when(certManagerCertificateOperator.waitForReady(any(), eq(NAMESPACE), any())).thenReturn(CompletableFuture.completedStage(null));
 
+        AtomicBoolean cleanupCallbackCalled = new AtomicBoolean(false);
+
         CertManagerCa certManagerCa = new CertManagerCa(
                 Reconciliation.DUMMY_RECONCILIATION,
                 Ca.CaRole.CLUSTER_CA,
                 clusterCaCertSecretNewKey,
                 new CaConfig(getCertificateAuthority(), false),
+                i -> {
+                    cleanupCallbackCalled.set(true);
+                    return CompletableFuture.completedStage(null);
+                },
                 certManagerCertificateOperator,
                 secretOperator,
                 null,
@@ -636,6 +678,8 @@ public class CertManagerCaCertIssuerTest {
                     assertThat(cert.cert(), is(newCert.cert()));
                     assertThat(cert.key(), is(newCert.key()));
                     assertThat(cert.caCertGeneration(), is(1));
+
+                    assertThat("Cleanup callback should be called when certificate is being renewed", cleanupCallbackCalled.get(), is(true));
                 }).toCompletableFuture().join();
     }
 
@@ -644,12 +688,17 @@ public class CertManagerCaCertIssuerTest {
         Map<String, String> clusterCaCertData = new HashMap<>();
         clusterCaCertData.put("ca.crt", MockCertIssuer.clusterCaCert());
         Secret clusterCaCertSecret = createCaCertSecret(clusterCaCertData, 0);
+        AtomicBoolean cleanupCallbackCalled = new AtomicBoolean(false);
 
         CertManagerCa certManagerCa = new CertManagerCa(
                 Reconciliation.DUMMY_RECONCILIATION,
                 Ca.CaRole.CLUSTER_CA,
                 clusterCaCertSecret,
                 new CaConfig(getCertificateAuthority(), false),
+                i -> {
+                    cleanupCallbackCalled.set(true);
+                    return CompletableFuture.completedStage(null);
+                },
                 certManagerCertificateOperator,
                 secretOperator,
                 null,
@@ -664,5 +713,6 @@ public class CertManagerCaCertIssuerTest {
         certManagerCa.cleanupEndEntityCert(entityName).toCompletableFuture().join();
 
         verify(certManagerCertificateOperator).deleteAsync(any(), eq(NAMESPACE), eq(entityName), eq(false));
+        assertThat("Cleanup should also call cleanup callback for other CA types.", cleanupCallbackCalled.get(), is(true));
     }
 }

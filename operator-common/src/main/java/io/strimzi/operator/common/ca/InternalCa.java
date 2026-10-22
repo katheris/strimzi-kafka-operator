@@ -37,6 +37,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.function.Function;
 import java.util.function.Predicate;
 
 /**
@@ -63,21 +64,23 @@ public class InternalCa extends Ca {
     /**
      * Constructs the CA object
      *
-     * @param reconciliation    Reconciliation marker
-     * @param caRole            Ca Role
-     * @param certIssuer        Certificate manager instance
-     * @param passwordGenerator Password generator instance
-     * @param caCertSecret      Kubernetes Secret where the CA public key is stored
-     * @param caKeySecret       Kubernetes Secret where the CA private key is stored
-     * @param caConfig          Certificate Authority configuration
+     * @param reconciliation                Reconciliation marker
+     * @param caRole                        Ca Role
+     * @param certIssuer                    Certificate manager instance
+     * @param passwordGenerator             Password generator instance
+     * @param caCertSecret                  Kubernetes Secret where the CA public key is stored
+     * @param caKeySecret                   Kubernetes Secret where the CA private key is stored
+     * @param caConfig                      Certificate Authority configuration
+     * @param otherCaTypesCleanupCallback   Callback to call when cleaning up resources for other CA types
      */
     public InternalCa(Reconciliation reconciliation,
                       CaRole caRole, CertIssuer certIssuer,
                       PasswordGenerator passwordGenerator,
                       Secret caCertSecret,
                       Secret caKeySecret,
-                      CaConfig caConfig) {
-        super(reconciliation, caRole, caCertSecret, caKeySecret, caConfig);
+                      CaConfig caConfig,
+                      Function<String, CompletionStage<Void>> otherCaTypesCleanupCallback) {
+        super(reconciliation, caRole, caCertSecret, caKeySecret, caConfig, otherCaTypesCleanupCallback);
         this.certIssuer = certIssuer;
         this.passwordGenerator = passwordGenerator;
     }
@@ -142,7 +145,14 @@ public class InternalCa extends Ca {
             certAndKey = existingCertAndKey;
         }
 
-        return CompletableFuture.completedFuture(certAndKey);
+        // Call cleanup if certificate is being renewed
+        if (existingCertAndKey != null && certAndKey != existingCertAndKey) {
+            return cleanupEndEntityCertForOtherCaTypes(resourceName)
+                    .thenApply(v -> certAndKey);
+
+        } else {
+            return CompletableFuture.completedFuture(certAndKey);
+        }
     }
 
     /**
@@ -217,7 +227,7 @@ public class InternalCa extends Ca {
             }
         }
 
-        CertAndKey certAndKey = null;
+        CertAndKey certAndKey;
         if (!reasons.isEmpty()) {
             LOGGER.infoCr(reconciliation, "Certificate for component {} needs to be regenerated because: {}", resourceName, String.join(", ", reasons));
 
@@ -235,11 +245,18 @@ public class InternalCa extends Ca {
             certAndKey = existingCertAndKey;
         }
 
-        return CompletableFuture.completedFuture(certAndKey);
+        // Call cleanup if certificate is being renewed
+        if (existingCertAndKey != null && certAndKey != existingCertAndKey) {
+            return cleanupEndEntityCertForOtherCaTypes(resourceName)
+                    .thenApply(v -> certAndKey);
+
+        } else {
+            return CompletableFuture.completedFuture(certAndKey);
+        }
     }
 
     @Override
-    public CompletionStage<Void> cleanupEndEntityCert(String entity) {
+    protected CompletionStage<Void> cleanupOwnEndEntityCert(String entity) {
         // InternalCa does not create any long-lived resources when issuing certificates - NOOP
         return CompletableFuture.completedFuture(null);
     }

@@ -201,7 +201,8 @@ public class KafkaAssemblyOperatorWithKRaftTest {
             PASSWORD_GENERATOR,
             ResourceUtils.createInitialCaCertSecret(NAMESPACE, CLUSTER_NAME, KafkaResources.clusterCaCertificateSecretName(CLUSTER_NAME), MockCertIssuer.clusterCaCert(), MockCertIssuer.clusterCaCertStore(), "123456"),
             ResourceUtils.createInitialCaKeySecret(NAMESPACE, CLUSTER_NAME, KafkaResources.clusterCaKeySecretName(CLUSTER_NAME), MockCertIssuer.clusterCaKey()),
-            new CaConfig(null, true)
+            new CaConfig(null, true),
+            i -> CompletableFuture.completedStage(null)
     );
 
     private final static InternalCa CLIENTS_CA = new InternalCa(
@@ -211,7 +212,8 @@ public class KafkaAssemblyOperatorWithKRaftTest {
             PASSWORD_GENERATOR,
             ResourceUtils.createInitialCaCertSecret(NAMESPACE, CLUSTER_NAME, KafkaResources.clusterCaCertificateSecretName(CLUSTER_NAME), MockCertIssuer.clusterCaCert(), MockCertIssuer.clusterCaCertStore(), "123456"),
             ResourceUtils.createInitialCaKeySecret(NAMESPACE, CLUSTER_NAME, KafkaResources.clusterCaKeySecretName(CLUSTER_NAME), MockCertIssuer.clusterCaKey()),
-            new CaConfig(null, true)
+            new CaConfig(null, true),
+            i -> CompletableFuture.completedStage(null)
     );
 
     protected static Vertx vertx;

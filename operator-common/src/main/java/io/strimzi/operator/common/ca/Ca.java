@@ -25,6 +25,7 @@ import java.time.format.SignStyle;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CompletionStage;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -307,25 +308,29 @@ public abstract class Ca {
     protected Map<String, String> caKeyData;
     protected RenewalType renewalType;
     protected boolean caCertsRemoved;
+    protected Function<String, CompletionStage<Void>> otherCaTypesCleanupCallback;
     Clock clock;
 
     /**
      * Constructs the CA object
      *
-     * @param reconciliation Reconciliation marker
-     * @param caRole         Ca Role
-     * @param caCertSecret   Kubernetes Secret where the CA public key is stored
-     * @param caKeySecret    Kubernetes Secret where the CA private key is stored
-     * @param caConfig       Certificate Authority configuration
+     * @param reconciliation                Reconciliation marker
+     * @param caRole                        Ca Role
+     * @param caCertSecret                  Kubernetes Secret where the CA public key is stored
+     * @param caKeySecret                   Kubernetes Secret where the CA private key is stored
+     * @param caConfig                      Certificate Authority configuration
+     * @param otherCaTypesCleanupCallback   Callback to call when cleaning up resources for other CA types
      */
     public Ca(Reconciliation reconciliation,
               CaRole caRole,
               Secret caCertSecret,
               Secret caKeySecret,
-              CaConfig caConfig) {
+              CaConfig caConfig,
+              Function<String, CompletionStage<Void>> otherCaTypesCleanupCallback) {
         this.reconciliation = reconciliation;
         this.caRole = caRole;
         this.caConfig = caConfig;
+        this.otherCaTypesCleanupCallback = otherCaTypesCleanupCallback;
         this.caCertGeneration = initCaCertGeneration(caCertSecret);
         this.caCertData = caCertSecret == null ? new HashMap<>() : caCertSecret.getData();
         this.caKeyGeneration = initCaKeyGeneration(caKeySecret, caCertSecret);
@@ -390,12 +395,25 @@ public abstract class Ca {
     /**
      * Clean up any end-entity certificate related resources for a specific entity.
      * This is called for example when scaling down nodes, or disabling a component like cruise control.
+     * It cleans up both this CA type's own resources and any resources left by a different CA type.
      *
      * @param entity Name of entity that is no longer needed
      *
      * @return CompletionStage that completes once the resources have been cleaned up
      */
-    public abstract CompletionStage<Void> cleanupEndEntityCert(String entity);
+    public CompletionStage<Void> cleanupEndEntityCert(String entity) {
+        return cleanupOwnEndEntityCert(entity)
+                .thenCompose(v -> cleanupEndEntityCertForOtherCaTypes(entity));
+    }
+
+    /**
+     * Clean up this CA type's own end-entity certificate related resources for a specific entity.
+     *
+     * @param entity Name of entity that is no longer needed
+     *
+     * @return CompletionStage that completes once the resources have been cleaned up
+     */
+    protected abstract CompletionStage<Void> cleanupOwnEndEntityCert(String entity);
 
     /**
      * Remove old certificates that are stored in the CA Secret.
@@ -410,6 +428,17 @@ public abstract class Ca {
      * @return boolean indicating whether any certs were removed
      */
     protected abstract boolean removeCerts(Map<String, String> newData, Predicate<Map.Entry<String, String>> predicate);
+
+    /**
+     * Cleanup resources for other CA types not being used
+     *
+     * @param entity Entity to clean up certificates for
+     *
+     * @return CompletionStage that completes once the resources have been cleaned up
+     */
+    public CompletionStage<Void> cleanupEndEntityCertForOtherCaTypes(String entity) {
+        return otherCaTypesCleanupCallback.apply(entity);
+    }
 
     /**
      * Extracts the CA generation from the CA cert Secret

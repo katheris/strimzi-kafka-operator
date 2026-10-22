@@ -237,7 +237,7 @@ public class KafkaClusterCertificateRenewalTest {
     public static class MockedClusterCa extends Ca {
 
         public MockedClusterCa() {
-            super(Reconciliation.DUMMY_RECONCILIATION, CaRole.CLUSTER_CA, null, null, new CaConfig(null, true));
+            super(Reconciliation.DUMMY_RECONCILIATION, CaRole.CLUSTER_CA, null, null, new CaConfig(null, true), i -> CompletableFuture.completedStage(null));
         }
 
         @Override
@@ -257,7 +257,7 @@ public class KafkaClusterCertificateRenewalTest {
         }
 
         @Override
-        public CompletionStage<Void> cleanupEndEntityCert(String entity) {
+        protected CompletionStage<Void> cleanupOwnEndEntityCert(String entity) {
             return CompletableFuture.completedFuture(null);
         }
 
