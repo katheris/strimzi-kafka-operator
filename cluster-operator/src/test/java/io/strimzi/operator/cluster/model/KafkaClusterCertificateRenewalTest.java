@@ -257,7 +257,7 @@ public class KafkaClusterCertificateRenewalTest {
         }
 
         @Override
-        public CompletionStage<Void> cleanupEndEntityCert(String entity) {
+        public CompletionStage<Void> deleteAllCertResourcesForEntity(String entity) {
             return CompletableFuture.completedFuture(null);
         }
 

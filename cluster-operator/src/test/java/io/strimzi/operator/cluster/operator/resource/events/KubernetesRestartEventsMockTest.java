@@ -92,6 +92,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -524,7 +525,8 @@ public class KubernetesRestartEventsMockTest {
                 passwordGenerator,
                 createInitialCaCertSecret(namespace, CLUSTER_NAME, KafkaResources.clusterCaCertificateSecretName(CLUSTER_NAME), MockCertIssuer.clusterCaCert(), MockCertIssuer.clusterCaCertStore(), "123456"),
                 createInitialCaKeySecret(namespace, CLUSTER_NAME, KafkaResources.clusterCaKeySecretName(CLUSTER_NAME), MockCertIssuer.clusterCaKey()),
-                new CaConfig(null, true)
+                new CaConfig(null, true),
+                i -> CompletableFuture.completedStage(null)
         );
 
         KafkaCluster kafkaCluster = KafkaClusterCreator.createKafkaCluster(reconciliation,
@@ -677,7 +679,8 @@ public class KubernetesRestartEventsMockTest {
                 passwordGenerator,
                 caCertSecret != null ? caCertSecret : createInitialCaCertSecret(namespace, CLUSTER_NAME, KafkaResources.clusterCaCertificateSecretName(CLUSTER_NAME), MockCertIssuer.clusterCaCert(), MockCertIssuer.clusterCaCertStore(), "123456"),
                 createInitialCaKeySecret(namespace, CLUSTER_NAME, KafkaResources.clusterCaKeySecretName(CLUSTER_NAME), MockCertIssuer.clusterCaKey()),
-                new CaConfig(null, true)
+                new CaConfig(null, true),
+                i -> CompletableFuture.completedStage(null)
         );
     }
 
@@ -689,7 +692,8 @@ public class KubernetesRestartEventsMockTest {
                 passwordGenerator,
                 createInitialCaCertSecret(namespace, CLUSTER_NAME, KafkaResources.clusterCaCertificateSecretName(CLUSTER_NAME), MockCertIssuer.clusterCaCert(), MockCertIssuer.clusterCaCertStore(), "123456"),
                 createInitialCaKeySecret(namespace, CLUSTER_NAME, KafkaResources.clusterCaKeySecretName(CLUSTER_NAME), MockCertIssuer.clusterCaKey()),
-                new CaConfig(null, true)
+                new CaConfig(null, true),
+                i -> CompletableFuture.completedStage(null)
         );
     }
 
@@ -724,7 +728,8 @@ public class KubernetesRestartEventsMockTest {
                     passwordGenerator,
                     createInitialCaCertSecret(namespace, CLUSTER_NAME, KafkaResources.clusterCaCertificateSecretName(CLUSTER_NAME), MockCertIssuer.clusterCaCert(), MockCertIssuer.clusterCaCertStore(), "123456"),
                     createInitialCaKeySecret(namespace, CLUSTER_NAME, KafkaResources.clusterCaKeySecretName(CLUSTER_NAME), MockCertIssuer.clusterCaKey()),
-                    new CaConfig(null, true));
+                    new CaConfig(null, true),
+                    i -> CompletableFuture.completedStage(null));
         }
     }
 }

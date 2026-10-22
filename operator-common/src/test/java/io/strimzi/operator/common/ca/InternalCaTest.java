@@ -22,6 +22,7 @@ import java.util.Base64;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -35,7 +36,9 @@ public class InternalCaTest {
     @Test
     public void shouldReturnCertificateExpirationDateEpoch() {
         Clock clock = Clock.fixed(new Date().toInstant(), Clock.systemUTC().getZone());
-        InternalCa clusterCa = new InternalCa(Reconciliation.DUMMY_RECONCILIATION, Ca.CaRole.CLUSTER_CA, new OpenSslCertIssuer(clock), new PasswordGenerator(10, "a", "a"), null, null, new CaConfig(null, true));
+        InternalCa clusterCa = new InternalCa(Reconciliation.DUMMY_RECONCILIATION, Ca.CaRole.CLUSTER_CA, new OpenSslCertIssuer(clock),
+                new PasswordGenerator(10, "a", "a"), null, null,
+                new CaConfig(null, true), i -> CompletableFuture.completedFuture(null));
         clusterCa.createRenewOrReplace(true, false, false);
 
         Instant inOneYear = Clock.offset(clock, Duration.ofDays(CertificateAuthority.DEFAULT_CERTS_VALIDITY_DAYS)).instant();
@@ -47,7 +50,9 @@ public class InternalCaTest {
     @Test
     public void shouldNoopWhenCaAlreadyExists() {
         Clock clock = Clock.fixed(new Date().toInstant(), Clock.systemUTC().getZone());
-        InternalCa clusterCa = new InternalCa(Reconciliation.DUMMY_RECONCILIATION, Ca.CaRole.CLUSTER_CA, new OpenSslCertIssuer(clock), new PasswordGenerator(10, "a", "a"), null, null, new CaConfig(null, true));
+        InternalCa clusterCa = new InternalCa(Reconciliation.DUMMY_RECONCILIATION, Ca.CaRole.CLUSTER_CA, new OpenSslCertIssuer(clock),
+                new PasswordGenerator(10, "a", "a"), null, null,
+                new CaConfig(null, true), i -> CompletableFuture.completedFuture(null));
         clusterCa.createRenewOrReplace(true, false, false);
         assertTrue(clusterCa.keyCreated(), "First call should create the CA");
 
@@ -60,7 +65,9 @@ public class InternalCaTest {
     @Test
     public void shouldReturnZeroWhenCertificateNotPresent() {
         Clock clock = Clock.fixed(new Date().toInstant(), Clock.systemUTC().getZone());
-        InternalCa clusterCa = new InternalCa(Reconciliation.DUMMY_RECONCILIATION, Ca.CaRole.CLUSTER_CA, new OpenSslCertIssuer(clock), new PasswordGenerator(10, "a", "a"), null, null, new CaConfig(null, true));
+        InternalCa clusterCa = new InternalCa(Reconciliation.DUMMY_RECONCILIATION, Ca.CaRole.CLUSTER_CA, new OpenSslCertIssuer(clock),
+                new PasswordGenerator(10, "a", "a"), null, null,
+                new CaConfig(null, true), i -> CompletableFuture.completedFuture(null));
         Exception exception = assertThrows(RuntimeException.class, clusterCa::getCertificateExpirationDateEpoch);
         assertEquals("ca.crt does not exist in the secret for Cluster CA", exception.getMessage());
     }
@@ -71,7 +78,9 @@ public class InternalCaTest {
         String instantExpected = "2022-03-23T09:00:00Z";
         Clock clock = Clock.fixed(Instant.parse(instantExpected), Clock.systemUTC().getZone());
 
-        InternalCa clusterCa = new InternalCa(Reconciliation.DUMMY_RECONCILIATION, Ca.CaRole.CLUSTER_CA, new OpenSslCertIssuer(clock), new PasswordGenerator(10, "a", "a"), null, null, new CaConfig(null, true));
+        InternalCa clusterCa = new InternalCa(Reconciliation.DUMMY_RECONCILIATION, Ca.CaRole.CLUSTER_CA, new OpenSslCertIssuer(clock),
+                new PasswordGenerator(10, "a", "a"), null, null,
+                new CaConfig(null, true), i -> CompletableFuture.completedFuture(null));
         clusterCa.setClock(clock);
         clusterCa.createRenewOrReplace(true, false, false);
         assertThat(clusterCa.caCertData().size(), is(3));
@@ -80,7 +89,9 @@ public class InternalCaTest {
         instantExpected = "2022-03-23T11:00:00Z";
         clock = Clock.fixed(Instant.parse(instantExpected), Clock.systemUTC().getZone());
 
-        clusterCa = new InternalCa(Reconciliation.DUMMY_RECONCILIATION, Ca.CaRole.CLUSTER_CA, new OpenSslCertIssuer(clock), new PasswordGenerator(10, "a", "a"), buildCertSecret(clusterCa), buildKeySecret(clusterCa), new CaConfig(null, true));
+        clusterCa = new InternalCa(Reconciliation.DUMMY_RECONCILIATION, Ca.CaRole.CLUSTER_CA, new OpenSslCertIssuer(clock),
+                new PasswordGenerator(10, "a", "a"), buildCertSecret(clusterCa),
+                buildKeySecret(clusterCa), new CaConfig(null, true), i -> CompletableFuture.completedFuture(null));
         clusterCa.setClock(clock);
         // force key replacement so certificate renewal ...
         clusterCa.createRenewOrReplace(true, true, false);
@@ -91,7 +102,9 @@ public class InternalCaTest {
         instantExpected = "2023-03-23T10:00:00Z";
         clock = Clock.fixed(Instant.parse(instantExpected), Clock.systemUTC().getZone());
 
-        clusterCa = new InternalCa(Reconciliation.DUMMY_RECONCILIATION, Ca.CaRole.CLUSTER_CA, new OpenSslCertIssuer(), new PasswordGenerator(10, "a", "a"), buildCertSecret(clusterCa), buildKeySecret(clusterCa), new CaConfig(null, true));
+        clusterCa = new InternalCa(Reconciliation.DUMMY_RECONCILIATION, Ca.CaRole.CLUSTER_CA, new OpenSslCertIssuer(),
+                new PasswordGenerator(10, "a", "a"), buildCertSecret(clusterCa),
+                buildKeySecret(clusterCa), new CaConfig(null, true), i -> CompletableFuture.completedFuture(null));
         clusterCa.setClock(clock);
         clusterCa.createRenewOrReplace(true, false, false);
         assertThat(clusterCa.caCertData().size(), is(3));
@@ -104,7 +117,9 @@ public class InternalCaTest {
         String instantExpected = "2022-03-30T09:00:00Z";
         Clock clock = Clock.fixed(Instant.parse(instantExpected), Clock.systemUTC().getZone());
 
-        InternalCa clusterCa = new InternalCa(Reconciliation.DUMMY_RECONCILIATION, Ca.CaRole.CLUSTER_CA, new OpenSslCertIssuer(clock), new PasswordGenerator(10, "a", "a"), null, null, new CaConfig(null, true));
+        InternalCa clusterCa = new InternalCa(Reconciliation.DUMMY_RECONCILIATION, Ca.CaRole.CLUSTER_CA, new OpenSslCertIssuer(clock),
+                new PasswordGenerator(10, "a", "a"), null, null,
+                new CaConfig(null, true), i -> CompletableFuture.completedFuture(null));
         clusterCa.setClock(clock);
         clusterCa.createRenewOrReplace(true, false, false);
 
@@ -127,7 +142,9 @@ public class InternalCaTest {
         String instantExpected = "2022-03-23T09:00:00Z";
         Clock clock = Clock.fixed(Instant.parse(instantExpected), Clock.systemUTC().getZone());
 
-        InternalCa clusterCa = new InternalCa(Reconciliation.DUMMY_RECONCILIATION, Ca.CaRole.CLUSTER_CA, new OpenSslCertIssuer(clock), new PasswordGenerator(10, "a", "a"), null, null, new CaConfig(null, true));
+        InternalCa clusterCa = new InternalCa(Reconciliation.DUMMY_RECONCILIATION, Ca.CaRole.CLUSTER_CA, new OpenSslCertIssuer(clock),
+                new PasswordGenerator(10, "a", "a"), null, null,
+                new CaConfig(null, true), i -> CompletableFuture.completedFuture(null));
         clusterCa.setClock(clock);
         clusterCa.createRenewOrReplace(true, false, false);
         assertThat(clusterCa.caCertData().size(), is(3));
@@ -136,7 +153,9 @@ public class InternalCaTest {
         instantExpected = "2022-03-23T11:00:00Z";
         clock = Clock.fixed(Instant.parse(instantExpected), Clock.systemUTC().getZone());
 
-        clusterCa = new InternalCa(Reconciliation.DUMMY_RECONCILIATION, Ca.CaRole.CLUSTER_CA, new OpenSslCertIssuer(clock), new PasswordGenerator(10, "a", "a"), buildCertSecret(clusterCa), buildKeySecret(clusterCa), new CaConfig(null, true));
+        clusterCa = new InternalCa(Reconciliation.DUMMY_RECONCILIATION, Ca.CaRole.CLUSTER_CA, new OpenSslCertIssuer(clock),
+                new PasswordGenerator(10, "a", "a"), buildCertSecret(clusterCa),
+                buildKeySecret(clusterCa), new CaConfig(null, true), i -> CompletableFuture.completedFuture(null));
         clusterCa.setClock(clock);
         // force key replacement so certificate renewal ...
         clusterCa.createRenewOrReplace(true, true, false);
@@ -224,7 +243,10 @@ public class InternalCaTest {
                 .withData(clusterCaKeyData)
                 .build();
 
-        InternalCa clusterCa = new InternalCa(Reconciliation.DUMMY_RECONCILIATION, Ca.CaRole.CLUSTER_CA, new OpenSslCertIssuer(), new PasswordGenerator(10, "a", "a"), clusterCaCert, clusterCaKey, new CaConfig(new CertificateAuthorityBuilder().withGenerateCertificateAuthority(false).build(), true));
+        InternalCa clusterCa = new InternalCa(Reconciliation.DUMMY_RECONCILIATION, Ca.CaRole.CLUSTER_CA, new OpenSslCertIssuer(),
+                new PasswordGenerator(10, "a", "a"), clusterCaCert, clusterCaKey,
+                new CaConfig(new CertificateAuthorityBuilder().withGenerateCertificateAuthority(false).build(), true),
+                i -> CompletableFuture.completedFuture(null));
 
         clusterCa.maybeDeleteOldCerts();
 

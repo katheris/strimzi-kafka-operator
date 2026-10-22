@@ -259,7 +259,7 @@ public class CruiseControlReconcilerTest {
         assertThat(pdbCaptor.getValue().getMetadata().getName(), is(CruiseControlResources.componentName(NAME)));
         assertThat(pdbCaptor.getValue().getSpec().getMaxUnavailable(), is(new IntOrString(1)));
 
-        verify(clusterCa, never()).cleanupEndEntityCert(eq(CruiseControlResources.secretName(NAME)));
+        verify(clusterCa, never()).deleteAllCertResourcesForEntity(eq(CruiseControlResources.secretName(NAME)));
     }
 
     @Test
@@ -332,6 +332,6 @@ public class CruiseControlReconcilerTest {
 
         verify(mockPodDisruptionBudget, times(1)).reconcile(any(), eq(NAMESPACE), eq(CruiseControlResources.componentName(NAME)), isNull());
 
-        verify(clusterCa, times(1)).cleanupEndEntityCert(eq(CruiseControlResources.secretName(NAME)));
+        verify(clusterCa, times(1)).deleteAllCertResourcesForEntity(eq(CruiseControlResources.secretName(NAME)));
     }
 }

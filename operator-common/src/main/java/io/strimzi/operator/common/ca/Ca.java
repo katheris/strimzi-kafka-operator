@@ -388,14 +388,15 @@ public abstract class Ca {
             Labels labels);
 
     /**
-     * Clean up any end-entity certificate related resources for a specific entity.
+     * Deletes any resources related to the certificate for a specific entity.
      * This is called for example when scaling down nodes, or disabling a component like cruise control.
+     * It cleans up both this CA type's own resources and any resources left by a different CA type.
      *
      * @param entity Name of entity that is no longer needed
      *
-     * @return CompletionStage that completes once the resources have been cleaned up
+     * @return CompletionStage that completes once the resources have been deleted
      */
-    public abstract CompletionStage<Void> cleanupEndEntityCert(String entity);
+    public abstract CompletionStage<Void> deleteAllCertResourcesForEntity(String entity);
 
     /**
      * Remove old certificates that are stored in the CA Secret.

@@ -91,7 +91,8 @@ public class KafkaReconcilerStatusTest {
             new PasswordGenerator(10, "a", "a"),
             ResourceUtils.createInitialCaCertSecret(NAMESPACE, CLUSTER_NAME, KafkaResources.clusterCaCertificateSecretName(CLUSTER_NAME), MockCertIssuer.clusterCaCert(), MockCertIssuer.clusterCaCertStore(), "123456"),
             ResourceUtils.createInitialCaKeySecret(NAMESPACE, CLUSTER_NAME, KafkaResources.clusterCaKeySecretName(CLUSTER_NAME), MockCertIssuer.clusterCaKey()),
-            new CaConfig(null, true)
+            new CaConfig(null, true),
+            i -> CompletableFuture.completedStage(null)
     );
     private final static InternalCa CLIENTS_CA = new InternalCa(
             Reconciliation.DUMMY_RECONCILIATION,
@@ -100,7 +101,8 @@ public class KafkaReconcilerStatusTest {
             new PasswordGenerator(10, "a", "a"),
             ResourceUtils.createInitialCaCertSecret(NAMESPACE, CLUSTER_NAME, KafkaResources.clusterCaCertificateSecretName(CLUSTER_NAME), MockCertIssuer.clusterCaCert(), MockCertIssuer.clusterCaCertStore(), "123456"),
             ResourceUtils.createInitialCaKeySecret(NAMESPACE, CLUSTER_NAME, KafkaResources.clusterCaKeySecretName(CLUSTER_NAME), MockCertIssuer.clusterCaKey()),
-            new CaConfig(null, true)
+            new CaConfig(null, true),
+            i -> CompletableFuture.completedStage(null)
     );
     private final static Kafka KAFKA = new KafkaBuilder()
                 .withNewMetadata()

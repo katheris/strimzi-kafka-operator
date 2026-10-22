@@ -204,8 +204,8 @@ public class EntityOperatorReconcilerTest {
         assertThat(pdbCaptor.getValue(), is(notNullValue()));
         assertThat(pdbCaptor.getValue().getSpec().getMaxUnavailable(), is(new IntOrString(1)));
 
-        verify(clusterCa, never()).cleanupEndEntityCert(KafkaResources.entityTopicOperatorSecretName(NAME));
-        verify(clusterCa, never()).cleanupEndEntityCert(KafkaResources.entityUserOperatorSecretName(NAME));
+        verify(clusterCa, never()).deleteAllCertResourcesForEntity(KafkaResources.entityTopicOperatorSecretName(NAME));
+        verify(clusterCa, never()).deleteAllCertResourcesForEntity(KafkaResources.entityUserOperatorSecretName(NAME));
     }
 
     @Test
@@ -333,8 +333,8 @@ public class EntityOperatorReconcilerTest {
         assertThat(pdbCaptor.getValue(), is(notNullValue()));
         assertThat(pdbCaptor.getValue().getSpec().getMaxUnavailable(), is(new IntOrString(1)));
 
-        verify(clusterCa, never()).cleanupEndEntityCert(KafkaResources.entityTopicOperatorSecretName(NAME));
-        verify(clusterCa, never()).cleanupEndEntityCert(KafkaResources.entityUserOperatorSecretName(NAME));
+        verify(clusterCa, never()).deleteAllCertResourcesForEntity(KafkaResources.entityTopicOperatorSecretName(NAME));
+        verify(clusterCa, never()).deleteAllCertResourcesForEntity(KafkaResources.entityUserOperatorSecretName(NAME));
     }
 
     @ParameterizedTest
@@ -452,8 +452,8 @@ public class EntityOperatorReconcilerTest {
         assertThat(pdbCaptor.getValue(), is(notNullValue()));
         assertThat(pdbCaptor.getValue().getSpec().getMaxUnavailable(), is(new IntOrString(1)));
 
-        verify(clusterCa, never()).cleanupEndEntityCert(KafkaResources.entityTopicOperatorSecretName(NAME));
-        verify(clusterCa, times(1)).cleanupEndEntityCert(KafkaResources.entityUserOperatorSecretName(NAME));
+        verify(clusterCa, never()).deleteAllCertResourcesForEntity(KafkaResources.entityTopicOperatorSecretName(NAME));
+        verify(clusterCa, times(1)).deleteAllCertResourcesForEntity(KafkaResources.entityUserOperatorSecretName(NAME));
     }
 
     @Test
@@ -560,8 +560,8 @@ public class EntityOperatorReconcilerTest {
         assertThat(pdbCaptor.getValue(), is(notNullValue()));
         assertThat(pdbCaptor.getValue().getSpec().getMaxUnavailable(), is(new IntOrString(1)));
 
-        verify(clusterCa, times(1)).cleanupEndEntityCert(KafkaResources.entityTopicOperatorSecretName(NAME));
-        verify(clusterCa, never()).cleanupEndEntityCert(KafkaResources.entityUserOperatorSecretName(NAME));
+        verify(clusterCa, times(1)).deleteAllCertResourcesForEntity(KafkaResources.entityTopicOperatorSecretName(NAME));
+        verify(clusterCa, never()).deleteAllCertResourcesForEntity(KafkaResources.entityUserOperatorSecretName(NAME));
     }
 
     @Test
@@ -661,8 +661,8 @@ public class EntityOperatorReconcilerTest {
         assertThat(pdbCaptor.getAllValues().size(), is(1));
         assertThat(pdbCaptor.getValue(), is(nullValue()));
 
-        verify(clusterCa, times(1)).cleanupEndEntityCert(KafkaResources.entityTopicOperatorSecretName(NAME));
-        verify(clusterCa, times(1)).cleanupEndEntityCert(KafkaResources.entityUserOperatorSecretName(NAME));
+        verify(clusterCa, times(1)).deleteAllCertResourcesForEntity(KafkaResources.entityTopicOperatorSecretName(NAME));
+        verify(clusterCa, times(1)).deleteAllCertResourcesForEntity(KafkaResources.entityUserOperatorSecretName(NAME));
     }
 
     @Test
@@ -755,8 +755,8 @@ public class EntityOperatorReconcilerTest {
         assertThat(pdbCaptor.getAllValues().size(), is(1));
         assertThat(pdbCaptor.getValue(), is(nullValue()));
 
-        verify(clusterCa, times(1)).cleanupEndEntityCert(KafkaResources.entityTopicOperatorSecretName(NAME));
-        verify(clusterCa, times(1)).cleanupEndEntityCert(KafkaResources.entityUserOperatorSecretName(NAME));
+        verify(clusterCa, times(1)).deleteAllCertResourcesForEntity(KafkaResources.entityTopicOperatorSecretName(NAME));
+        verify(clusterCa, times(1)).deleteAllCertResourcesForEntity(KafkaResources.entityUserOperatorSecretName(NAME));
     }
 
     @Test
@@ -890,8 +890,8 @@ public class EntityOperatorReconcilerTest {
         assertThat(pdbCaptor.getAllValues().size(), is(1));
         assertThat(pdbCaptor.getValue(), is(nullValue()));
 
-        verify(clusterCa, times(1)).cleanupEndEntityCert(KafkaResources.entityTopicOperatorSecretName(NAME));
-        verify(clusterCa, times(1)).cleanupEndEntityCert(KafkaResources.entityUserOperatorSecretName(NAME));
+        verify(clusterCa, times(1)).deleteAllCertResourcesForEntity(KafkaResources.entityTopicOperatorSecretName(NAME));
+        verify(clusterCa, times(1)).deleteAllCertResourcesForEntity(KafkaResources.entityUserOperatorSecretName(NAME));
     }
 
     @ParameterizedTest
@@ -1030,7 +1030,7 @@ public class EntityOperatorReconcilerTest {
         assertThat(pdbCaptor.getAllValues().size(), is(1));
         assertThat(pdbCaptor.getValue(), is(nullValue()));
 
-        verify(clusterCa, times(1)).cleanupEndEntityCert(KafkaResources.entityTopicOperatorSecretName(NAME));
-        verify(clusterCa, times(1)).cleanupEndEntityCert(KafkaResources.entityUserOperatorSecretName(NAME));
+        verify(clusterCa, times(1)).deleteAllCertResourcesForEntity(KafkaResources.entityTopicOperatorSecretName(NAME));
+        verify(clusterCa, times(1)).deleteAllCertResourcesForEntity(KafkaResources.entityUserOperatorSecretName(NAME));
     }
 }
