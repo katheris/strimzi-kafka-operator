@@ -253,7 +253,7 @@ public class CruiseControlReconciler {
                     );
         } else {
             return CompletableFuture.allOf(
-                    clusterCa.cleanupEndEntityCert(CruiseControlResources.secretName(reconciliation.name())).toCompletableFuture(),
+                    clusterCa.deleteAllCertResourcesForEntity(CruiseControlResources.secretName(reconciliation.name())).toCompletableFuture(),
                     secretOperator.reconcile(reconciliation, reconciliation.namespace(), CruiseControlResources.secretName(reconciliation.name()), null).toCompletableFuture()
             ).thenApply(i -> null);
         }

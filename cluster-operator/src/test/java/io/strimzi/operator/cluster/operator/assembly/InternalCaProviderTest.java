@@ -49,6 +49,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 
 import static io.strimzi.operator.common.ca.Ca.CA_CRT;
 import static io.strimzi.operator.common.ca.Ca.CA_KEY;
@@ -127,7 +128,8 @@ public class InternalCaProviderTest {
                 PASSWORD_GENERATOR,
                 clock,
                 caSecrets == null ? null : caSecrets.clusterCaCert,
-                caSecrets == null ? null : caSecrets.clusterCaKey
+                caSecrets == null ? null : caSecrets.clusterCaKey,
+                i -> CompletableFuture.completedStage(null)
         );
 
         clusterCaProvider.createAndReconcileCa().toCompletableFuture().join();
@@ -141,7 +143,8 @@ public class InternalCaProviderTest {
                 PASSWORD_GENERATOR,
                 clock,
                 caSecrets == null ? null : caSecrets.clientsCaCert,
-                caSecrets == null ? null : caSecrets.clientsCaKey
+                caSecrets == null ? null : caSecrets.clientsCaKey,
+                i -> CompletableFuture.completedStage(null)
         );
 
         clientsCaProvider.createAndReconcileCa().toCompletableFuture().join();

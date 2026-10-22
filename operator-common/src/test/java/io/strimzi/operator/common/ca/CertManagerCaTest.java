@@ -15,6 +15,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -40,6 +41,7 @@ public class CertManagerCaTest {
                 Ca.CaRole.CLUSTER_CA,
                 existingCertSecret,
                 new CaConfig(100, 10, 2048, false, false, CertificateManagerType.CERT_MANAGER),
+                i -> CompletableFuture.completedStage(null),
                 null,
                 null,
                 null,

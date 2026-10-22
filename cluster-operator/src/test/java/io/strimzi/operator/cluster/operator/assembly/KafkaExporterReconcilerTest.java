@@ -158,7 +158,7 @@ public class KafkaExporterReconcilerTest {
         assertThat(pdbCaptor.getValue(), is(notNullValue()));
         assertThat(pdbCaptor.getValue().getSpec().getMaxUnavailable(), is(new IntOrString(1)));
 
-        verify(clusterCa, never()).cleanupEndEntityCert(eq(KafkaExporterResources.secretName(NAME)));
+        verify(clusterCa, never()).deleteAllCertResourcesForEntity(eq(KafkaExporterResources.secretName(NAME)));
     }
 
     /*
@@ -229,7 +229,7 @@ public class KafkaExporterReconcilerTest {
         assertThat(pdbCaptor.getValue(), is(notNullValue()));
         assertThat(pdbCaptor.getValue().getSpec().getMaxUnavailable(), is(new IntOrString(1)));
 
-        verify(clusterCa, never()).cleanupEndEntityCert(eq(KafkaExporterResources.secretName(NAME)));
+        verify(clusterCa, never()).deleteAllCertResourcesForEntity(eq(KafkaExporterResources.secretName(NAME)));
     }
 
     /*
@@ -276,7 +276,7 @@ public class KafkaExporterReconcilerTest {
         verify(mockDepOps, times(1)).reconcile(any(), eq(NAMESPACE), eq(KafkaExporterResources.componentName(NAME)), isNull());
         verify(mockPodDisruptionBudgetOps, times(1)).reconcile(any(), eq(NAMESPACE), eq(KafkaExporterResources.componentName(NAME)), isNull());
 
-        verify(clusterCa, times(1)).cleanupEndEntityCert(eq(KafkaExporterResources.secretName(NAME)));
+        verify(clusterCa, times(1)).deleteAllCertResourcesForEntity(eq(KafkaExporterResources.secretName(NAME)));
     }
 
     /*
@@ -325,6 +325,6 @@ public class KafkaExporterReconcilerTest {
         verify(mockDepOps, times(1)).reconcile(any(), eq(NAMESPACE), eq(KafkaExporterResources.componentName(NAME)), isNull());
         verify(mockPodDisruptionBudgetOps, times(1)).reconcile(any(), eq(NAMESPACE), eq(KafkaExporterResources.componentName(NAME)), isNull());
 
-        verify(clusterCa, times(1)).cleanupEndEntityCert(eq(KafkaExporterResources.secretName(NAME)));
+        verify(clusterCa, times(1)).deleteAllCertResourcesForEntity(eq(KafkaExporterResources.secretName(NAME)));
     }
 }

@@ -33,6 +33,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 import java.util.function.Predicate;
 
 import static io.strimzi.operator.common.ca.CertificateUtils.getCertificateThumbprint;
@@ -58,6 +59,7 @@ public class CertManagerCa extends Ca {
      * @param caRole                         Ca role
      * @param caCertSecret                   Kubernetes Secret where the CA public key is stored
      * @param caConfig                       Certificate Authority configuration
+     * @param otherCaResourceDeleter         Deletes certificate resources for other CA types
      * @param certManagerCertificateOperator cert-manager Certificate operator
      * @param secretOperator                 Secret operator
      * @param ownerReference                 Owner reference for Kubernetes resources
@@ -67,11 +69,12 @@ public class CertManagerCa extends Ca {
                          CaRole caRole,
                          Secret caCertSecret,
                          CaConfig caConfig,
+                         Function<String, CompletionStage<Void>> otherCaResourceDeleter,
                          CertManagerCertificateOperator certManagerCertificateOperator,
                          SecretOperator secretOperator,
                          OwnerReference ownerReference,
                          IssuerRef issuerRef) {
-        super(reconciliation, caRole, caCertSecret, null, caConfig);
+        super(reconciliation, caRole, caCertSecret, null, caConfig, otherCaResourceDeleter);
         this.certManagerCertificateOperator = certManagerCertificateOperator;
         this.secretOperator = secretOperator;
         this.ownerReference = ownerReference;
@@ -94,9 +97,9 @@ public class CertManagerCa extends Ca {
     }
 
     @Override
-    public CompletionStage<Void> cleanupEndEntityCert(String entity) {
-        return certManagerCertificateOperator.deleteAsync(reconciliation, reconciliation.namespace(), entity, false)
-                .toCompletableFuture();
+    public CompletionStage<Void> deleteAllCertResourcesForEntity(String entity) {
+        return deleteCertificateResourceForEntity(reconciliation, certManagerCertificateOperator, entity)
+                .thenCompose(v -> deleteCertResourcesForOtherCaTypes(entity));
     }
 
     /**
@@ -204,22 +207,22 @@ public class CertManagerCa extends Ca {
 
     CompletionStage<CertAndKey> maybeCopyOrGenerateCert(String resourceName, StrimziSubject subject, CertAndKey existingCert, Labels labels) {
         return generateSignedCert(resourceName, subject, labels)
-                .thenApply(newCertAndKey -> {
+                .thenCompose(newCertAndKey -> {
                     if (existingCert == null) {
-                        return newCertAndKey;
+                        return CompletableFuture.completedStage(newCertAndKey);
                     } else if (certManagerCertUpdated(existingCert, newCertAndKey)) {
                         if (CertificateUtils.certIsTrusted(reconciliation, CertificateUtils.extractCertChain(resourceName, newCertAndKey.cert()), currentCaCertX509())) {
                             LOGGER.infoCr(reconciliation, "New certificate for {}/{}", reconciliation.namespace(), resourceName);
                             componentsWithUntrustedCert.remove(resourceName);
-                            return newCertAndKey;
+                            return deleteCertResourcesForOtherCaTypes(resourceName).thenApply(v -> newCertAndKey);
                         } else {
                             LOGGER.warnCr(reconciliation, "New certificate for {}/{}, but not trusted yet so keeping existing certificate.", reconciliation.namespace(), resourceName);
                             componentsWithUntrustedCert.add(resourceName);
-                            return existingCert;
+                            return CompletableFuture.completedStage(existingCert);
                         }
                     } else {
                         // Certificate has not changed
-                        return existingCert;
+                        return CompletableFuture.completedStage(existingCert);
                     }
                 });
     }
@@ -306,6 +309,19 @@ public class CertManagerCa extends Ca {
             certificateBuilder.editMetadata().withOwnerReferences(ownerReference).endMetadata();
         }
         return certificateBuilder.build();
+    }
+
+    /**
+     * Deletes the cert-manager Certificate resource for a given entity
+     *
+     * @param reconciliation                    Reconciliation marker
+     * @param certManagerCertificateOperator    Certificate operator for managing cert-manager certificates
+     * @param entity                            Name of entity that is no longer needed
+     *
+     * @return A CompletionStage which completes when the cert-manager Certificate for a given entity name is deleted
+     */
+    public static CompletionStage<Void> deleteCertificateResourceForEntity(Reconciliation reconciliation, CertManagerCertificateOperator certManagerCertificateOperator, String entity) {
+        return certManagerCertificateOperator.deleteAsync(reconciliation, reconciliation.namespace(), entity, false);
     }
 
     /**
