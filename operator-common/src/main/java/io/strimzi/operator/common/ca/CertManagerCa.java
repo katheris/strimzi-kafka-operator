@@ -94,9 +94,8 @@ public class CertManagerCa extends Ca {
     }
 
     @Override
-    public CompletionStage<Void> cleanupEndEntityCert(String entity) {
-        return certManagerCertificateOperator.deleteAsync(reconciliation, reconciliation.namespace(), entity, false)
-                .toCompletableFuture();
+    public CompletionStage<Void> deleteAllCertResourcesForEntity(String entity) {
+        return deleteCertificateResourceForEntity(reconciliation, certManagerCertificateOperator, entity);
     }
 
     /**
@@ -306,6 +305,19 @@ public class CertManagerCa extends Ca {
             certificateBuilder.editMetadata().withOwnerReferences(ownerReference).endMetadata();
         }
         return certificateBuilder.build();
+    }
+
+    /**
+     * Deletes the cert-manager Certificate resource for a given entity
+     *
+     * @param reconciliation                    Reconciliation marker
+     * @param certManagerCertificateOperator    Certificate operator for managing cert-manager certificates
+     * @param entity                            Name of entity that is no longer needed
+     *
+     * @return A CompletionStage which completes when the cert-manager Certificate for a given entity name is deleted
+     */
+    public static CompletionStage<Void> deleteCertificateResourceForEntity(Reconciliation reconciliation, CertManagerCertificateOperator certManagerCertificateOperator, String entity) {
+        return certManagerCertificateOperator.deleteAsync(reconciliation, reconciliation.namespace(), entity, false);
     }
 
     /**

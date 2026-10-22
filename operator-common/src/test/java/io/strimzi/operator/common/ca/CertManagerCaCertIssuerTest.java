@@ -640,7 +640,7 @@ public class CertManagerCaCertIssuerTest {
     }
 
     @Test
-    void cleanupEndEntityCert() {
+    void deleteEndEntityCert() {
         Map<String, String> clusterCaCertData = new HashMap<>();
         clusterCaCertData.put("ca.crt", MockCertIssuer.clusterCaCert());
         Secret clusterCaCertSecret = createCaCertSecret(clusterCaCertData, 0);
@@ -661,7 +661,7 @@ public class CertManagerCaCertIssuerTest {
 
         String entityName = "my-entity";
 
-        certManagerCa.cleanupEndEntityCert(entityName).toCompletableFuture().join();
+        certManagerCa.deleteAllCertResourcesForEntity(entityName).toCompletableFuture().join();
 
         verify(certManagerCertificateOperator).deleteAsync(any(), eq(NAMESPACE), eq(entityName), eq(false));
     }

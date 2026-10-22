@@ -37,6 +37,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.function.Function;
 import java.util.function.Predicate;
 
 /**
@@ -59,27 +60,31 @@ public class InternalCa extends Ca {
 
     private final PasswordGenerator passwordGenerator;
     private final CertIssuer certIssuer;
+    private final Function<String, CompletionStage<Void>> otherCaResourceDeleter;
 
     /**
      * Constructs the CA object
      *
-     * @param reconciliation    Reconciliation marker
-     * @param caRole            Ca Role
-     * @param certIssuer        Certificate manager instance
-     * @param passwordGenerator Password generator instance
-     * @param caCertSecret      Kubernetes Secret where the CA public key is stored
-     * @param caKeySecret       Kubernetes Secret where the CA private key is stored
-     * @param caConfig          Certificate Authority configuration
+     * @param reconciliation            Reconciliation marker
+     * @param caRole                    Ca Role
+     * @param certIssuer                Certificate manager instance
+     * @param passwordGenerator         Password generator instance
+     * @param caCertSecret              Kubernetes Secret where the CA public key is stored
+     * @param caKeySecret               Kubernetes Secret where the CA private key is stored
+     * @param caConfig                  Certificate Authority configuration
+     * @param otherCaResourceDeleter    Deletes certificate resources for other CA types
      */
     public InternalCa(Reconciliation reconciliation,
                       CaRole caRole, CertIssuer certIssuer,
                       PasswordGenerator passwordGenerator,
                       Secret caCertSecret,
                       Secret caKeySecret,
-                      CaConfig caConfig) {
+                      CaConfig caConfig,
+                      Function<String, CompletionStage<Void>> otherCaResourceDeleter) {
         super(reconciliation, caRole, caCertSecret, caKeySecret, caConfig);
         this.certIssuer = certIssuer;
         this.passwordGenerator = passwordGenerator;
+        this.otherCaResourceDeleter = otherCaResourceDeleter;
     }
 
     @Override
@@ -142,7 +147,14 @@ public class InternalCa extends Ca {
             certAndKey = existingCertAndKey;
         }
 
-        return CompletableFuture.completedFuture(certAndKey);
+        // Call delete on other CA types if certificate is being renewed
+        if (existingCertAndKey != null && certAndKey != existingCertAndKey) {
+            return otherCaResourceDeleter.apply(resourceName)
+                    .thenApply(v -> certAndKey);
+
+        } else {
+            return CompletableFuture.completedFuture(certAndKey);
+        }
     }
 
     /**
@@ -217,7 +229,7 @@ public class InternalCa extends Ca {
             }
         }
 
-        CertAndKey certAndKey = null;
+        CertAndKey certAndKey;
         if (!reasons.isEmpty()) {
             LOGGER.infoCr(reconciliation, "Certificate for component {} needs to be regenerated because: {}", resourceName, String.join(", ", reasons));
 
@@ -235,13 +247,21 @@ public class InternalCa extends Ca {
             certAndKey = existingCertAndKey;
         }
 
-        return CompletableFuture.completedFuture(certAndKey);
+        // Call delete on other CA types if certificate is being renewed
+        if (existingCertAndKey != null && certAndKey != existingCertAndKey) {
+            return otherCaResourceDeleter.apply(resourceName)
+                    .thenApply(v -> certAndKey);
+
+        } else {
+            return CompletableFuture.completedFuture(certAndKey);
+        }
     }
 
     @Override
-    public CompletionStage<Void> cleanupEndEntityCert(String entity) {
-        // InternalCa does not create any long-lived resources when issuing certificates - NOOP
-        return CompletableFuture.completedFuture(null);
+    public CompletionStage<Void> deleteAllCertResourcesForEntity(String entity) {
+        // InternalCa does not create any long-lived resources when issuing certificates,
+        // so we only need to call delete on other ca types
+        return otherCaResourceDeleter.apply(entity);
     }
 
     private static void delete(Reconciliation reconciliation, File file) {

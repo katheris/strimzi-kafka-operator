@@ -46,6 +46,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.stream.Collectors;
 
@@ -253,7 +254,8 @@ public class KafkaUserModel {
                 passwordGenerator,
                 clientsCaCertSecret,
                 clientsCaKeySecret,
-                new CaConfig(validityDays, renewalDays, caKeySize, false, generatePkcs12Stores, CertificateManagerType.STRIMZI)
+                new CaConfig(validityDays, renewalDays, caKeySize, false, generatePkcs12Stores, CertificateManagerType.STRIMZI),
+                i -> CompletableFuture.completedStage(null)
         );
 
         this.caCert = clientsCa.currentCaCertBase64();
