@@ -23,6 +23,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.function.Function;
 
 import static io.strimzi.operator.common.ca.Ca.ANNO_STRIMZI_IO_CA_KEY_GENERATION;
 
@@ -39,19 +40,20 @@ public class InternalCaProvider extends CaProvider {
     /**
      * Constructor.
      *
-     * @param reconciliation        Reconciliation marker
-     * @param caRole                The role of this CA
-     * @param caConfig              CA configuration
-     * @param kafkaCr               The Kafka custom resource
-     * @param secretOperator        Secret operator for managing secrets
-     * @param certIssuer            Certificate issuer
-     * @param passwordGenerator     Password generator
-     * @param clock                 Clock for time-based operations
-     * @param existingCaCertSecret  Existing CA certificate secret
-     * @param existingCaKeySecret   Existing CA key secret
+     * @param reconciliation                Reconciliation marker
+     * @param caRole                        The role of this CA
+     * @param caConfig                      CA configuration
+     * @param kafkaCr                       The Kafka custom resource
+     * @param secretOperator                Secret operator for managing secrets
+     * @param certIssuer                    Certificate issuer
+     * @param passwordGenerator             Password generator
+     * @param clock                         Clock for time-based operations
+     * @param existingCaCertSecret          Existing CA certificate secret
+     * @param existingCaKeySecret           Existing CA key secret
+     * @param otherCaTypesCleanupCallback   Callback to clean up resources from other CA types
      */
-    InternalCaProvider(Reconciliation reconciliation, Ca.CaRole caRole, CaConfig caConfig, Kafka kafkaCr, SecretOperator secretOperator, CertIssuer certIssuer, PasswordGenerator passwordGenerator, Clock clock, Secret existingCaCertSecret, Secret existingCaKeySecret) {
-        super(reconciliation, caRole, caConfig, kafkaCr, existingCaCertSecret, existingCaKeySecret);
+    InternalCaProvider(Reconciliation reconciliation, Ca.CaRole caRole, CaConfig caConfig, Kafka kafkaCr, SecretOperator secretOperator, CertIssuer certIssuer, PasswordGenerator passwordGenerator, Clock clock, Secret existingCaCertSecret, Secret existingCaKeySecret, Function<String, CompletionStage<Void>> otherCaTypesCleanupCallback) {
+        super(reconciliation, caRole, caConfig, kafkaCr, existingCaCertSecret, existingCaKeySecret, otherCaTypesCleanupCallback);
         this.secretOperator = secretOperator;
         this.certIssuer = certIssuer;
         this.passwordGenerator = passwordGenerator;
@@ -60,7 +62,7 @@ public class InternalCaProvider extends CaProvider {
 
     @Override
     public CompletionStage<CaProviderResult> createAndReconcileCa() {
-        InternalCa internalCa = new InternalCa(reconciliation, caRole, certIssuer, passwordGenerator, existingCaCertSecret, existingCaKeySecret, caConfig);
+        InternalCa internalCa = new InternalCa(reconciliation, caRole, certIssuer, passwordGenerator, existingCaCertSecret, existingCaKeySecret, caConfig, otherCaTypesCleanupCallback);
         internalCa.createRenewOrReplace(Util.isMaintenanceTimeWindowsSatisfied(reconciliation, kafkaCr.getSpec().getMaintenanceTimeWindows(), clock.instant()),
                 isForceReplace(existingCaKeySecret),
                 isForceRenew(existingCaCertSecret));

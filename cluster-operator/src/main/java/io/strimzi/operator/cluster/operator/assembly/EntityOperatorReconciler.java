@@ -458,7 +458,7 @@ public class EntityOperatorReconciler {
                     });
         } else {
             return CompletableFuture.allOf(
-                    clusterCa.cleanupEndEntityCert(KafkaResources.entityTopicOperatorSecretName(reconciliation.name())).toCompletableFuture(),
+                    clusterCa.deleteAllCertResourcesForEntity(KafkaResources.entityTopicOperatorSecretName(reconciliation.name())).toCompletableFuture(),
                     secretOperator.reconcile(reconciliation, reconciliation.namespace(), KafkaResources.entityTopicOperatorSecretName(reconciliation.name()), null).toCompletableFuture()
             ).thenApply(i -> null);
         }
@@ -484,7 +484,7 @@ public class EntityOperatorReconciler {
                     );
         } else {
             return CompletableFuture.allOf(
-                    clusterCa.cleanupEndEntityCert(KafkaResources.entityUserOperatorSecretName(reconciliation.name())).toCompletableFuture(),
+                    clusterCa.deleteAllCertResourcesForEntity(KafkaResources.entityUserOperatorSecretName(reconciliation.name())).toCompletableFuture(),
                     secretOperator.reconcile(reconciliation, reconciliation.namespace(), KafkaResources.entityUserOperatorSecretName(reconciliation.name()), null).toCompletableFuture()
             ).thenApply(i -> null);
         }

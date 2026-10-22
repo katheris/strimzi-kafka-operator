@@ -8,11 +8,16 @@ import io.strimzi.certs.CertAndKey;
 import io.strimzi.certs.StrimziSubject;
 import io.strimzi.operator.common.Reconciliation;
 import io.strimzi.operator.common.model.Labels;
+import org.hamcrest.Matchers;
 import org.junit.jupiter.api.Test;
 
 import java.io.File;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -72,7 +77,11 @@ public class InternalCaCertIssuerTest {
 
     @Test
     public void renewalOfCertificatesWithNullCertificates() {
-        InternalCa mockedCa = new MockedClusterCa();
+        AtomicBoolean cleanupCallbackCalled = new AtomicBoolean(false);
+        InternalCa mockedCa = new MockedClusterCa(i -> {
+            cleanupCallbackCalled.set(true);
+            return CompletableFuture.completedStage(null);
+        });
 
         CertAndKey newCert = mockedCa.maybeCopyOrGenerateServerCerts(
                 Reconciliation.DUMMY_RECONCILIATION,
@@ -88,11 +97,17 @@ public class InternalCaCertIssuerTest {
         assertThat(new String(newCert.key()), is("new-key0"));
         assertThat(new String(newCert.keyStore()), is("new-keystore0"));
         assertThat(newCert.storePassword(), is("new-password0"));
+
+        assertThat("Cleanup should not be called if this is a brand new cluster", cleanupCallbackCalled.get(), Matchers.is(false));
     }
 
     @Test
     public void renewalOfCertificatesWithCaRenewal() {
-        MockedClusterCa mockedCa = new MockedClusterCa();
+        AtomicBoolean cleanupCallbackCalled = new AtomicBoolean(false);
+        MockedClusterCa mockedCa = new MockedClusterCa(i -> {
+            cleanupCallbackCalled.set(true);
+            return CompletableFuture.completedStage(null);
+        });
         mockedCa.setCaCertGeneration(1);
 
         CertAndKey initialCert = new CertAndKey("old-key".getBytes(), DUMMY_CERT.getBytes(StandardCharsets.UTF_8));
@@ -111,11 +126,13 @@ public class InternalCaCertIssuerTest {
         assertThat(new String(newCert.keyStore()), is("new-keystore0"));
         assertThat(newCert.storePassword(), is("new-password0"));
         assertThat(newCert.caCertGeneration(), is(1));
+
+        assertThat("Cleanup callback should be called when renewing a certificate", cleanupCallbackCalled.get(), Matchers.is(true));
     }
 
     @Test
     public void renewalOfCertificatesDelayedRenewalInWindow() {
-        MockedClusterCa mockedCa = new MockedClusterCa();
+        MockedClusterCa mockedCa = new MockedClusterCa(i -> CompletableFuture.completedStage(null));
 
         CertAndKey initialCert = new CertAndKey("old-key".getBytes(), EXPIRED_DUMMY_CERT.getBytes(StandardCharsets.UTF_8));
 
@@ -138,7 +155,7 @@ public class InternalCaCertIssuerTest {
 
     @Test
     public void renewalOfCertificatesDelayedRenewalOutsideWindow() {
-        MockedClusterCa mockedCa = new MockedClusterCa();
+        MockedClusterCa mockedCa = new MockedClusterCa(i -> CompletableFuture.completedStage(null));
 
         CertAndKey initialCert = new CertAndKey("old-key".getBytes(), EXPIRED_DUMMY_CERT.getBytes(StandardCharsets.UTF_8));
 
@@ -159,7 +176,11 @@ public class InternalCaCertIssuerTest {
 
     @Test
     public void noRenewalOfCertificates() {
-        MockedClusterCa mockedCa = new MockedClusterCa();
+        AtomicBoolean cleanupCallbackCalled = new AtomicBoolean(false);
+        MockedClusterCa mockedCa = new MockedClusterCa(i -> {
+            cleanupCallbackCalled.set(true);
+            return CompletableFuture.completedStage(null);
+        });
 
         CertAndKey initialCert = new CertAndKey("old-key".getBytes(), DUMMY_CERT.getBytes(StandardCharsets.UTF_8));
 
@@ -175,11 +196,13 @@ public class InternalCaCertIssuerTest {
 
         assertThat(new String(newCert.cert()), is(DUMMY_CERT));
         assertThat(new String(newCert.key()), is("old-key"));
+
+        assertThat("Cleanup callback should not be called when certificate is not being renewed", cleanupCallbackCalled.get(), Matchers.is(false));
     }
 
     @Test
     public void changedSubjectOfCertificates() {
-        MockedClusterCa mockedCa = new MockedClusterCa();
+        MockedClusterCa mockedCa = new MockedClusterCa(i -> CompletableFuture.completedStage(null));
 
         CertAndKey initialCert = new CertAndKey("old-key".getBytes(), DUMMY_CERT.getBytes(StandardCharsets.UTF_8));
 
@@ -200,7 +223,7 @@ public class InternalCaCertIssuerTest {
 
     @Test
     public void certificatesIncludeCaChain() {
-        MockedClusterCa mockedCa = new MockedClusterCa();
+        MockedClusterCa mockedCa = new MockedClusterCa(i -> CompletableFuture.completedStage(null));
 
         CertAndKey newCert = mockedCa.maybeCopyOrGenerateServerCerts(
                 Reconciliation.DUMMY_RECONCILIATION,
@@ -217,7 +240,7 @@ public class InternalCaCertIssuerTest {
 
     @Test
     public void caChainAddedToExistingCertificates() {
-        MockedClusterCa mockedCa = new MockedClusterCa();
+        MockedClusterCa mockedCa = new MockedClusterCa(i -> CompletableFuture.completedStage(null));
 
         CertAndKey initialCert = new CertAndKey("new-key0".getBytes(), DUMMY_CERT.getBytes(StandardCharsets.UTF_8));
 
@@ -236,7 +259,11 @@ public class InternalCaCertIssuerTest {
 
     @Test
     public void testRenewalOfDeploymentCertificateWithNullCertAndKey() {
-        MockedClusterCa mockedCa = new MockedClusterCa();
+        AtomicBoolean cleanupCallbackCalled = new AtomicBoolean(false);
+        MockedClusterCa mockedCa = new MockedClusterCa(i -> {
+            cleanupCallbackCalled.set(true);
+            return CompletableFuture.completedStage(null);
+        });
 
         CertAndKey newCert = mockedCa.maybeCopyOrGenerateClientCert(
                 Reconciliation.DUMMY_RECONCILIATION,
@@ -250,11 +277,17 @@ public class InternalCaCertIssuerTest {
         assertThat(new String(newCert.cert()), is("new-cert0"));
         assertThat(new String(newCert.key()), is("new-key0"));
         assertThat(newCert.caCertGeneration(), is(0));
+
+        assertThat("Cleanup should not be called if this is a brand new cluster", cleanupCallbackCalled.get(), Matchers.is(false));
     }
 
     @Test
     public void testRenewalOfDeploymentCertificateWithRenewingCa() {
-        MockedClusterCa mockedCa = new MockedClusterCa();
+        AtomicBoolean cleanupCallbackCalled = new AtomicBoolean(false);
+        MockedClusterCa mockedCa = new MockedClusterCa(i -> {
+            cleanupCallbackCalled.set(true);
+            return CompletableFuture.completedStage(null);
+        });
         mockedCa.setCaCertGeneration(1);
 
         CertAndKey initialCert = new CertAndKey("old-key".getBytes(), DUMMY_CERT.getBytes(StandardCharsets.UTF_8));
@@ -271,11 +304,13 @@ public class InternalCaCertIssuerTest {
         assertThat(new String(newCert.cert()), is("new-cert0"));
         assertThat(new String(newCert.key()), is("new-key0"));
         assertThat(newCert.caCertGeneration(), is(1));
+
+        assertThat("Cleanup callback should be called when renewing a certificate", cleanupCallbackCalled.get(), Matchers.is(true));
     }
 
     @Test
     public void testRenewalOfDeploymentCertificateDelayedRenewal() {
-        MockedClusterCa mockedCa = new MockedClusterCa();
+        MockedClusterCa mockedCa = new MockedClusterCa(i -> CompletableFuture.completedStage(null));
 
         CertAndKey initialCert = new CertAndKey("old-key".getBytes(), EXPIRED_DUMMY_CERT.getBytes(StandardCharsets.UTF_8));
 
@@ -295,7 +330,11 @@ public class InternalCaCertIssuerTest {
 
     @Test
     public void testRenewalOfDeploymentCertificateDelayedRenewalOutsideOfMaintenanceWindow() {
-        MockedClusterCa mockedCa = new MockedClusterCa();
+        AtomicBoolean cleanupCallbackCalled = new AtomicBoolean(false);
+        MockedClusterCa mockedCa = new MockedClusterCa(i -> {
+            cleanupCallbackCalled.set(true);
+            return CompletableFuture.completedStage(null);
+        });
 
         CertAndKey initialCert = new CertAndKey("old-key".getBytes(), EXPIRED_DUMMY_CERT.getBytes(StandardCharsets.UTF_8));
 
@@ -311,11 +350,13 @@ public class InternalCaCertIssuerTest {
         assertThat(new String(newCert.cert()), is(EXPIRED_DUMMY_CERT));
         assertThat(new String(newCert.key()), is("old-key"));
         assertThat(newCert.caCertGeneration(), is(0));
+
+        assertThat("Cleanup callback should not be called when certificate is not being renewed", cleanupCallbackCalled.get(), Matchers.is(false));
     }
 
     @Test
     public void testHandlingOldSecretWithPKCS12Files() {
-        MockedClusterCa mockedCa = new MockedClusterCa();
+        MockedClusterCa mockedCa = new MockedClusterCa(i -> CompletableFuture.completedStage(null));
 
         CertAndKey initialCert = new CertAndKey("old-key".getBytes(), DUMMY_CERT.getBytes(StandardCharsets.UTF_8),
                 null, "old-keystore".getBytes(), "old-password");
@@ -354,8 +395,8 @@ public class InternalCaCertIssuerTest {
     public static class MockedClusterCa extends InternalCa {
         private final AtomicInteger invocationCount = new AtomicInteger(0);
 
-        public MockedClusterCa() {
-            super(Reconciliation.DUMMY_RECONCILIATION, CaRole.CLUSTER_CA, null, null, null, null, new CaConfig(null, true));
+        public MockedClusterCa(Function<String, CompletionStage<Void>> cleanupCallback) {
+            super(Reconciliation.DUMMY_RECONCILIATION, CaRole.CLUSTER_CA, null, null, null, null, new CaConfig(null, true), cleanupCallback);
         }
 
         @Override

@@ -843,7 +843,7 @@ public class KafkaReconciler {
      */
     protected Future<Void> deleteOldCertificateResources() {
         List<Future<Void>> deleteFutures = secretsToDelete.stream()
-                .map(secretName -> VertxUtil.toFuture(clusterCa.cleanupEndEntityCert(secretName)
+                .map(secretName -> VertxUtil.toFuture(clusterCa.deleteAllCertResourcesForEntity(secretName)
                         .thenCompose(i -> {
                             LOGGER.debugCr(reconciliation, "Deleting old Secret {}/{} that is no longer used.", reconciliation.namespace(), secretName);
                             return secretOperator.deleteAsync(reconciliation, reconciliation.namespace(), secretName, false);

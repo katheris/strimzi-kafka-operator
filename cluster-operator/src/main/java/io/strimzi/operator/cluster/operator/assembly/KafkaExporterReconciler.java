@@ -147,7 +147,7 @@ public class KafkaExporterReconciler {
                     );
         } else {
             return CompletableFuture.allOf(
-                    clusterCa.cleanupEndEntityCert(KafkaExporterResources.secretName(reconciliation.name())).toCompletableFuture(),
+                    clusterCa.deleteAllCertResourcesForEntity(KafkaExporterResources.secretName(reconciliation.name())).toCompletableFuture(),
                     secretOperator.reconcile(reconciliation, reconciliation.namespace(), KafkaExporterResources.secretName(reconciliation.name()), null).toCompletableFuture()
             ).thenApply(i -> null);
         }
